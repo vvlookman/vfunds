@@ -58,11 +58,18 @@ impl BacktestCommand {
         spinner.enable_steady_tick(Duration::from_millis(100));
 
         match api::backtest(&self.funds, &options).await {
-            Ok(result_map) => {
-                let mut table_data: Vec<Vec<String>> =
-                    vec![vec!["".to_string(), "Return".to_string()]];
-                for (fund, fund_result) in result_map {
-                    table_data.push(vec![fund.to_string(), "5%".to_string()]);
+            Ok(results) => {
+                let mut table_data: Vec<Vec<String>> = vec![vec![
+                    "".to_string(),
+                    "Days".to_string(),
+                    "Total Return".to_string(),
+                ]];
+                for (fund_name, fund_result) in results {
+                    table_data.push(vec![
+                        fund_name.to_string(),
+                        format!("{}", fund_result.days),
+                        format!("{:.2}", fund_result.total_return),
+                    ]);
                 }
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();

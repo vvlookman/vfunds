@@ -1,0 +1,4 @@
+title = "A virtual fund that buy all stocks equally at begining and always hold"
+
+# All candidate tickers
+tickers = ["688981", "000333"]

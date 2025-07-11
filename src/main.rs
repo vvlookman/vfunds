@@ -3,6 +3,7 @@
 use std::{env, path::PathBuf};
 
 use clap::Parser;
+use colored::Colorize;
 
 use crate::cli::Commands;
 
@@ -36,6 +37,15 @@ async fn main() {
     });
 
     let cli = Cli::parse_from(args);
+
+    if let Some(workspace) = &cli.workspace {
+        if !workspace.exists() || !workspace.is_dir() {
+            panic!(
+                "[!] Workspace directory does not exist: '{}'",
+                workspace.to_string_lossy().red()
+            );
+        }
+    }
 
     vfunds::init(cli.workspace);
 

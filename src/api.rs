@@ -1,40 +1,50 @@
-use std::{collections::HashMap, fs::read_dir};
+use std::{fs::read_dir, path::PathBuf};
 
-use chrono::NaiveDate;
 use log::debug;
 use rayon::prelude::*;
 
-use crate::{FundDefinition, WORKSPACE, error::*, utils};
+use crate::{FundDefinition, WORKSPACE, backtest, error::*, utils};
 
-pub struct BacktestOptions {
-    pub init_cash: f64,
-    pub start_date: NaiveDate,
-    pub end_date: NaiveDate,
-}
-
-pub struct FundBacktestResult {}
+pub type BacktestOptions = backtest::BacktestOptions;
+pub type BacktestResult = backtest::BacktestResult;
 
 pub async fn backtest(
-    funds: &[String],
+    fund_names: &[String],
     options: &BacktestOptions,
-) -> VfResult<HashMap<String, FundBacktestResult>> {
-    debug!("{funds:?}");
+) -> VfResult<Vec<(String, BacktestResult)>> {
+    let mut results: Vec<(String, BacktestResult)> = vec![];
 
-    let mut result_map: HashMap<String, FundBacktestResult> = HashMap::new();
-
-    for fund in funds {
-        result_map.insert(fund.to_string(), FundBacktestResult {});
+    let mut funds = funds().await?;
+    if !fund_names.is_empty() {
+        funds.retain(|(name, _)| fund_names.contains(name));
     }
 
-    Ok(result_map)
+    debug!(
+        "Backtest funds: {:?}",
+        funds.iter().map(|(name, _)| name).collect::<Vec<_>>()
+    );
+
+    for (fund_name, fund_definition) in funds {
+        let result = backtest::run_fund(&fund_definition, options).await?;
+        results.push((fund_name, result));
+    }
+
+    Ok(results)
 }
 
 pub async fn funds() -> VfResult<Vec<(String, FundDefinition)>> {
     let mut funds: Vec<(String, FundDefinition)> = vec![];
 
-    let workspace = WORKSPACE.read()?;
+    let workspace = { WORKSPACE.read()? };
     if let Ok(entries) = read_dir(&*workspace) {
-        let mut entries: Vec<_> = entries.filter_map(|entry| entry.ok()).collect();
+        let mut entries: Vec<_> = entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                let entry_path = entry.path();
+                !entry_path.is_dir()
+                    && entry_path.extension().map(|s| s.to_ascii_lowercase()) == Some("toml".into())
+            })
+            .collect();
         entries.par_sort_by(|a, b| {
             utils::text::compare_phonetic(
                 &a.file_name().to_string_lossy(),
@@ -53,4 +63,9 @@ pub async fn funds() -> VfResult<Vec<(String, FundDefinition)>> {
     }
 
     Ok(funds)
+}
+
+pub fn get_workspace() -> VfResult<PathBuf> {
+    let workspace = { WORKSPACE.read()? };
+    Ok(workspace.clone())
 }

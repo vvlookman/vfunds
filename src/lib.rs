@@ -18,6 +18,8 @@ pub mod utils;
 #[derive(Serialize, Deserialize, Default)]
 pub struct FundDefinition {
     pub title: String,
+
+    pub tickers: Vec<String>,
 }
 
 /// Options that each item is String in <key>:<value> format
@@ -41,6 +43,7 @@ static WORKSPACE: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| {
     RwLock::new(std::env::current_dir().expect("Unable to get current directory!"))
 });
 
+mod backtest;
 mod data;
 mod ds;
 mod financial;

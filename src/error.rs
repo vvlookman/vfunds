@@ -10,9 +10,6 @@ pub enum VfError {
     #[error("[Concurrent Error] {0}")]
     ConcurrentError(#[from] ::tokio::task::JoinError),
 
-    #[error("[Config Error] {0}")]
-    ConfigError(#[from] ::confy::ConfyError),
-
     #[error("[Dataframe Error] {0}")]
     DataframeError(#[from] ::polars::error::PolarsError),
 
@@ -36,6 +33,9 @@ pub enum VfError {
 
     #[error("[Not Exists] {1}")]
     NotExists(&'static str, String),
+
+    #[error("[Parse Config Error] {0}")]
+    ParseConfigError(#[from] ::confy::ConfyError),
 
     #[error("[Parse Enum Error] {0}")]
     ParseEnumError(#[from] ::strum::ParseError),
