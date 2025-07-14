@@ -52,6 +52,14 @@ impl BacktestCommand {
             end_date: self.end_date.unwrap_or(Local::now().naive_local().into()),
         };
 
+        if options.end_date <= options.start_date {
+            panic!(
+                "The end date {} cannot be earlier than the start date {}",
+                utils::datetime::date_to_str(&options.end_date),
+                utils::datetime::date_to_str(&options.start_date)
+            );
+        }
+
         let spinner = ProgressBar::new_spinner();
         spinner
             .set_style(ProgressStyle::with_template("{msg} {spinner:.cyan} [{elapsed}]").unwrap());

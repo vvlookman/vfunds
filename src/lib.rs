@@ -18,8 +18,14 @@ pub mod utils;
 #[derive(Serialize, Deserialize, Default)]
 pub struct FundDefinition {
     pub title: String,
-
     pub tickers: Vec<String>,
+    pub signals: Vec<TradeSignal>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct TradeSignal {
+    pub name: String,
+    pub frequency: String,
 }
 
 /// Options that each item is String in <key>:<value> format

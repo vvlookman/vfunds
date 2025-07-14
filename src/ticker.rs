@@ -52,3 +52,9 @@ impl FromStr for Ticker {
         }
     }
 }
+
+impl ToString for Ticker {
+    fn to_string(&self) -> String {
+        format!("{}:{}", self.exchange, self.symbol)
+    }
+}

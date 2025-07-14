@@ -44,6 +44,10 @@ pub fn date_from_str(s: &str) -> VfResult<NaiveDate> {
     }
 }
 
+pub fn date_to_str(date: &NaiveDate) -> String {
+    date.format("%Y-%m-%d").to_string()
+}
+
 pub fn days_after_epoch(date: &NaiveDate) -> Option<i32> {
     let num_days = date.signed_duration_since(EPOCH).num_days();
     let days: i32 = num_days.try_into().ok()?;

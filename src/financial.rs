@@ -1,4 +1,7 @@
+use std::sync::LazyLock;
+
 use chrono::{Duration, Local, NaiveDate};
+use dashmap::DashMap;
 
 use crate::{
     data::{daily::*, stock::*},
@@ -19,7 +22,15 @@ pub enum Prospect {
 }
 
 pub async fn get_stock_daily_valuations(ticker: &Ticker) -> VfResult<DailyDataset> {
-    fetch_stock_daily_valuations(ticker).await
+    let key = ticker.to_string();
+
+    if let Some(dataset) = STOCK_DAILY_VALUATIONS_CACHE.get(&key) {
+        Ok(dataset.value().clone())
+    } else {
+        let dataset = fetch_stock_daily_valuations(ticker).await?;
+        STOCK_DAILY_VALUATIONS_CACHE.insert(key, dataset.clone());
+        Ok(dataset)
+    }
 }
 
 pub async fn get_stock_events(
@@ -48,3 +59,6 @@ pub async fn get_stock_fiscal_metricset(
 pub async fn get_stock_info(ticker: &Ticker) -> VfResult<StockInfo> {
     fetch_stock_info(ticker).await
 }
+
+static STOCK_DAILY_VALUATIONS_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+    LazyLock::new(DashMap::new);
