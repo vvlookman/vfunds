@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 use crate::error::VfError;
 
@@ -53,8 +53,8 @@ impl FromStr for Ticker {
     }
 }
 
-impl ToString for Ticker {
-    fn to_string(&self) -> String {
-        format!("{}:{}", self.exchange, self.symbol)
+impl Display for Ticker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.exchange, self.symbol)
     }
 }

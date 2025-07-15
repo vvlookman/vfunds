@@ -126,4 +126,24 @@ impl DailyDataset {
 
         None
     }
+
+    pub fn get_value<T: NumCast>(&self, date: &NaiveDate, field_name: &str) -> Option<T> {
+        if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            if let Ok(df) = self
+                .df
+                .clone()
+                .lazy()
+                .filter(col(&self.date_field_name).eq(lit(*date)))
+                .collect()
+            {
+                if let Ok(col) = df.column(origin_field_name) {
+                    if let Ok(val) = col.get(0) {
+                        return val.extract::<T>();
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }

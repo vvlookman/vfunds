@@ -84,6 +84,7 @@ impl BacktestCommand {
 
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
+                    "Trade Days".to_string(),
                     "Profit".to_string(),
                     "ARR".to_string(),
                     "Sharpe Ratio".to_string(),
@@ -92,6 +93,7 @@ impl BacktestCommand {
                 for (fund_name, fund_result) in results {
                     table_data.push(vec![
                         fund_name.to_string(),
+                        format!("{}", fund_result.trade_days),
                         format!("{:.2}", fund_result.profit),
                         fund_result
                             .annual_return_rate
@@ -99,11 +101,11 @@ impl BacktestCommand {
                             .unwrap_or("-".to_string()),
                         fund_result
                             .sharpe_ratio
-                            .map(|v| format!("{:.3}", v))
+                            .map(|v| format!("{v:.3}"))
                             .unwrap_or("-".to_string()),
                         fund_result
                             .sortino_ratio
-                            .map(|v| format!("{:.3}", v))
+                            .map(|v| format!("{v:.3}"))
                             .unwrap_or("-".to_string()),
                     ]);
                 }

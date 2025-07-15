@@ -13,7 +13,7 @@ pub fn calc_annual_return_rate(start_value: f64, end_value: f64, days: u64) -> O
 
 pub fn calc_sharpe_ratio(daily_values: &[f64], risk_free_rate: f64) -> Option<f64> {
     if daily_values.len() > 1 {
-        let daily_return = stats::pct_change(&daily_values);
+        let daily_return = stats::pct_change(daily_values);
 
         let return_mean = stats::mean(&daily_return);
         let return_std = stats::std(&daily_return);
@@ -32,13 +32,13 @@ pub fn calc_sharpe_ratio(daily_values: &[f64], risk_free_rate: f64) -> Option<f6
 
 pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> Option<f64> {
     if daily_values.len() > 1 {
-        let daily_return = stats::pct_change(&daily_values);
+        let daily_return = stats::pct_change(daily_values);
 
         if let Some(return_mean) = stats::mean(&daily_return) {
             let daily_return_downside: Vec<_> = daily_return
                 .iter()
                 .filter(|&value| *value < return_mean)
-                .map(|x| *x as f64)
+                .map(|x| *x)
                 .collect();
             if daily_return_downside.len() > 1 {
                 if let Some(return_std_downside) = stats::std(&daily_return_downside) {
