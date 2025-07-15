@@ -6,7 +6,7 @@ use log::debug;
 use crate::{
     FundDefinition,
     error::*,
-    financial::{get_stock_daily_valuations, stock::StockValuationFieldName},
+    financial::{get_stock_daily_backward_adjust, stock::StockValuationFieldName},
     ticker::Ticker,
     utils::{
         datetime,
@@ -60,8 +60,8 @@ pub async fn run_fund(
                         for ticker_str in ticker_strs {
                             let ticker = Ticker::from_str(ticker_str)?;
 
-                            let daily_valuations = get_stock_daily_valuations(&ticker).await?;
-                            if let Some(price) = daily_valuations.get_latest_value::<f64>(
+                            let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+                            if let Some(price) = stock_daily.get_latest_value::<f64>(
                                 &date,
                                 &StockValuationFieldName::Price.to_string(),
                             ) {
@@ -73,8 +73,7 @@ pub async fn run_fund(
                                     positions.insert(ticker_str.to_string(), amount as u64);
 
                                     debug!(
-                                        "[+][{}] {} {:.2}x{}={:.2}",
-                                        date_str, ticker, price, amount, cost
+                                        "[+][{date_str}] {ticker} {price:.2}x{amount}={cost:.2}"
                                     );
                                 }
                             }
@@ -88,8 +87,8 @@ pub async fn run_fund(
         for ticker_str in &fund_definition.tickers {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let daily_valuations = get_stock_daily_valuations(&ticker).await?;
-            if daily_valuations
+            let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+            if stock_daily
                 .get_value::<f64>(&date, &StockValuationFieldName::Price.to_string())
                 .is_some()
             {
@@ -97,8 +96,8 @@ pub async fn run_fund(
                 for (ticker_str, amount) in &positions {
                     let ticker = Ticker::from_str(ticker_str)?;
 
-                    let daily_valuations = get_stock_daily_valuations(&ticker).await?;
-                    if let Some(price) = daily_valuations
+                    let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+                    if let Some(price) = stock_daily
                         .get_latest_value::<f64>(&date, &StockValuationFieldName::Price.to_string())
                     {
                         total_value += *amount as f64 * price;

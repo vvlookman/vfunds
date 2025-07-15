@@ -38,7 +38,7 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
             let daily_return_downside: Vec<_> = daily_return
                 .iter()
                 .filter(|&value| *value < return_mean)
-                .map(|x| *x)
+                .copied()
                 .collect();
             if daily_return_downside.len() > 1 {
                 if let Some(return_std_downside) = stats::std(&daily_return_downside) {
