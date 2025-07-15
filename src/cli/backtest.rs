@@ -42,6 +42,14 @@ pub struct BacktestCommand {
         help = "Virtual fund requires backtesting, e.g. -f index_fund -f hedge_fund"
     )]
     funds: Vec<String>,
+
+    #[arg(
+        short = 'r',
+        long = "risk-free",
+        default_value_t = 0.02,
+        help = "The risk-free rate, the default value is 0.02"
+    )]
+    risk_free_rate: f64,
 }
 
 impl BacktestCommand {
@@ -50,6 +58,7 @@ impl BacktestCommand {
             init_cash: self.init_cash,
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().naive_local().into()),
+            risk_free_rate: self.risk_free_rate,
         };
 
         if options.end_date <= options.start_date {
@@ -67,16 +76,35 @@ impl BacktestCommand {
 
         match api::backtest(&self.funds, &options).await {
             Ok(results) => {
+                println!(
+                    "[Initial cash] {} \t [Days] {}",
+                    options.init_cash,
+                    (options.end_date - options.start_date).num_days() + 1
+                );
+
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
-                    "Days".to_string(),
-                    "Total Return".to_string(),
+                    "Profit".to_string(),
+                    "ARR".to_string(),
+                    "Sharpe Ratio".to_string(),
+                    "Sortino Ratio".to_string(),
                 ]];
                 for (fund_name, fund_result) in results {
                     table_data.push(vec![
                         fund_name.to_string(),
-                        format!("{}", fund_result.days),
-                        format!("{:.2}", fund_result.total_return),
+                        format!("{:.2}", fund_result.profit),
+                        fund_result
+                            .annual_return_rate
+                            .map(|v| format!("{:.2}%", v * 100.0))
+                            .unwrap_or("-".to_string()),
+                        fund_result
+                            .sharpe_ratio
+                            .map(|v| format!("{:.3}", v))
+                            .unwrap_or("-".to_string()),
+                        fund_result
+                            .sortino_ratio
+                            .map(|v| format!("{:.3}", v))
+                            .unwrap_or("-".to_string()),
                     ]);
                 }
 
