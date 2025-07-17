@@ -19,6 +19,10 @@ pub struct BacktestOptions {
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
     pub risk_free_rate: f64,
+    pub stamp_duty_rate: f64,
+    pub stamp_duty_min_fee: f64,
+    pub broker_commission_rate: f64,
+    pub broker_commission_min_fee: f64,
 }
 
 pub struct BacktestResult {
@@ -55,7 +59,8 @@ pub async fn run_fund(
                         .filter(|t| !positions.contains_key(*t))
                         .collect();
                     if !ticker_strs.is_empty() {
-                        let buy_limit = cash / ticker_strs.len() as f64;
+                        let buy_limit = cash * (1.0 - options.broker_commission_rate)
+                            / ticker_strs.len() as f64;
 
                         for ticker_str in ticker_strs {
                             let ticker = Ticker::from_str(ticker_str)?;
@@ -68,12 +73,14 @@ pub async fn run_fund(
                                 let amount = (buy_limit / price).floor();
                                 if amount > 0.0 {
                                     let cost = amount * price;
+                                    let fee = calc_buy_fee(cost, options);
+                                    let total_cost = cost + fee;
 
-                                    cash -= cost;
+                                    cash -= total_cost;
                                     positions.insert(ticker_str.to_string(), amount as u64);
 
                                     debug!(
-                                        "[+][{date_str}] {ticker} {price:.2}x{amount}={cost:.2}"
+                                        "[+][{date_str}] {ticker} {price:.2}x{amount} -> {total_cost:.2}"
                                     );
                                 }
                             }
@@ -111,12 +118,12 @@ pub async fn run_fund(
         }
     }
 
-    let final_value = trade_date_values
+    let final_cash = trade_date_values
         .last()
-        .map(|(_, v)| *v)
+        .map(|(_, v)| *v - calc_sell_fee(*v, options))
         .unwrap_or(options.init_cash);
-    let profit = final_value - options.init_cash;
-    let annual_return_rate = calc_annual_return_rate(options.init_cash, final_value, days);
+    let profit = final_cash - options.init_cash;
+    let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
 
     let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
     let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
@@ -129,4 +136,31 @@ pub async fn run_fund(
         sharpe_ratio,
         sortino_ratio,
     })
+}
+
+fn calc_buy_fee(transaction: f64, options: &BacktestOptions) -> f64 {
+    let broker_commission = transaction * options.broker_commission_rate;
+    if broker_commission > options.broker_commission_min_fee {
+        broker_commission
+    } else {
+        options.broker_commission_min_fee
+    }
+}
+
+fn calc_sell_fee(transaction: f64, options: &BacktestOptions) -> f64 {
+    let stamp_duty = transaction * options.stamp_duty_rate;
+    let stamp_duty_fee = if stamp_duty > options.stamp_duty_min_fee {
+        stamp_duty
+    } else {
+        options.stamp_duty_min_fee
+    };
+
+    let broker_commission = transaction * options.broker_commission_rate;
+    let broker_commission_fee = if broker_commission > options.broker_commission_min_fee {
+        broker_commission
+    } else {
+        options.broker_commission_min_fee
+    };
+
+    stamp_duty_fee + broker_commission_fee
 }

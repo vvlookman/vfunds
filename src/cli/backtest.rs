@@ -50,6 +50,34 @@ pub struct BacktestCommand {
         help = "The risk-free rate, the default value is 0.02"
     )]
     risk_free_rate: f64,
+
+    #[arg(
+        long = "stamp-duty",
+        default_value_t = 0.001,
+        help = "The stamp-duty rate, the default value is 0.001"
+    )]
+    stamp_duty_rate: f64,
+
+    #[arg(
+        long = "stamp-duty-min",
+        default_value_t = 1.0,
+        help = "The stamp-duty minimal fee, the default value is 1"
+    )]
+    stamp_duty_min_fee: f64,
+
+    #[arg(
+        long = "broker-commission",
+        default_value_t = 0.0002,
+        help = "The broker-commission rate, the default value is 0.0002"
+    )]
+    broker_commission_rate: f64,
+
+    #[arg(
+        long = "broker-commission-min",
+        default_value_t = 5.0,
+        help = "The broker-commission minimal fee, the default value is 5"
+    )]
+    broker_commission_min_fee: f64,
 }
 
 impl BacktestCommand {
@@ -59,6 +87,10 @@ impl BacktestCommand {
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().naive_local().into()),
             risk_free_rate: self.risk_free_rate,
+            stamp_duty_rate: self.stamp_duty_rate,
+            stamp_duty_min_fee: self.stamp_duty_min_fee,
+            broker_commission_rate: self.broker_commission_rate,
+            broker_commission_min_fee: self.broker_commission_min_fee,
         };
 
         if options.end_date <= options.start_date {
