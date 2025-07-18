@@ -3,7 +3,7 @@ use std::{fs::read_dir, path::PathBuf};
 use log::debug;
 use rayon::prelude::*;
 
-use crate::{FundDefinition, WORKSPACE, backtest, error::*, utils};
+use crate::{WORKSPACE, backtest, error::*, spec::FundDefinition, utils};
 
 pub type BacktestOptions = backtest::BacktestOptions;
 pub type BacktestResult = backtest::BacktestResult;

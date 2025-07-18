@@ -4,9 +4,9 @@ use chrono::NaiveDate;
 use log::debug;
 
 use crate::{
-    FundDefinition,
     error::*,
     financial::{get_stock_daily_backward_adjust, stock::StockValuationFieldName},
+    spec::{Frequency, FundDefinition},
     ticker::Ticker,
     utils::{
         datetime,
@@ -43,15 +43,16 @@ pub async fn run_fund(
     let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
     let days = (options.end_date - options.start_date).num_days() as u64 + 1;
 
+    let mut latest_rebalance_date: Option<NaiveDate> = None;
     for date in options.start_date.iter_days().take(days as usize) {
         let date_str = datetime::date_to_str(&date);
 
-        for once_signal in fund_definition
-            .signals
+        for rule in fund_definition
+            .rules
             .iter()
-            .filter(|s| s.frequency.to_lowercase() == "once")
+            .filter(|s| s.frequency == Frequency::Once)
         {
-            match once_signal.name.to_lowercase().as_str() {
+            match rule.name.to_lowercase().as_str() {
                 "buy-equaly" => {
                     let ticker_strs: Vec<_> = fund_definition
                         .tickers

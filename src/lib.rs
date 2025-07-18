@@ -2,31 +2,16 @@
 
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{LazyLock, RwLock},
 };
 
 use rayon::iter::*;
-use serde::{Deserialize, Serialize};
-
-use crate::error::VfResult;
 
 pub mod api;
 pub mod error;
+pub mod spec;
 pub mod utils;
-
-#[derive(Serialize, Deserialize, Default)]
-pub struct FundDefinition {
-    pub title: String,
-    pub tickers: Vec<String>,
-    pub signals: Vec<TradeSignal>,
-}
-
-#[derive(Serialize, Deserialize, Default)]
-pub struct TradeSignal {
-    pub name: String,
-    pub frequency: String,
-}
 
 /// Options that each item is String in <key>:<value> format
 pub struct VecOptions<'a>(pub &'a [String]);
@@ -53,13 +38,8 @@ mod backtest;
 mod data;
 mod ds;
 mod financial;
+mod rule;
 mod ticker;
-
-impl FundDefinition {
-    pub fn from_file(path: &Path) -> VfResult<Self> {
-        confy::load_path(path).map_err(Into::into)
-    }
-}
 
 impl VecOptions<'_> {
     pub fn get(&self, name: &str) -> Option<String> {
