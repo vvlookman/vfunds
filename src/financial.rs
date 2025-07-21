@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{collections::HashMap, sync::LazyLock};
 
 use dashmap::DashMap;
 
@@ -7,6 +7,12 @@ use crate::{
 };
 
 pub mod stock;
+
+#[derive(Debug)]
+pub struct Portfolio {
+    pub cash: f64,
+    pub positions: HashMap<String, u64>,
+}
 
 #[derive(Debug, PartialEq, strum::Display, strum::EnumIter, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
@@ -25,6 +31,15 @@ pub async fn get_stock_daily_backward_adjust(ticker: &Ticker) -> VfResult<DailyD
         let dataset = fetch_stock_daily_backward_adjust(ticker).await?;
         STOCK_DAILY_VALUATIONS_CACHE.insert(key, dataset.clone());
         Ok(dataset)
+    }
+}
+
+impl Portfolio {
+    pub fn new(cash: f64) -> Self {
+        Self {
+            cash,
+            positions: HashMap::new(),
+        }
     }
 }
 

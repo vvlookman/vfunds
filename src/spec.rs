@@ -8,7 +8,7 @@ use crate::error::VfResult;
 pub struct FundDefinition {
     pub title: String,
     pub tickers: Vec<String>,
-    pub rules: Vec<Rule>,
+    pub rules: Vec<RuleDefinition>,
 }
 
 #[derive(Serialize, Deserialize, Default, PartialEq, strum::Display, strum::EnumString)]
@@ -25,7 +25,7 @@ pub enum Frequency {
 }
 
 #[derive(Serialize, Deserialize, Default)]
-pub struct Rule {
+pub struct RuleDefinition {
     pub name: String,
 
     #[serde(deserialize_with = "deserialize_frequency")]

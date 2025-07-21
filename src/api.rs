@@ -25,7 +25,7 @@ pub async fn backtest(
     );
 
     for (fund_name, fund_definition) in funds {
-        let result = backtest::run_fund(&fund_definition, options).await?;
+        let result = backtest::backtest_fund(&fund_definition, options).await?;
         results.push((fund_name, result));
     }
 
