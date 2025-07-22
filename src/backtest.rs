@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 
 use chrono::NaiveDate;
 
@@ -76,14 +76,52 @@ pub async fn backtest_fund(
     let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
     let days = (options.end_date - options.start_date).num_days() as u64 + 1;
 
+    let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
     for date in options.start_date.iter_days().take(days as usize) {
-        for rule_definition in fund_definition
-            .rules
-            .iter()
-            .filter(|s| s.frequency == Frequency::Once)
-        {
+        for (rule_index, rule_definition) in fund_definition.rules.iter().enumerate() {
             let mut rule = Rule::from_definition(rule_definition);
+
+            if let Some(executed_date) = rule_executed_date.get(&rule_index) {
+                let executed_days = (date - *executed_date).num_days();
+                match rule_definition.frequency {
+                    Frequency::Once => {
+                        continue;
+                    }
+                    Frequency::Daily => {
+                        if executed_days < 1 {
+                            continue;
+                        }
+                    }
+                    Frequency::Weekly => {
+                        if executed_days < 7 {
+                            continue;
+                        }
+                    }
+                    Frequency::Biweekly => {
+                        if executed_days < 14 {
+                            continue;
+                        }
+                    }
+                    Frequency::Monthly => {
+                        if executed_days < 31 {
+                            continue;
+                        }
+                    }
+                    Frequency::Quarterly => {
+                        if executed_days < 92 {
+                            continue;
+                        }
+                    }
+                    Frequency::Yearly => {
+                        if executed_days < 366 {
+                            continue;
+                        }
+                    }
+                }
+            }
+
             rule.exec(&mut context, &date).await?;
+            rule_executed_date.insert(rule_index, date);
         }
 
         for ticker_str in &fund_definition.tickers {

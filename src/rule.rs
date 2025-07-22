@@ -7,6 +7,7 @@ pub mod buy_equaly;
 
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
+    definition: RuleDefinition,
 }
 
 #[async_trait]
@@ -15,13 +16,16 @@ pub trait RuleExecutor {
 }
 
 impl Rule {
-    pub fn from_definition(rule_definition: &RuleDefinition) -> Self {
-        let executor: Box<dyn RuleExecutor> = match rule_definition.name.as_str() {
+    pub fn from_definition(definition: &RuleDefinition) -> Self {
+        let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "buy_equaly" => Box::new(buy_equaly::Executor::new()),
-            _ => panic!("Unsupported rule: {}", rule_definition.name),
+            _ => panic!("Unsupported rule: {}", definition.name),
         };
 
-        Self { executor }
+        Self {
+            executor,
+            definition: definition.clone(),
+        }
     }
 
     pub async fn exec(

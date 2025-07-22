@@ -11,7 +11,7 @@ pub struct FundDefinition {
     pub rules: Vec<RuleDefinition>,
 }
 
-#[derive(Serialize, Deserialize, Default, PartialEq, strum::Display, strum::EnumString)]
+#[derive(Serialize, Deserialize, Clone, Default, PartialEq, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum Frequency {
     #[default]
@@ -21,10 +21,10 @@ pub enum Frequency {
     Biweekly,
     Monthly,
     Quarterly,
-    Annually,
+    Yearly,
 }
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, Clone)]
 pub struct RuleDefinition {
     pub name: String,
 
