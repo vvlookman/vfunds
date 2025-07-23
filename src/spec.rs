@@ -16,12 +16,27 @@ pub struct FundDefinition {
 pub enum Frequency {
     #[default]
     Once,
+
+    #[strum(serialize = "1d")]
     Daily,
+
+    #[strum(serialize = "1w", serialize = "7d")]
     Weekly,
+
+    #[strum(serialize = "2w", serialize = "14d")]
     Biweekly,
+
+    #[strum(serialize = "1m")]
     Monthly,
+
+    #[strum(serialize = "3m")]
     Quarterly,
-    Yearly,
+
+    #[strum(serialize = "6m")]
+    Semiannually,
+
+    #[strum(serialize = "12m", serialize = "1y")]
+    Annually,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]

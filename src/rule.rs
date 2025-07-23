@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 
 use crate::{backtest::BacktestContext, error::VfResult, spec::RuleDefinition};
 
-pub mod buy_equaly;
+pub mod keep_equal;
 
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
@@ -18,7 +18,7 @@ pub trait RuleExecutor {
 impl Rule {
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
-            "buy_equaly" => Box::new(buy_equaly::Executor::new()),
+            "keep_equal" => Box::new(keep_equal::Executor::new()),
             _ => panic!("Unsupported rule: {}", definition.name),
         };
 

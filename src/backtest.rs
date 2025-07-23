@@ -112,7 +112,12 @@ pub async fn backtest_fund(
                             continue;
                         }
                     }
-                    Frequency::Yearly => {
+                    Frequency::Semiannually => {
+                        if executed_days < 183 {
+                            continue;
+                        }
+                    }
+                    Frequency::Annually => {
                         if executed_days < 366 {
                             continue;
                         }
@@ -127,26 +132,13 @@ pub async fn backtest_fund(
         for ticker_str in &fund_definition.tickers {
             let ticker = Ticker::from_str(ticker_str)?;
 
+            // Check if today is trade date
             let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
             if stock_daily
                 .get_value::<f64>(&date, &StockValuationField::Price.to_string())
                 .is_some()
             {
-                let mut total_value: f64 = context.portfolio.cash;
-                for (ticker_str, units) in &context.portfolio.positions {
-                    let ticker = Ticker::from_str(ticker_str)?;
-
-                    let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
-                    if let Some(price) = stock_daily
-                        .get_latest_value::<f64>(&date, &StockValuationField::Price.to_string())
-                    {
-                        let value = *units as f64 * price;
-                        let fee = calc_sell_fee(value, options);
-
-                        total_value += value - fee;
-                    }
-                }
-
+                let total_value = context.calc_total_value(&date).await?;
                 trade_date_values.push((date, total_value));
 
                 break;
@@ -172,4 +164,31 @@ pub async fn backtest_fund(
         sharpe_ratio,
         sortino_ratio,
     })
+}
+
+impl BacktestContext<'_> {
+    pub async fn calc_total_value(&self, date: &NaiveDate) -> VfResult<f64> {
+        let mut total_value: f64 = self.portfolio.cash;
+
+        for (ticker_str, units) in &self.portfolio.positions {
+            let ticker = Ticker::from_str(ticker_str)?;
+
+            let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+            if let Some(price) =
+                stock_daily.get_latest_value::<f64>(&date, &StockValuationField::Price.to_string())
+            {
+                let value = *units as f64 * price;
+                let fee = calc_sell_fee(value, self.options);
+
+                total_value += value - fee;
+            } else {
+                return Err(VfError::NoData(
+                    "NO_TICKER_PRICE",
+                    format!("Price of '{}' not exists", ticker_str),
+                ));
+            }
+        }
+
+        Ok(total_value)
+    }
 }
