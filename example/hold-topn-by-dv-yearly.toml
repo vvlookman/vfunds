@@ -1,0 +1,13 @@
+title = "A virtual fund that select top N stocks by PE and rebalance each year"
+
+# All candidate tickers
+tickers = ["688981", "000333"]
+
+[[rules]]
+name = "hold_topn_equal"
+frequency = "1y"
+
+[rules.options]
+indicator = "dv_ttm"
+limit = 10
+sort = "desc"

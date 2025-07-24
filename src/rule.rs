@@ -3,11 +3,11 @@ use chrono::NaiveDate;
 
 use crate::{backtest::BacktestContext, error::VfResult, spec::RuleDefinition};
 
-pub mod keep_equal;
+pub mod hold_all_equal;
+pub mod hold_topn_equal;
 
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
-    definition: RuleDefinition,
 }
 
 #[async_trait]
@@ -18,14 +18,12 @@ pub trait RuleExecutor {
 impl Rule {
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
-            "keep_equal" => Box::new(keep_equal::Executor::new()),
+            "hold_all_equal" => Box::new(hold_all_equal::Executor::new(definition)),
+            "hold_topn_equal" => Box::new(hold_topn_equal::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
         };
 
-        Self {
-            executor,
-            definition: definition.clone(),
-        }
+        Self { executor }
     }
 
     pub async fn exec(

@@ -4,5 +4,5 @@ title = "A virtual fund that buy all stocks equally at begining and rebalance ea
 tickers = ["688981", "000333"]
 
 [[rules]]
-name = "keep_equal"
+name = "hold_all_equal"
 frequency = "1y"

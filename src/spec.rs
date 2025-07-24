@@ -1,17 +1,19 @@
-use std::{path::Path, str::FromStr};
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::VfResult;
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
     pub tickers: Vec<String>,
     pub rules: Vec<RuleDefinition>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Default, PartialEq, strum::Display, strum::EnumString)]
+#[derive(
+    Serialize, Deserialize, Clone, Debug, Default, PartialEq, strum::Display, strum::EnumString,
+)]
 #[strum(ascii_case_insensitive)]
 pub enum Frequency {
     #[default]
@@ -39,12 +41,15 @@ pub enum Frequency {
     Annually,
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct RuleDefinition {
     pub name: String,
 
     #[serde(deserialize_with = "deserialize_frequency")]
     pub frequency: Frequency,
+
+    #[serde(default)]
+    pub options: HashMap<String, serde_json::Value>,
 }
 
 impl FundDefinition {

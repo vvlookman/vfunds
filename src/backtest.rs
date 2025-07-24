@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 
 use crate::{
     error::*,
-    financial::{Portfolio, get_stock_daily_backward_adjust, stock::StockValuationField},
+    financial::{Portfolio, get_stock_daily_backward_adjusted_price, stock::StockField},
     rule::Rule,
     spec::{Frequency, FundDefinition},
     ticker::Ticker,
@@ -133,9 +133,9 @@ pub async fn backtest_fund(
             let ticker = Ticker::from_str(ticker_str)?;
 
             // Check if today is trade date
-            let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
             if stock_daily
-                .get_value::<f64>(&date, &StockValuationField::Price.to_string())
+                .get_value::<f64>(&date, &StockField::Price.to_string())
                 .is_some()
             {
                 let total_value = context.calc_total_value(&date).await?;
@@ -173,9 +173,9 @@ impl BacktestContext<'_> {
         for (ticker_str, units) in &self.portfolio.positions {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let stock_daily = get_stock_daily_backward_adjust(&ticker).await?;
+            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
             if let Some(price) =
-                stock_daily.get_latest_value::<f64>(&date, &StockValuationField::Price.to_string())
+                stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
             {
                 let value = *units as f64 * price;
                 let fee = calc_sell_fee(value, self.options);
@@ -184,7 +184,7 @@ impl BacktestContext<'_> {
             } else {
                 return Err(VfError::NoData(
                     "NO_TICKER_PRICE",
-                    format!("Price of '{}' not exists", ticker_str),
+                    format!("Price of '{ticker_str}' not exists"),
                 ));
             }
         }

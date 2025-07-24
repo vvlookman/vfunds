@@ -3,7 +3,10 @@ use std::{collections::HashMap, sync::LazyLock};
 use dashmap::DashMap;
 
 use crate::{
-    data::daily::*, error::*, financial::stock::fetch_stock_daily_backward_adjust, ticker::Ticker,
+    data::daily::*,
+    error::*,
+    financial::stock::{fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators},
+    ticker::Ticker,
 };
 
 pub mod stock;
@@ -22,14 +25,26 @@ pub enum Prospect {
     Neutral,
 }
 
-pub async fn get_stock_daily_backward_adjust(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn get_stock_daily_backward_adjusted_price(ticker: &Ticker) -> VfResult<DailyDataset> {
     let key = ticker.to_string();
 
-    if let Some(dataset) = STOCK_DAILY_VALUATIONS_CACHE.get(&key) {
+    if let Some(dataset) = STOCK_DAILY_BACKWARD_ADJUSTED_PRICE_CACHE.get(&key) {
         Ok(dataset.value().clone())
     } else {
-        let dataset = fetch_stock_daily_backward_adjust(ticker).await?;
-        STOCK_DAILY_VALUATIONS_CACHE.insert(key, dataset.clone());
+        let dataset = fetch_stock_daily_backward_adjusted_price(ticker).await?;
+        STOCK_DAILY_BACKWARD_ADJUSTED_PRICE_CACHE.insert(key, dataset.clone());
+        Ok(dataset)
+    }
+}
+
+pub async fn get_stock_daily_indicators(ticker: &Ticker) -> VfResult<DailyDataset> {
+    let key = ticker.to_string();
+
+    if let Some(dataset) = STOCK_DAILY_INDICATORS_CACHE.get(&key) {
+        Ok(dataset.value().clone())
+    } else {
+        let dataset = fetch_stock_daily_indicators(ticker).await?;
+        STOCK_DAILY_INDICATORS_CACHE.insert(key, dataset.clone());
         Ok(dataset)
     }
 }
@@ -43,5 +58,8 @@ impl Portfolio {
     }
 }
 
-static STOCK_DAILY_VALUATIONS_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+static STOCK_DAILY_BACKWARD_ADJUSTED_PRICE_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+    LazyLock::new(DashMap::new);
+
+static STOCK_DAILY_INDICATORS_CACHE: LazyLock<DashMap<String, DailyDataset>> =
     LazyLock::new(DashMap::new);
