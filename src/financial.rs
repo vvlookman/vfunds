@@ -1,14 +1,19 @@
 use std::{collections::HashMap, sync::LazyLock};
 
+use chrono::NaiveDate;
 use dashmap::DashMap;
 
 use crate::{
     data::daily::*,
     error::*,
-    financial::stock::{fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators},
+    financial::{
+        index::fetch_cnindex_tickers,
+        stock::{fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators},
+    },
     ticker::Ticker,
 };
 
+pub mod index;
 pub mod stock;
 
 #[derive(Debug)]
@@ -23,6 +28,10 @@ pub enum Prospect {
     Bullish,
     Bearish,
     Neutral,
+}
+
+pub async fn get_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
+    fetch_cnindex_tickers(symbol, date).await
 }
 
 pub async fn get_stock_daily_backward_adjusted_price(ticker: &Ticker) -> VfResult<DailyDataset> {

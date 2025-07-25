@@ -16,6 +16,9 @@ pub enum VfError {
     #[error("[HTTP Request Error] {0}")]
     HttpRequestError(#[from] ::reqwest::Error),
 
+    #[error("[HTTP Middleware Error] {0}")]
+    HttpMiddlewareError(#[from] ::reqwest_middleware::Error),
+
     #[error("[HTTP Status Error] {0}")]
     HttpStatusError(String),
 

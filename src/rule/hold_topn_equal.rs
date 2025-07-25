@@ -3,6 +3,7 @@ use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use log::debug;
+use tokio::time::{Duration, sleep};
 
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
@@ -31,19 +32,24 @@ impl Executor {
 #[async_trait]
 impl RuleExecutor for Executor {
     async fn exec(&mut self, context: &mut BacktestContext, date: &NaiveDate) -> VfResult<()> {
-        if !context.fund_definition.tickers.is_empty() {
+        let tickers = context.fund_definition.all_tickers(date).await?;
+        if !tickers.is_empty() {
+            let date_str = utils::datetime::date_to_str(date);
+
             let indicator_str = self.options["indicator"].as_str().unwrap_or_default();
             let indicator_field = StockField::from_str(indicator_str)?;
 
             let mut stocks_indicator: Vec<(String, f64)> = vec![];
-            for ticker_str in &context.fund_definition.tickers {
-                let ticker = Ticker::from_str(ticker_str)?;
+            for ticker in tickers {
+                let ticker_str = ticker.to_string();
 
                 let stock_daily = get_stock_daily_indicators(&ticker).await?;
+                sleep(Duration::from_secs(1)).await;
                 if let Some(val) =
                     stock_daily.get_latest_value::<f64>(date, &indicator_field.to_string())
                 {
-                    stocks_indicator.push((ticker_str.to_string(), val));
+                    stocks_indicator.push((ticker_str, val));
+                    debug!("[{indicator_str}][{date_str}] {ticker} = {val}");
                 }
             }
 
@@ -65,8 +71,6 @@ impl RuleExecutor for Executor {
                 .take(limit as usize)
                 .map(|x| x.0.to_string())
                 .collect();
-
-            let date_str = utils::datetime::date_to_str(date);
 
             let holding_tickers: Vec<_> = context.portfolio.positions.keys().cloned().collect();
             for ticker_str in &holding_tickers {

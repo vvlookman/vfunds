@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use reqwest::Method;
+use reqwest_middleware::ClientBuilder;
+use reqwest_retry::{Jitter, RetryTransientMiddleware, policies::ExponentialBackoff};
 use url::Url;
 
 use crate::error::{VfError, VfResult};
@@ -10,6 +12,7 @@ pub async fn http_get(
     path: Option<&str>,
     query: &HashMap<String, String>,
     headers: &HashMap<String, String>,
+    max_retries: u64,
 ) -> VfResult<Vec<u8>> {
     let request_url = if let Some(path) = path {
         &join_url(url, path)?
@@ -17,7 +20,14 @@ pub async fn http_get(
         url
     };
 
-    let client = reqwest::Client::builder().build()?;
+    let retry_policy = ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_secs(10), Duration::from_secs(30))
+        .jitter(Jitter::Bounded)
+        .base(2)
+        .build_with_total_retry_duration_and_max_retries(Duration::from_secs(max_retries * 30));
+    let client = ClientBuilder::new(reqwest::Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build();
 
     let mut request_builder = client.request(Method::GET, request_url);
     request_builder = request_builder.query(query);

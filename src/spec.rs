@@ -1,13 +1,28 @@
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+    str::FromStr,
+};
 
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
-use crate::error::VfResult;
+use crate::{
+    error::VfResult,
+    ticker::{Ticker, TickersSource},
+};
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
+
+    #[serde(default)]
     pub tickers: Vec<String>,
+
+    #[serde(default)]
+    pub tickers_sources: Vec<String>,
+
+    #[serde(default)]
     pub rules: Vec<RuleDefinition>,
 }
 
@@ -55,6 +70,26 @@ pub struct RuleDefinition {
 impl FundDefinition {
     pub fn from_file(path: &Path) -> VfResult<Self> {
         confy::load_path(path).map_err(Into::into)
+    }
+
+    pub async fn all_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
+        let mut tickers: HashSet<Ticker> = HashSet::new();
+
+        for ticker_str in &self.tickers {
+            let ticker = Ticker::from_str(ticker_str)?;
+            tickers.insert(ticker);
+        }
+
+        for tickers_source_str in &self.tickers_sources {
+            let tickers_source = TickersSource::from_str(tickers_source_str)?;
+            let tickers_from_source = tickers_source.extract_tickers(date).await?;
+
+            for ticker in tickers_from_source {
+                tickers.insert(ticker);
+            }
+        }
+
+        Ok(tickers.into_iter().collect())
     }
 }
 

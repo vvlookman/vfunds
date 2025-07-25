@@ -37,7 +37,7 @@ pub async fn call_public_api(
         }
     }
 
-    let bytes = http_get(&api_url, Some(path), &query, &HashMap::new()).await?;
+    let bytes = http_get(&api_url, Some(path), &query, &HashMap::new(), 3).await?;
     let json: serde_json::Value = serde_json::from_slice(&bytes)?;
 
     Ok(json)
