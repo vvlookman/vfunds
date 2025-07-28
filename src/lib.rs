@@ -2,10 +2,12 @@
 
 use std::{
     collections::HashMap,
+    env,
     path::PathBuf,
     sync::{LazyLock, RwLock},
 };
 
+use directories::ProjectDirs;
 use rayon::iter::*;
 
 pub mod api;
@@ -16,10 +18,14 @@ pub mod utils;
 /// Options that each item is String in <key>:<value> format
 pub struct VecOptions<'a>(pub &'a [String]);
 
-pub fn init(workspace: Option<PathBuf>) {
+pub async fn init(workspace: Option<PathBuf>) {
     env_logger::Builder::new()
-        .parse_filters(std::env::var("LOG").as_deref().unwrap_or("off"))
+        .parse_filters(env::var("LOG").as_deref().unwrap_or("off"))
         .init();
+
+    if let Err(err) = cache::init().await {
+        panic!("Initialize cache error: {err}");
+    }
 
     if let Some(workspace) = workspace {
         if workspace.is_dir() {
@@ -30,11 +36,19 @@ pub fn init(workspace: Option<PathBuf>) {
     }
 }
 
-static WORKSPACE: LazyLock<RwLock<PathBuf>> = LazyLock::new(|| {
-    RwLock::new(std::env::current_dir().expect("Unable to get current directory!"))
+static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+    match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
+        Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),
+        None => env::current_dir().expect("Unable to get current directory!"),
+    }
+    .join("cache.db")
 });
 
+static WORKSPACE: LazyLock<RwLock<PathBuf>> =
+    LazyLock::new(|| RwLock::new(env::current_dir().expect("Unable to get current directory!")));
+
 mod backtest;
+mod cache;
 mod data;
 mod ds;
 mod financial;

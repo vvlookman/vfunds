@@ -40,6 +40,9 @@ pub enum VfError {
     #[error("[Parse Config Error] {0}")]
     ParseConfigError(#[from] ::confy::ConfyError),
 
+    #[error("[Parse DataTime Error] {0}")]
+    ParseDataTimeError(#[from] chrono::ParseError),
+
     #[error("[Parse Enum Error] {0}")]
     ParseEnumError(#[from] ::strum::ParseError),
 
@@ -51,6 +54,9 @@ pub enum VfError {
 
     #[error("[Serde JSON Error] {0}")]
     SerdeJsonError(#[from] ::serde_json::Error),
+
+    #[error("[SQL Error] {0}")]
+    SqlError(#[from] ::libsql::Error),
 }
 
 impl From<PoisonError<RwLockReadGuard<'_, PathBuf>>> for VfError {

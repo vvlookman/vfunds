@@ -47,7 +47,7 @@ async fn main() {
         }
     }
 
-    vfunds::init(cli.workspace);
+    vfunds::init(cli.workspace).await;
 
     match &cli.command {
         Commands::Backtest(cmd) => {
