@@ -1,3 +1,4 @@
+pub mod compress;
 pub mod datetime;
 pub mod financial;
 pub mod net;

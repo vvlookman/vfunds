@@ -3,7 +3,6 @@ use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use log::debug;
-use tokio::time::{Duration, sleep};
 
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
@@ -44,7 +43,6 @@ impl RuleExecutor for Executor {
                 let ticker_str = ticker.to_string();
 
                 let stock_daily = get_stock_daily_indicators(&ticker).await?;
-                sleep(Duration::from_secs(1)).await;
                 if let Some(val) =
                     stock_daily.get_latest_value::<f64>(date, &indicator_field.to_string())
                 {

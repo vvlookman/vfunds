@@ -1,10 +1,16 @@
 use std::collections::HashMap;
 
+use chrono::{Duration, Local, NaiveTime};
 use serde_json::Value;
+use tokio::time::sleep;
 
 use crate::{
+    cache,
     error::VfResult,
-    utils::net::{http_get, join_url},
+    utils::{
+        compress,
+        net::{http_get, join_url},
+    },
 };
 
 pub async fn call_public_api(
@@ -18,26 +24,52 @@ pub async fn call_public_api(
         "/api/public",
     )?;
 
-    let mut query = HashMap::new();
-    if let Some(params) = params.as_object() {
-        for (k, v) in params.iter() {
-            let s = match v {
-                Value::Bool(b) => {
-                    if *b {
-                        "true".to_string()
-                    } else {
-                        "false".to_string()
-                    }
-                }
-                Value::Number(n) => n.to_string(),
-                Value::String(s) => s.to_string(),
-                _ => "".to_string(),
-            };
-            query.insert(k.to_string(), s);
-        }
-    }
+    let cache_key = format!("aktools:{path}?{params}");
 
-    let bytes = http_get(&api_url, Some(path), &query, &HashMap::new(), 3).await?;
+    let bytes = if let Some(data) = cache::get(&cache_key).await? {
+        compress::decode(&data)?
+    } else {
+        let mut query = HashMap::new();
+        if let Some(params) = params.as_object() {
+            for (k, v) in params.iter() {
+                let s = match v {
+                    Value::Bool(b) => {
+                        if *b {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        }
+                    }
+                    Value::Number(n) => n.to_string(),
+                    Value::String(s) => s.to_string(),
+                    _ => "".to_string(),
+                };
+                query.insert(k.to_string(), s);
+            }
+        }
+
+        let bytes = http_get(&api_url, Some(path), &query, &HashMap::new(), 3).await?;
+        sleep(tokio::time::Duration::from_secs(1)).await;
+
+        if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
+            let now = Local::now();
+            let today = now.date_naive();
+            let today_close = today.and_time(market_close_time);
+
+            let expire = if now.time() < today_close.time() {
+                today_close
+            } else {
+                let tomorrow = today + Duration::days(1);
+                tomorrow.and_time(market_close_time)
+            };
+
+            let data = compress::encode(&bytes)?;
+            let _ = cache::upsert(&cache_key, &data, &expire).await;
+        }
+
+        bytes
+    };
+
     let json: serde_json::Value = serde_json::from_slice(&bytes)?;
 
     Ok(json)

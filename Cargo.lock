@@ -4445,6 +4445,7 @@ dependencies = [
  "dashmap",
  "directories",
  "env_logger",
+ "flate2",
  "futures",
  "indicatif",
  "libsql",
