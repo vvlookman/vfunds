@@ -15,6 +15,8 @@ pub mod error;
 pub mod spec;
 pub mod utils;
 
+pub static CHANNEL_BUFFER_DEFAULT: usize = 64;
+
 /// Options that each item is String in <key>:<value> format
 pub struct VecOptions<'a>(pub &'a [String]);
 

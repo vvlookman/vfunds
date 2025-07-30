@@ -8,7 +8,11 @@ use tabled::settings::{
     peaker::Priority,
 };
 use tokio::time::Duration;
-use vfunds::{api, utils};
+use vfunds::{
+    api,
+    api::{BacktestEvent, BacktestOptions},
+    utils,
+};
 
 #[derive(clap::Args)]
 pub struct BacktestCommand {
@@ -82,7 +86,7 @@ pub struct BacktestCommand {
 
 impl BacktestCommand {
     pub async fn exec(&self) {
-        let options = api::BacktestOptions {
+        let options = BacktestOptions {
             init_cash: self.init_cash,
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().naive_local().into()),
@@ -107,7 +111,7 @@ impl BacktestCommand {
         spinner.enable_steady_tick(Duration::from_millis(100));
 
         match api::backtest(&self.funds, &options).await {
-            Ok(results) => {
+            Ok(streams) => {
                 println!(
                     "[Initial cash] {} \t [Days] {}",
                     options.init_cash,
@@ -122,24 +126,36 @@ impl BacktestCommand {
                     "Sharpe Ratio".to_string(),
                     "Sortino Ratio".to_string(),
                 ]];
-                for (fund_name, fund_result) in results {
-                    table_data.push(vec![
-                        fund_name.to_string(),
-                        format!("{}", fund_result.trade_days),
-                        format!("{:.2}", fund_result.profit),
-                        fund_result
-                            .annual_return_rate
-                            .map(|v| format!("{:.2}%", v * 100.0))
-                            .unwrap_or("-".to_string()),
-                        fund_result
-                            .sharpe_ratio
-                            .map(|v| format!("{v:.3}"))
-                            .unwrap_or("-".to_string()),
-                        fund_result
-                            .sortino_ratio
-                            .map(|v| format!("{v:.3}"))
-                            .unwrap_or("-".to_string()),
-                    ]);
+                for (fund_name, mut stream) in streams {
+                    while let Some(event) = stream.next().await {
+                        match event {
+                            BacktestEvent::Progress(s) => {
+                                println!("[{fund_name}] {s}");
+                            }
+                            BacktestEvent::Result(fund_result) => {
+                                table_data.push(vec![
+                                    fund_name.to_string(),
+                                    format!("{}", fund_result.trade_days),
+                                    format!("{:.2}", fund_result.profit),
+                                    fund_result
+                                        .annual_return_rate
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    fund_result
+                                        .sharpe_ratio
+                                        .map(|v| format!("{v:.3}"))
+                                        .unwrap_or("-".to_string()),
+                                    fund_result
+                                        .sortino_ratio
+                                        .map(|v| format!("{v:.3}"))
+                                        .unwrap_or("-".to_string()),
+                                ]);
+                            }
+                            BacktestEvent::Error(err) => {
+                                println!("{}", err.to_string().red());
+                            }
+                        }
+                    }
                 }
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();

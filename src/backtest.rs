@@ -1,8 +1,10 @@
 use std::{collections::HashMap, str::FromStr};
 
 use chrono::NaiveDate;
+use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::{
+    CHANNEL_BUFFER_DEFAULT,
     error::*,
     financial::{Portfolio, get_stock_daily_backward_adjusted_price, stock::StockField},
     rule::Rule,
@@ -17,6 +19,13 @@ pub struct BacktestContext<'a> {
     pub portfolio: &'a mut Portfolio,
 }
 
+pub enum BacktestEvent {
+    Progress(String),
+    Result(BacktestResult),
+    Error(VfError),
+}
+
+#[derive(Clone)]
 pub struct BacktestOptions {
     pub init_cash: f64,
     pub start_date: NaiveDate,
@@ -26,6 +35,10 @@ pub struct BacktestOptions {
     pub stamp_duty_min_fee: f64,
     pub broker_commission_rate: f64,
     pub broker_commission_min_fee: f64,
+}
+
+pub struct BacktestStream {
+    receiver: Receiver<BacktestEvent>,
 }
 
 pub struct BacktestResult {
@@ -66,104 +79,123 @@ pub fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
 pub async fn backtest_fund(
     fund_definition: &FundDefinition,
     options: &BacktestOptions,
-) -> VfResult<BacktestResult> {
-    let mut context = BacktestContext {
-        fund_definition,
-        options,
-        portfolio: &mut Portfolio::new(options.init_cash),
-    };
+) -> VfResult<BacktestStream> {
+    let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
-    let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
-    let days = (options.end_date - options.start_date).num_days() as u64 + 1;
+    let fund_definition = fund_definition.clone();
+    let options = options.clone();
 
-    let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
-    for date in options.start_date.iter_days().take(days as usize) {
-        for (rule_index, rule_definition) in fund_definition.rules.iter().enumerate() {
-            let mut rule = Rule::from_definition(rule_definition);
+    tokio::spawn(async move {
+        let process = async || {
+            let mut context = BacktestContext {
+                fund_definition: &fund_definition,
+                options: &options,
+                portfolio: &mut Portfolio::new(options.init_cash),
+            };
 
-            if let Some(executed_date) = rule_executed_date.get(&rule_index) {
-                let executed_days = (date - *executed_date).num_days();
-                match rule_definition.frequency {
-                    Frequency::Once => {
-                        continue;
-                    }
-                    Frequency::Daily => {
-                        if executed_days < 1 {
-                            continue;
+            let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
+            let days = (options.end_date - options.start_date).num_days() as u64 + 1;
+
+            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
+            for date in options.start_date.iter_days().take(days as usize) {
+                for (rule_index, rule_definition) in fund_definition.rules.iter().enumerate() {
+                    let mut rule = Rule::from_definition(rule_definition);
+
+                    if let Some(executed_date) = rule_executed_date.get(&rule_index) {
+                        let executed_days = (date - *executed_date).num_days();
+                        match rule_definition.frequency {
+                            Frequency::Once => {
+                                continue;
+                            }
+                            Frequency::Daily => {
+                                if executed_days < 1 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Weekly => {
+                                if executed_days < 7 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Biweekly => {
+                                if executed_days < 14 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Monthly => {
+                                if executed_days < 31 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Quarterly => {
+                                if executed_days < 92 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Semiannually => {
+                                if executed_days < 183 {
+                                    continue;
+                                }
+                            }
+                            Frequency::Annually => {
+                                if executed_days < 366 {
+                                    continue;
+                                }
+                            }
                         }
                     }
-                    Frequency::Weekly => {
-                        if executed_days < 7 {
-                            continue;
-                        }
-                    }
-                    Frequency::Biweekly => {
-                        if executed_days < 14 {
-                            continue;
-                        }
-                    }
-                    Frequency::Monthly => {
-                        if executed_days < 31 {
-                            continue;
-                        }
-                    }
-                    Frequency::Quarterly => {
-                        if executed_days < 92 {
-                            continue;
-                        }
-                    }
-                    Frequency::Semiannually => {
-                        if executed_days < 183 {
-                            continue;
-                        }
-                    }
-                    Frequency::Annually => {
-                        if executed_days < 366 {
-                            continue;
-                        }
+
+                    rule.exec(&mut context, &date, sender.clone()).await?;
+                    rule_executed_date.insert(rule_index, date);
+                }
+
+                let tickers = context.fund_definition.all_tickers(&date).await?;
+                for ticker in tickers {
+                    // Check if today is trade date
+                    let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+                    if stock_daily
+                        .get_value::<f64>(&date, &StockField::Price.to_string())
+                        .is_some()
+                    {
+                        let total_value = context.calc_total_value(&date).await?;
+                        trade_date_values.push((date, total_value));
+
+                        break;
                     }
                 }
             }
 
-            rule.exec(&mut context, &date).await?;
-            rule_executed_date.insert(rule_index, date);
-        }
+            let final_cash = trade_date_values
+                .last()
+                .map(|(_, v)| *v)
+                .unwrap_or(options.init_cash);
+            let profit = final_cash - options.init_cash;
+            let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
 
-        for ticker_str in &fund_definition.tickers {
-            let ticker = Ticker::from_str(ticker_str)?;
+            let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
+            let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
+            let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
-            // Check if today is trade date
-            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
-            if stock_daily
-                .get_value::<f64>(&date, &StockField::Price.to_string())
-                .is_some()
-            {
-                let total_value = context.calc_total_value(&date).await?;
-                trade_date_values.push((date, total_value));
+            Ok(BacktestResult {
+                trade_days: trade_date_values.len(),
+                profit,
+                annual_return_rate,
+                sharpe_ratio,
+                sortino_ratio,
+            })
+        };
 
-                break;
+        match process().await {
+            Ok(result) => {
+                let _ = sender.send(BacktestEvent::Result(result)).await;
+            }
+            Err(err) => {
+                let _ = sender.send(BacktestEvent::Error(err)).await;
             }
         }
-    }
+    });
 
-    let final_cash = trade_date_values
-        .last()
-        .map(|(_, v)| *v)
-        .unwrap_or(options.init_cash);
-    let profit = final_cash - options.init_cash;
-    let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
-
-    let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
-    let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
-    let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
-
-    Ok(BacktestResult {
-        trade_days: trade_date_values.len(),
-        profit,
-        annual_return_rate,
-        sharpe_ratio,
-        sortino_ratio,
-    })
+    Ok(BacktestStream { receiver })
 }
 
 impl BacktestContext<'_> {
@@ -190,5 +222,19 @@ impl BacktestContext<'_> {
         }
 
         Ok(total_value)
+    }
+}
+
+impl BacktestStream {
+    pub fn new(receiver: Receiver<BacktestEvent>) -> Self {
+        Self { receiver }
+    }
+
+    pub fn close(&mut self) {
+        self.receiver.close()
+    }
+
+    pub async fn next(&mut self) -> Option<BacktestEvent> {
+        self.receiver.recv().await
     }
 }

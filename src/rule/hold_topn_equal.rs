@@ -3,6 +3,7 @@ use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use log::debug;
+use tokio::sync::mpsc::Sender;
 
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
@@ -10,7 +11,7 @@ use crate::{
     financial::{
         get_stock_daily_backward_adjusted_price, get_stock_daily_indicators, stock::StockField,
     },
-    rule::{BacktestContext, RuleDefinition, RuleExecutor},
+    rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
     utils,
 };
@@ -30,7 +31,12 @@ impl Executor {
 
 #[async_trait]
 impl RuleExecutor for Executor {
-    async fn exec(&mut self, context: &mut BacktestContext, date: &NaiveDate) -> VfResult<()> {
+    async fn exec(
+        &mut self,
+        context: &mut BacktestContext,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
             let date_str = utils::datetime::date_to_str(date);
@@ -89,7 +95,11 @@ impl RuleExecutor for Executor {
                             context.portfolio.cash += cash;
                             context.portfolio.positions.remove(ticker_str);
 
-                            debug!("[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}");
+                            let _ = event_sender
+                                .send(BacktestEvent::Progress(format!(
+                                    "[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}"
+                                )))
+                                .await;
                         }
                     }
                 }
@@ -124,7 +134,11 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units + buy_units as u64);
 
-                            debug!("[+][{date_str}] {ticker} {price:.2}x{buy_units} -> {cost:.2}");
+                            let _ = event_sender
+                                .send(BacktestEvent::Progress(format!(
+                                    "[+][{date_str}] {ticker} {price:.2}x{buy_units} -> {cost:.2}"
+                                )))
+                                .await;
                         }
                     } else {
                         let mut sell_value = holding_value - ticker_value;
@@ -142,7 +156,11 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units - sell_units as u64);
 
-                            debug!("[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}");
+                            let _ = event_sender
+                                .send(BacktestEvent::Progress(format!(
+                                    "[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}"
+                                )))
+                                .await;
                         }
                     }
                 }

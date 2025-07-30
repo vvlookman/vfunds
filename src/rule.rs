@@ -1,7 +1,12 @@
 use async_trait::async_trait;
 use chrono::NaiveDate;
+use tokio::sync::mpsc::Sender;
 
-use crate::{backtest::BacktestContext, error::VfResult, spec::RuleDefinition};
+use crate::{
+    backtest::{BacktestContext, BacktestEvent},
+    error::VfResult,
+    spec::RuleDefinition,
+};
 
 pub mod hold_all_equal;
 pub mod hold_topn_equal;
@@ -11,8 +16,13 @@ pub struct Rule {
 }
 
 #[async_trait]
-pub trait RuleExecutor {
-    async fn exec(&mut self, context: &mut BacktestContext, date: &NaiveDate) -> VfResult<()>;
+pub trait RuleExecutor: Send {
+    async fn exec(
+        &mut self,
+        context: &mut BacktestContext,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()>;
 }
 
 impl Rule {
@@ -30,7 +40,8 @@ impl Rule {
         &mut self,
         context: &mut BacktestContext<'_>,
         date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        self.executor.exec(context, date).await
+        self.executor.exec(context, date, event_sender).await
     }
 }

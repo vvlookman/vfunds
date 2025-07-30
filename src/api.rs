@@ -5,14 +5,15 @@ use rayon::prelude::*;
 
 use crate::{WORKSPACE, backtest, error::*, spec::FundDefinition, utils};
 
+pub type BacktestEvent = backtest::BacktestEvent;
 pub type BacktestOptions = backtest::BacktestOptions;
-pub type BacktestResult = backtest::BacktestResult;
+pub type BacktestStream = backtest::BacktestStream;
 
 pub async fn backtest(
     fund_names: &[String],
     options: &BacktestOptions,
-) -> VfResult<Vec<(String, BacktestResult)>> {
-    let mut results: Vec<(String, BacktestResult)> = vec![];
+) -> VfResult<Vec<(String, BacktestStream)>> {
+    let mut streams: Vec<(String, BacktestStream)> = vec![];
 
     let mut funds = funds().await?;
     if !fund_names.is_empty() {
@@ -25,11 +26,11 @@ pub async fn backtest(
     );
 
     for (fund_name, fund_definition) in funds {
-        let result = backtest::backtest_fund(&fund_definition, options).await?;
-        results.push((fund_name, result));
+        let stream = backtest::backtest_fund(&fund_definition, options).await?;
+        streams.push((fund_name, stream));
     }
 
-    Ok(results)
+    Ok(streams)
 }
 
 pub async fn funds() -> VfResult<Vec<(String, FundDefinition)>> {

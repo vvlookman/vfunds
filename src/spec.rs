@@ -12,7 +12,7 @@ use crate::{
     ticker::{Ticker, TickersSource},
 };
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
 
