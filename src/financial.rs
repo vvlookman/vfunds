@@ -8,7 +8,10 @@ use crate::{
     error::*,
     financial::{
         index::fetch_cnindex_tickers,
-        stock::{fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators},
+        stock::{
+            StockDetail, fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators,
+            fetch_stock_detail,
+        },
     },
     ticker::Ticker,
 };
@@ -56,6 +59,10 @@ pub async fn get_stock_daily_indicators(ticker: &Ticker) -> VfResult<DailyDatase
         STOCK_DAILY_INDICATORS_CACHE.insert(key, dataset.clone());
         Ok(dataset)
     }
+}
+
+pub async fn get_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
+    fetch_stock_detail(ticker).await
 }
 
 impl Portfolio {

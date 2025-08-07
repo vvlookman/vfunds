@@ -129,7 +129,10 @@ impl BacktestCommand {
                 for (fund_name, mut stream) in streams {
                     while let Some(event) = stream.next().await {
                         match event {
-                            BacktestEvent::Progress(s) => {
+                            BacktestEvent::Info(s) => {
+                                println!("[{fund_name}] {}", s.bright_black());
+                            }
+                            BacktestEvent::Order(s) => {
                                 println!("[{fund_name}] {s}");
                             }
                             BacktestEvent::Result(fund_result) => {

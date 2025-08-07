@@ -16,6 +16,7 @@ use crate::{
 pub async fn call_public_api(
     path: &str,
     params: &serde_json::Value,
+    stable: bool,
 ) -> VfResult<serde_json::Value> {
     let api_url = join_url(
         std::env::var("AKTOOLS_API")
@@ -51,21 +52,27 @@ pub async fn call_public_api(
         let bytes = http_get(&api_url, Some(path), &query, &HashMap::new(), 3).await?;
         sleep(tokio::time::Duration::from_secs(1)).await;
 
-        if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
-            let now = Local::now();
-            let today = now.date_naive();
-            let today_close = today.and_time(market_close_time);
+        let now = Local::now();
+        let expire = if stable {
+            (now + Duration::days(30)).naive_local()
+        } else {
+            if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
+                let today = now.date_naive();
+                let today_close = today.and_time(market_close_time);
 
-            let expire = if now.time() < today_close.time() {
-                today_close
+                if now.time() < today_close.time() {
+                    today_close
+                } else {
+                    let tomorrow = today + Duration::days(1);
+                    tomorrow.and_time(market_close_time)
+                }
             } else {
-                let tomorrow = today + Duration::days(1);
-                tomorrow.and_time(market_close_time)
-            };
+                (now + Duration::days(1)).naive_local()
+            }
+        };
 
-            let data = compress::encode(&bytes)?;
-            let _ = cache::upsert(&cache_key, &data, &expire).await;
-        }
+        let data = compress::encode(&bytes)?;
+        let _ = cache::upsert(&cache_key, &data, &expire).await;
 
         bytes
     };

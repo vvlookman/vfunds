@@ -9,7 +9,8 @@ use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
     financial::{
-        get_stock_daily_backward_adjusted_price, get_stock_daily_indicators, stock::StockField,
+        get_stock_daily_backward_adjusted_price, get_stock_daily_indicators, get_stock_detail,
+        stock::StockField,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -70,6 +71,23 @@ impl RuleExecutor for Executor {
             };
 
             let limit = self.options["limit"].as_u64().unwrap_or(10);
+
+            {
+                let mut top_tickers_str = String::from("");
+                for (ticker_str, indicator) in stocks_indicator.iter().take(2 * limit as usize) {
+                    let ticker = Ticker::from_str(&ticker_str)?;
+                    let ticker_title = get_stock_detail(&ticker).await?.title;
+
+                    top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.2} "));
+                }
+
+                let _ = event_sender
+                    .send(BacktestEvent::Info(format!(
+                        "[i][{date_str}] {top_tickers_str}"
+                    )))
+                    .await;
+            }
+
             let selected_tickers: Vec<_> = stocks_indicator
                 .iter()
                 .take(limit as usize)
@@ -95,9 +113,10 @@ impl RuleExecutor for Executor {
                             context.portfolio.cash += cash;
                             context.portfolio.positions.remove(ticker_str);
 
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Progress(format!(
-                                    "[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}"
+                                .send(BacktestEvent::Order(format!(
+                                    "[-][{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
                                 )))
                                 .await;
                         }
@@ -134,9 +153,10 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units + buy_units as u64);
 
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Progress(format!(
-                                    "[+][{date_str}] {ticker} {price:.2}x{buy_units} -> {cost:.2}"
+                                .send(BacktestEvent::Order(format!(
+                                    "[+][{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -{cost:.2}"
                                 )))
                                 .await;
                         }
@@ -156,9 +176,10 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units - sell_units as u64);
 
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Progress(format!(
-                                    "[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}"
+                                .send(BacktestEvent::Order(format!(
+                                    "[-][{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
                                 )))
                                 .await;
                         }

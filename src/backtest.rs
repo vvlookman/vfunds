@@ -20,7 +20,8 @@ pub struct BacktestContext<'a> {
 }
 
 pub enum BacktestEvent {
-    Progress(String),
+    Info(String),
+    Order(String),
     Result(BacktestResult),
     Error(VfError),
 }

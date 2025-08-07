@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::{get_stock_daily_backward_adjusted_price, stock::StockField},
+    financial::{get_stock_daily_backward_adjusted_price, get_stock_detail, stock::StockField},
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     utils,
 };
@@ -66,9 +66,10 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units + buy_units as u64);
 
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Progress(format!(
-                                    "[+][{date_str}] {ticker} {price:.2}x{buy_units} -> {cost:.2}"
+                                .send(BacktestEvent::Order(format!(
+                                    "[+][{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -{cost:.2}"
                                 )))
                                 .await;
                         }
@@ -88,9 +89,10 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units - sell_units as u64);
 
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Progress(format!(
-                                    "[-][{date_str}] {ticker} {price:.2}x{sell_units} -> {cash:.2}"
+                                .send(BacktestEvent::Order(format!(
+                                    "[-][{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
                                 )))
                                 .await;
                         }
