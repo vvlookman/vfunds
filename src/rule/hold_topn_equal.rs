@@ -83,7 +83,7 @@ impl RuleExecutor for Executor {
 
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
-                        "[i][{date_str}] {top_tickers_str}"
+                        "[{date_str}] {top_tickers_str}"
                     )))
                     .await;
             }
@@ -115,8 +115,8 @@ impl RuleExecutor for Executor {
 
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Order(format!(
-                                    "[-][{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
+                                .send(BacktestEvent::Sell(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
                                 )))
                                 .await;
                         }
@@ -155,8 +155,8 @@ impl RuleExecutor for Executor {
 
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Order(format!(
-                                    "[+][{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -{cost:.2}"
+                                .send(BacktestEvent::Buy(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -{cost:.2}"
                                 )))
                                 .await;
                         }
@@ -178,8 +178,8 @@ impl RuleExecutor for Executor {
 
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
-                                .send(BacktestEvent::Order(format!(
-                                    "[-][{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
+                                .send(BacktestEvent::Sell(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
                                 )))
                                 .await;
                         }

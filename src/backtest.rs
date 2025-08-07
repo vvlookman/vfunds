@@ -20,8 +20,9 @@ pub struct BacktestContext<'a> {
 }
 
 pub enum BacktestEvent {
+    Buy(String),
+    Sell(String),
     Info(String),
-    Order(String),
     Result(BacktestResult),
     Error(VfError),
 }

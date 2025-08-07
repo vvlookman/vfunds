@@ -129,11 +129,14 @@ impl BacktestCommand {
                 for (fund_name, mut stream) in streams {
                     while let Some(event) = stream.next().await {
                         match event {
-                            BacktestEvent::Info(s) => {
-                                println!("[{fund_name}] {}", s.bright_black());
+                            BacktestEvent::Buy(s) => {
+                                println!("[{fund_name}][+] {s}");
                             }
-                            BacktestEvent::Order(s) => {
-                                println!("[{fund_name}] {s}");
+                            BacktestEvent::Sell(s) => {
+                                println!("[{fund_name}][-] {s}");
+                            }
+                            BacktestEvent::Info(s) => {
+                                println!("[{fund_name}][i] {}", s.bright_black());
                             }
                             BacktestEvent::Result(fund_result) => {
                                 table_data.push(vec![
