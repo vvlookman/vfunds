@@ -1,0 +1,154 @@
+use std::{collections::HashMap, str::FromStr};
+
+use async_trait::async_trait;
+use chrono::NaiveDate;
+use tokio::sync::mpsc::Sender;
+
+use crate::{
+    backtest::{calc_buy_fee, calc_sell_fee},
+    error::VfResult,
+    financial::{get_stock_daily_backward_adjusted_price, get_stock_detail, stock::StockField},
+    rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
+    ticker::Ticker,
+    utils,
+};
+
+pub struct Executor {
+    #[allow(dead_code)]
+    options: HashMap<String, serde_json::Value>,
+
+    re_entry_cash: HashMap<String, f64>,
+}
+
+impl Executor {
+    pub fn new(definition: &RuleDefinition) -> Self {
+        Self {
+            options: definition.options.clone(),
+
+            re_entry_cash: HashMap::new(),
+        }
+    }
+}
+
+#[async_trait]
+impl RuleExecutor for Executor {
+    async fn exec(
+        &mut self,
+        context: &mut BacktestContext,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let date_str = utils::datetime::date_to_str(date);
+
+        for (ticker_str, units) in context.portfolio.positions.clone() {
+            let ticker = Ticker::from_str(&ticker_str)?;
+
+            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+            let latest_prices =
+                stock_daily.get_latest_values::<f64>(date, &StockField::Price.to_string(), 35);
+            let macds = utils::financial::calc_macd(&latest_prices, None);
+            if let (Some(macd_today), Some(macd_day_1), Some(macd_day_2), Some(macd_day_3)) = (
+                macds.last(),
+                macds.iter().rev().nth(1),
+                macds.iter().rev().nth(2),
+                macds.iter().rev().nth(3),
+            ) {
+                if macd_today.2 < 0.0
+                    && macd_day_1.2 < 0.0
+                    && macd_day_2.2 < 0.0
+                    && macd_day_3.2 > 0.0
+                {
+                    if let Some(price) =
+                        stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                    {
+                        let value = price * units as f64;
+                        let fee = calc_sell_fee(value, context.options);
+                        let cash = value - fee;
+
+                        context.portfolio.cash += cash;
+                        context.portfolio.positions.remove(&ticker_str);
+
+                        self.re_entry_cash
+                            .entry(ticker_str.to_string())
+                            .and_modify(|x| *x += cash)
+                            .or_insert(cash);
+
+                        let ticker_title = get_stock_detail(&ticker).await?.title;
+
+                        let _ = event_sender
+                            .send(BacktestEvent::Info(format!(
+                                "[{date_str}] {ticker}({ticker_title}) MACD Sell signal"
+                            )))
+                            .await;
+
+                        let _ = event_sender
+                                .send(BacktestEvent::Sell(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{units} -> +${cash:.2}"
+                                )))
+                                .await;
+                    }
+                }
+            }
+        }
+
+        for (ticker_str, cash) in self.re_entry_cash.clone() {
+            let ticker = Ticker::from_str(&ticker_str)?;
+
+            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+            let latest_prices =
+                stock_daily.get_latest_values::<f64>(date, &StockField::Price.to_string(), 35);
+            let macds = utils::financial::calc_macd(&latest_prices, None);
+            if let (Some(macd_today), Some(macd_day_1), Some(macd_day_2), Some(macd_day_3)) = (
+                macds.last(),
+                macds.iter().rev().nth(1),
+                macds.iter().rev().nth(2),
+                macds.iter().rev().nth(3),
+            ) {
+                if macd_today.2 > 0.0
+                    && macd_day_1.2 > 0.0
+                    && macd_day_2.2 > 0.0
+                    && macd_day_3.2 < 0.0
+                {
+                    let buy_value = cash - calc_buy_fee(cash, context.options);
+
+                    if let Some(price) =
+                        stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                    {
+                        let buy_units = (buy_value / price).floor();
+                        if buy_units > 0.0 {
+                            let value = buy_units * price;
+                            let fee = calc_buy_fee(value, context.options);
+                            let cost = value + fee;
+
+                            context.portfolio.cash -= cost;
+                            context
+                                .portfolio
+                                .positions
+                                .entry(ticker_str.to_string())
+                                .and_modify(|x| *x += buy_units as u64)
+                                .or_insert(buy_units as u64);
+
+                            self.re_entry_cash.remove(&ticker_str);
+
+                            let ticker_title = get_stock_detail(&ticker).await?.title;
+
+                            let _ = event_sender
+                                .send(BacktestEvent::Info(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) MACD Buy signal"
+                                )))
+                                .await;
+
+                            let _ = event_sender
+                                .send(BacktestEvent::Buy(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
+                                )))
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}

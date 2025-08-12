@@ -98,14 +98,17 @@ pub async fn backtest_fund(
             let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
             let days = (options.end_date - options.start_date).num_days() as u64 + 1;
 
+            let mut rules = fund_definition
+                .rules
+                .iter()
+                .map(Rule::from_definition)
+                .collect::<Vec<_>>();
             let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             for date in options.start_date.iter_days().take(days as usize) {
-                for (rule_index, rule_definition) in fund_definition.rules.iter().enumerate() {
-                    let mut rule = Rule::from_definition(rule_definition);
-
+                for (rule_index, rule) in rules.iter_mut().enumerate() {
                     if let Some(executed_date) = rule_executed_date.get(&rule_index) {
                         let executed_days = (date - *executed_date).num_days();
-                        match rule_definition.frequency {
+                        match rule.definition().frequency {
                             Frequency::Once => {
                                 continue;
                             }

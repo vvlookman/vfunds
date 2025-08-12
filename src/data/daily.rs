@@ -127,6 +127,44 @@ impl DailyDataset {
         None
     }
 
+    pub fn get_latest_values<T: NumCast>(
+        &self,
+        date: &NaiveDate,
+        field_name: &str,
+        count: usize,
+    ) -> Vec<T> {
+        if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            if let Ok(df) = self
+                .df
+                .clone()
+                .lazy()
+                .filter(col(&self.date_field_name).lt_eq(lit(*date)))
+                .sort(
+                    [&self.date_field_name],
+                    SortMultipleOptions::default().with_order_descending(false),
+                )
+                .collect()
+            {
+                if let Ok(col) = df.column(origin_field_name) {
+                    let tail = col.tail(Some(count));
+
+                    let mut vals = vec![];
+                    for i in 0..tail.len() {
+                        if let Ok(val) = tail.get(i) {
+                            if let Some(val) = val.extract::<T>() {
+                                vals.push(val);
+                            }
+                        }
+                    }
+
+                    return vals;
+                }
+            }
+        }
+
+        vec![]
+    }
+
     pub fn get_value<T: NumCast>(&self, date: &NaiveDate, field_name: &str) -> Option<T> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
             if let Ok(df) = self

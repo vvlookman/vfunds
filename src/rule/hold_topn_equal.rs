@@ -75,7 +75,7 @@ impl RuleExecutor for Executor {
             {
                 let mut top_tickers_str = String::from("");
                 for (ticker_str, indicator) in stocks_indicator.iter().take(2 * limit as usize) {
-                    let ticker = Ticker::from_str(&ticker_str)?;
+                    let ticker = Ticker::from_str(ticker_str)?;
                     let ticker_title = get_stock_detail(&ticker).await?.title;
 
                     top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.2} "));
@@ -116,7 +116,7 @@ impl RuleExecutor for Executor {
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"
                                 )))
                                 .await;
                         }
@@ -156,7 +156,7 @@ impl RuleExecutor for Executor {
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -{cost:.2}"
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
                                 )))
                                 .await;
                         }
@@ -179,7 +179,7 @@ impl RuleExecutor for Executor {
                             let ticker_title = get_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +{cash:.2}"
+                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"
                                 )))
                                 .await;
                         }
