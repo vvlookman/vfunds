@@ -6,8 +6,3 @@ tickers = ["688981", "000333"]
 [[rules]]
 name = "hold_all_equal"
 frequency = "1y"
-
-
-[[rules]]
-name = "macd_signal_line_crossover"
-frequency = "1d"

@@ -60,6 +60,7 @@ pub enum Frequency {
 pub struct RuleDefinition {
     pub name: String,
 
+    #[serde(default)]
     #[serde(deserialize_with = "deserialize_frequency")]
     pub frequency: Frequency,
 

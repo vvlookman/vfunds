@@ -23,6 +23,25 @@ pub fn pct_change(values: &[f64]) -> Vec<f64> {
     pct_changes
 }
 
+pub fn slope(values: &[f64]) -> Option<f64> {
+    let count = values.len();
+    if count > 1 {
+        let n = count as f64;
+        let sum_x = (n - 1.0) * n / 2.0;
+        let sum_x2 = (n - 1.0) * n * (2.0 * n - 1.0) / 6.0;
+        let sum_y = values.iter().sum::<f64>();
+        let sum_xy = values
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| i as f64 * v)
+            .sum::<f64>();
+
+        return Some((n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x));
+    }
+
+    None
+}
+
 pub fn std(values: &[f64]) -> Option<f64> {
     if let Some(mean) = mean(values) {
         let count = values.len();
@@ -56,6 +75,11 @@ mod tests {
     #[test]
     fn test_pct_change() {
         assert_eq!(pct_change(&vec![1.0, 1.0, 2.0, 3.0]), [0.0, 1.0, 0.5]);
+    }
+
+    #[test]
+    fn test_slope() {
+        assert_eq!(slope(&vec![1.0, 2.0, 3.0]).unwrap(), 1.0);
     }
 
     #[test]

@@ -38,29 +38,35 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let window = self.options["window"].as_u64().unwrap_or(5) as usize;
+
         let date_str = utils::datetime::date_to_str(date);
 
         for (ticker_str, units) in context.portfolio.positions.clone() {
             let ticker = Ticker::from_str(&ticker_str)?;
 
             let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
-            let latest_prices =
-                stock_daily.get_latest_values::<f64>(date, &StockField::Price.to_string(), 35);
+            let latest_prices = stock_daily.get_latest_values::<f64>(
+                date,
+                &StockField::Price.to_string(),
+                35 + window,
+            );
             let macds = utils::financial::calc_macd(&latest_prices, None);
-            if let (Some(macd_today), Some(macd_day_1), Some(macd_day_2), Some(macd_day_3)) = (
-                macds.last(),
-                macds.iter().rev().nth(1),
-                macds.iter().rev().nth(2),
-                macds.iter().rev().nth(3),
-            ) {
-                if macd_today.2 < 0.0
-                    && macd_day_1.2 < 0.0
-                    && macd_day_2.2 < 0.0
-                    && macd_day_3.2 > 0.0
-                {
-                    if let Some(price) =
-                        stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
-                    {
+
+            if let (Some(macd_today), Some(macd_prev)) = (macds.last(), macds.iter().rev().nth(1)) {
+                let hists: Vec<f64> = macds.iter().rev().take(window).rev().map(|v| v.2).collect();
+                let slope = utils::stats::slope(&hists).unwrap_or(0.0);
+
+                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && slope < 0.0 {
+                    let ticker_title = get_stock_detail(&ticker).await?.title;
+
+                    let _ = event_sender
+                        .send(BacktestEvent::Info(format!(
+                            "[{date_str}] {ticker}({ticker_title}) MACD Sell Signal"
+                        )))
+                        .await;
+
+                    if let Some(price) = latest_prices.last() {
                         let value = price * units as f64;
                         let fee = calc_sell_fee(value, context.options);
                         let cash = value - fee;
@@ -73,14 +79,6 @@ impl RuleExecutor for Executor {
                             .and_modify(|x| *x += cash)
                             .or_insert(cash);
 
-                        let ticker_title = get_stock_detail(&ticker).await?.title;
-
-                        let _ = event_sender
-                            .send(BacktestEvent::Info(format!(
-                                "[{date_str}] {ticker}({ticker_title}) MACD Sell signal"
-                            )))
-                            .await;
-
                         let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{units} -> +${cash:.2}"
@@ -92,28 +90,37 @@ impl RuleExecutor for Executor {
         }
 
         for (ticker_str, cash) in self.re_entry_cash.clone() {
+            if context.portfolio.positions.contains_key(&ticker_str) {
+                self.re_entry_cash.remove(&ticker_str);
+                continue;
+            }
+
             let ticker = Ticker::from_str(&ticker_str)?;
 
             let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
-            let latest_prices =
-                stock_daily.get_latest_values::<f64>(date, &StockField::Price.to_string(), 35);
+            let latest_prices = stock_daily.get_latest_values::<f64>(
+                date,
+                &StockField::Price.to_string(),
+                35 + window,
+            );
             let macds = utils::financial::calc_macd(&latest_prices, None);
-            if let (Some(macd_today), Some(macd_day_1), Some(macd_day_2), Some(macd_day_3)) = (
-                macds.last(),
-                macds.iter().rev().nth(1),
-                macds.iter().rev().nth(2),
-                macds.iter().rev().nth(3),
-            ) {
-                if macd_today.2 > 0.0
-                    && macd_day_1.2 > 0.0
-                    && macd_day_2.2 > 0.0
-                    && macd_day_3.2 < 0.0
-                {
+
+            if let (Some(macd_today), Some(macd_prev)) = (macds.last(), macds.iter().rev().nth(1)) {
+                let hists: Vec<f64> = macds.iter().rev().take(window).rev().map(|v| v.2).collect();
+                let slope = utils::stats::slope(&hists).unwrap_or(0.0);
+
+                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && slope > 0.0 {
+                    let ticker_title = get_stock_detail(&ticker).await?.title;
+
+                    let _ = event_sender
+                        .send(BacktestEvent::Info(format!(
+                            "[{date_str}] {ticker}({ticker_title}) MACD Buy Signal"
+                        )))
+                        .await;
+
                     let buy_value = cash - calc_buy_fee(cash, context.options);
 
-                    if let Some(price) =
-                        stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
-                    {
+                    if let Some(price) = latest_prices.last() {
                         let buy_units = (buy_value / price).floor();
                         if buy_units > 0.0 {
                             let value = buy_units * price;
@@ -129,14 +136,6 @@ impl RuleExecutor for Executor {
                                 .or_insert(buy_units as u64);
 
                             self.re_entry_cash.remove(&ticker_str);
-
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
-
-                            let _ = event_sender
-                                .send(BacktestEvent::Info(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) MACD Buy signal"
-                                )))
-                                .await;
 
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(

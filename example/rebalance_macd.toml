@@ -1,0 +1,14 @@
+title = "A virtual fund that buy a stock and rebalance by MACD"
+
+# All candidate tickers
+tickers = ["688981"]
+
+[[rules]]
+name = "hold_all_equal"
+
+[[rules]]
+name = "macd_crossover"
+frequency = "1d"
+
+[rules.options]
+window = 5

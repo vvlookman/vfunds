@@ -10,7 +10,7 @@ use crate::{
 
 pub mod hold_all_equal;
 pub mod hold_topn_equal;
-pub mod macd_signal_line_crossover;
+pub mod macd_crossover;
 
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
@@ -36,9 +36,7 @@ impl Rule {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "hold_all_equal" => Box::new(hold_all_equal::Executor::new(definition)),
             "hold_topn_equal" => Box::new(hold_topn_equal::Executor::new(definition)),
-            "macd_signal_line_crossover" => {
-                Box::new(macd_signal_line_crossover::Executor::new(definition))
-            }
+            "macd_crossover" => Box::new(macd_crossover::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
         };
 
