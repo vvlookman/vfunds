@@ -6,7 +6,10 @@ use tokio::sync::{mpsc, mpsc::Receiver};
 use crate::{
     CHANNEL_BUFFER_DEFAULT,
     error::*,
-    financial::{Portfolio, get_stock_daily_backward_adjusted_price, stock::StockField},
+    financial::{
+        Portfolio,
+        stock::{StockField, fetch_stock_daily_backward_adjusted_price},
+    },
     rule::Rule,
     spec::{Frequency, FundDefinition},
     ticker::Ticker,
@@ -157,7 +160,7 @@ pub async fn backtest_fund(
                 let tickers = context.fund_definition.all_tickers(&date).await?;
                 for ticker in tickers {
                     // Check if today is trade date
-                    let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+                    let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
                     if stock_daily
                         .get_value::<f64>(&date, &StockField::Price.to_string())
                         .is_some()
@@ -210,7 +213,7 @@ impl BacktestContext<'_> {
         for (ticker_str, units) in &self.portfolio.positions {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+            let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
             if let Some(price) =
                 stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
             {

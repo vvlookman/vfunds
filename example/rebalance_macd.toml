@@ -11,4 +11,8 @@ name = "macd_crossover"
 frequency = "1d"
 
 [rules.options]
+macd_period_fast = 18
+macd_period_slow = 36
+macd_period_signal = 12
 macd_slope_window = 5
+rsi_perid = 21

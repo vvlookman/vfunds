@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 
 use crate::{
     error::{VfError, VfResult},
-    financial::get_cnindex_tickers,
+    financial::index::fetch_cnindex_tickers,
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -99,7 +99,7 @@ impl Display for TickersSource {
 impl TickersSource {
     pub async fn extract_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
         let tickers = match self.name.to_lowercase().as_str() {
-            "cnindex" => get_cnindex_tickers(&self.symbol, date).await?,
+            "cnindex" => fetch_cnindex_tickers(&self.symbol, date).await?,
             _ => {
                 return Err(VfError::Invalid(
                     "UNSUPPORTED_TICKERS_SOURCE",

@@ -8,9 +8,9 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::{
-        get_stock_daily_backward_adjusted_price, get_stock_daily_indicators, get_stock_detail,
-        stock::StockField,
+    financial::stock::{
+        StockField, fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators,
+        fetch_stock_detail,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -64,7 +64,7 @@ impl RuleExecutor for Executor {
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
 
-                let stock_daily = get_stock_daily_indicators(&ticker).await?;
+                let stock_daily = fetch_stock_daily_indicators(&ticker).await?;
                 if let Some(val) =
                     stock_daily.get_latest_value::<f64>(date, &indicator_field.to_string())
                 {
@@ -84,7 +84,7 @@ impl RuleExecutor for Executor {
                 let mut top_tickers_str = String::from("");
                 for (ticker_str, indicator) in stocks_indicator.iter().take(2 * limit as usize) {
                     let ticker = Ticker::from_str(ticker_str)?;
-                    let ticker_title = get_stock_detail(&ticker).await?.title;
+                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
                     top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.2} "));
                 }
@@ -107,7 +107,7 @@ impl RuleExecutor for Executor {
                 if !selected_tickers.contains(ticker_str) {
                     let ticker = Ticker::from_str(ticker_str)?;
 
-                    let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+                    let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
                     if let Some(price) =
                         stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
                     {
@@ -121,7 +121,7 @@ impl RuleExecutor for Executor {
                             context.portfolio.cash += cash;
                             context.portfolio.positions.remove(ticker_str);
 
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
+                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"
@@ -137,7 +137,7 @@ impl RuleExecutor for Executor {
             for ticker_str in &selected_tickers {
                 let ticker = Ticker::from_str(ticker_str)?;
 
-                let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+                let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
                 if let Some(price) =
                     stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
                 {
@@ -161,7 +161,7 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units + buy_units as u64);
 
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
+                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
@@ -184,7 +184,7 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units - sell_units as u64);
 
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
+                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"

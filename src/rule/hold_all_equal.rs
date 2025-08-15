@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::{get_stock_daily_backward_adjusted_price, get_stock_detail, stock::StockField},
+    financial::stock::{StockField, fetch_stock_daily_backward_adjusted_price, fetch_stock_detail},
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     utils,
 };
@@ -42,7 +42,7 @@ impl RuleExecutor for Executor {
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
 
-                let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+                let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
                 if let Some(price) =
                     stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
                 {
@@ -66,7 +66,7 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units + buy_units as u64);
 
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
+                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
@@ -89,7 +89,7 @@ impl RuleExecutor for Executor {
                                 .positions
                                 .insert(ticker_str.to_string(), holding_units - sell_units as u64);
 
-                            let ticker_title = get_stock_detail(&ticker).await?.title;
+                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
                             let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"

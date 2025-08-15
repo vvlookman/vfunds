@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::{get_stock_daily_backward_adjusted_price, get_stock_detail, stock::StockField},
+    financial::stock::{StockField, fetch_stock_daily_backward_adjusted_price, fetch_stock_detail},
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
     utils,
@@ -79,7 +79,7 @@ impl RuleExecutor for Executor {
         for (ticker_str, units) in context.portfolio.positions.clone() {
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+            let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::Price.to_string(),
@@ -104,7 +104,7 @@ impl RuleExecutor for Executor {
                 let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi > rsi_low {
-                    let ticker_title = get_stock_detail(&ticker).await?.title;
+                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
@@ -143,7 +143,7 @@ impl RuleExecutor for Executor {
 
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = get_stock_daily_backward_adjusted_price(&ticker).await?;
+            let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::Price.to_string(),
@@ -168,7 +168,7 @@ impl RuleExecutor for Executor {
                 let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi < rsi_high {
-                    let ticker_title = get_stock_detail(&ticker).await?.title;
+                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
