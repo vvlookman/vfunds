@@ -11,4 +11,4 @@ name = "macd_crossover"
 frequency = "1d"
 
 [rules.options]
-window = 5
+macd_slope_window = 5

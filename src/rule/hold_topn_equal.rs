@@ -40,11 +40,26 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
+            let indicator = self
+                .options
+                .get("indicator")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let sort = self
+                .options
+                .get("sort")
+                .and_then(|v| v.as_str())
+                .unwrap_or("desc")
+                .to_lowercase();
+            let limit = self
+                .options
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10);
+
             let date_str = utils::datetime::date_to_str(date);
 
-            let indicator_str = self.options["indicator"].as_str().unwrap_or_default();
-            let indicator_field = StockField::from_str(indicator_str)?;
-
+            let indicator_field = StockField::from_str(indicator)?;
             let mut stocks_indicator: Vec<(String, f64)> = vec![];
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
@@ -54,23 +69,16 @@ impl RuleExecutor for Executor {
                     stock_daily.get_latest_value::<f64>(date, &indicator_field.to_string())
                 {
                     stocks_indicator.push((ticker_str, val));
-                    debug!("[{indicator_str}][{date_str}] {ticker} = {val}");
+                    debug!("[{indicator}][{date_str}] {ticker} = {val}");
                 }
             }
 
-            match self.options["sort"]
-                .as_str()
-                .unwrap_or("desc")
-                .to_lowercase()
-                .as_str()
-            {
+            match sort.as_str() {
                 "desc" => stocks_indicator
                     .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal)),
                 _ => stocks_indicator
                     .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)),
             };
-
-            let limit = self.options["limit"].as_u64().unwrap_or(10);
 
             {
                 let mut top_tickers_str = String::from("");

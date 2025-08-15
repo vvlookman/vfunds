@@ -1,6 +1,5 @@
 use std::{fs::read_dir, path::PathBuf};
 
-use log::debug;
 use rayon::prelude::*;
 
 use crate::{WORKSPACE, backtest, error::*, spec::FundDefinition, utils};
@@ -20,10 +19,14 @@ pub async fn backtest(
         funds.retain(|(name, _)| fund_names.contains(name));
     }
 
-    debug!(
-        "Backtest funds: {:?}",
-        funds.iter().map(|(name, _)| name).collect::<Vec<_>>()
-    );
+    for fund_name in fund_names {
+        if funds.iter().filter(|(name, _)| name == fund_name).count() == 0 {
+            return Err(VfError::NotExists(
+                "FUND_NOT_EXISTS",
+                format!("Fund '{fund_name}' not exists"),
+            ));
+        }
+    }
 
     for (fund_name, fund_definition) in funds {
         let stream = backtest::backtest_fund(&fund_definition, options).await?;

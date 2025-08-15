@@ -38,7 +38,41 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let window = self.options["window"].as_u64().unwrap_or(5) as usize;
+        let macd_period_fast = self
+            .options
+            .get("macd_period_fast")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(12) as usize;
+        let macd_period_slow = self
+            .options
+            .get("macd_period_slow")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(26) as usize;
+        let macd_period_signal = self
+            .options
+            .get("macd_period_signal")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(9) as usize;
+        let macd_slope_window = self
+            .options
+            .get("macd_slope_window")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5) as usize;
+        let rsi_period = self
+            .options
+            .get("rsi_period")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(14) as usize;
+        let rsi_low = self
+            .options
+            .get("rsi_low")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(30.0);
+        let rsi_high = self
+            .options
+            .get("rsi_high")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(70.0);
 
         let date_str = utils::datetime::date_to_str(date);
 
@@ -49,15 +83,27 @@ impl RuleExecutor for Executor {
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::Price.to_string(),
-                35 + window,
+                macd_period_slow + macd_period_signal + macd_slope_window,
             );
-            let macds = utils::financial::calc_macd(&latest_prices, None);
+            let macds = utils::financial::calc_macd(
+                &latest_prices,
+                (macd_period_fast, macd_period_slow, macd_period_signal),
+            );
+            let rsis = utils::financial::calc_rsi(&latest_prices, rsi_period);
 
-            if let (Some(macd_today), Some(macd_prev)) = (macds.last(), macds.iter().rev().nth(1)) {
-                let hists: Vec<f64> = macds.iter().rev().take(window).rev().map(|v| v.2).collect();
-                let slope = utils::stats::slope(&hists).unwrap_or(0.0);
+            if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
+                (macds.last(), macds.iter().rev().nth(1), rsis.last())
+            {
+                let macd_hists: Vec<f64> = macds
+                    .iter()
+                    .rev()
+                    .take(macd_slope_window)
+                    .rev()
+                    .map(|v| v.2)
+                    .collect();
+                let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
-                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && slope < 0.0 {
+                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi > rsi_low {
                     let ticker_title = get_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender
@@ -101,15 +147,27 @@ impl RuleExecutor for Executor {
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::Price.to_string(),
-                35 + window,
+                macd_period_slow + macd_period_signal + macd_slope_window,
             );
-            let macds = utils::financial::calc_macd(&latest_prices, None);
+            let macds = utils::financial::calc_macd(
+                &latest_prices,
+                (macd_period_fast, macd_period_slow, macd_period_signal),
+            );
+            let rsis = utils::financial::calc_rsi(&latest_prices, rsi_period);
 
-            if let (Some(macd_today), Some(macd_prev)) = (macds.last(), macds.iter().rev().nth(1)) {
-                let hists: Vec<f64> = macds.iter().rev().take(window).rev().map(|v| v.2).collect();
-                let slope = utils::stats::slope(&hists).unwrap_or(0.0);
+            if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
+                (macds.last(), macds.iter().rev().nth(1), rsis.last())
+            {
+                let macd_hists: Vec<f64> = macds
+                    .iter()
+                    .rev()
+                    .take(macd_slope_window)
+                    .rev()
+                    .map(|v| v.2)
+                    .collect();
+                let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
-                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && slope > 0.0 {
+                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi < rsi_high {
                     let ticker_title = get_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender

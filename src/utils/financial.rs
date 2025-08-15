@@ -1,4 +1,7 @@
-use ta::{Next, indicators::MovingAverageConvergenceDivergence};
+use ta::{
+    Next,
+    indicators::{MovingAverageConvergenceDivergence, RelativeStrengthIndex},
+};
 
 use crate::utils::stats;
 
@@ -13,19 +16,30 @@ pub fn calc_annual_return_rate(start_value: f64, end_value: f64, days: u64) -> O
     None
 }
 
-pub fn calc_macd(
-    daily_values: &[f64],
-    periods: Option<(usize, usize, usize)>,
-) -> Vec<(f64, f64, f64)> {
+pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f64, f64, f64)> {
     let mut results: Vec<(f64, f64, f64)> = vec![];
 
     if daily_values.len() > 1 {
-        let (fast_period, slow_period, signal_period) = periods.unwrap_or((12, 26, 9));
+        let (fast_period, slow_period, signal_period) = periods;
         if let Ok(mut macd) =
             MovingAverageConvergenceDivergence::new(fast_period, slow_period, signal_period)
         {
             for value in daily_values {
                 results.push(macd.next(*value).into());
+            }
+        }
+    }
+
+    results
+}
+
+pub fn calc_rsi(daily_values: &[f64], period: usize) -> Vec<f64> {
+    let mut results: Vec<f64> = vec![];
+
+    if daily_values.len() > 1 {
+        if let Ok(mut rsi) = RelativeStrengthIndex::new(period) {
+            for value in daily_values {
+                results.push(rsi.next(*value));
             }
         }
     }
