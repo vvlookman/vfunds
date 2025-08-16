@@ -13,7 +13,9 @@ use crate::{
     rule::Rule,
     spec::{Frequency, FundDefinition},
     ticker::Ticker,
-    utils::financial::{calc_annual_return_rate, calc_sharpe_ratio, calc_sortino_ratio},
+    utils::financial::{
+        calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+    },
 };
 
 pub struct BacktestContext<'a> {
@@ -50,6 +52,7 @@ pub struct BacktestResult {
     pub trade_days: usize,
     pub profit: f64,
     pub annual_return_rate: Option<f64>,
+    pub max_drawdown: Option<f64>,
     pub sharpe_ratio: Option<f64>,
     pub sortino_ratio: Option<f64>,
 }
@@ -181,6 +184,7 @@ pub async fn backtest_fund(
             let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
 
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
+            let max_drawdown = calc_max_drawdown(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
@@ -188,6 +192,7 @@ pub async fn backtest_fund(
                 trade_days: trade_date_values.len(),
                 profit,
                 annual_return_rate,
+                max_drawdown,
                 sharpe_ratio,
                 sortino_ratio,
             })

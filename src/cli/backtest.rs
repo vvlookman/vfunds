@@ -127,6 +127,7 @@ impl BacktestCommand {
                     "Trade Days".to_string(),
                     "Profit".to_string(),
                     "ARR".to_string(),
+                    "Max Drawdown".to_string(),
                     "Sharpe Ratio".to_string(),
                     "Sortino Ratio".to_string(),
                 ]];
@@ -149,6 +150,10 @@ impl BacktestCommand {
                                     format!("{:.2}", fund_result.profit),
                                     fund_result
                                         .annual_return_rate
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    fund_result
+                                        .max_drawdown
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     fund_result

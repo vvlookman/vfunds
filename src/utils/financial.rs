@@ -33,6 +33,28 @@ pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f
     results
 }
 
+pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
+    if values.len() > 1 {
+        let mut peak = 0.0;
+        let mut max_dd = 0.0;
+
+        for &p in values.iter() {
+            if p > peak {
+                peak = p;
+            }
+
+            let dd = (peak - p) / peak;
+            if dd > max_dd {
+                max_dd = dd;
+            }
+        }
+
+        return Some(max_dd);
+    }
+
+    None
+}
+
 pub fn calc_rsi(daily_values: &[f64], period: usize) -> Vec<f64> {
     let mut results: Vec<f64> = vec![];
 

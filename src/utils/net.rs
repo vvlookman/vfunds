@@ -42,7 +42,7 @@ pub async fn http_get(
     if response.status().is_success() {
         Ok(response.bytes().await?.to_vec())
     } else {
-        debug!("[HTTP Status Error] {:?}", response);
+        debug!("[HTTP Status Error] {response:?}");
 
         Err(VfError::HttpStatusError(response.status().to_string()))
     }
