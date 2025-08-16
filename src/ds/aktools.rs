@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{Duration, Local, NaiveTime};
+use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
 use serde_json::Value;
 use tokio::time::sleep;
 
@@ -63,8 +63,12 @@ pub async fn call_public_api(
                 if now.time() < today_close.time() {
                     today_close
                 } else {
-                    let tomorrow = today + Duration::days(1);
-                    tomorrow.and_time(market_close_time)
+                    let mut next_day = today + Duration::days(1);
+                    while matches!(next_day.weekday(), Weekday::Sat | Weekday::Sun) {
+                        next_day += Duration::days(1);
+                    }
+
+                    next_day.and_time(market_close_time)
                 }
             } else {
                 (now + Duration::days(1)).naive_local()
