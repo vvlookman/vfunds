@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{Local, NaiveDate};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -11,6 +13,7 @@ use tokio::time::Duration;
 use vfunds::{
     api,
     api::{BacktestEvent, BacktestOptions},
+    error::VfError,
     utils,
 };
 
@@ -118,6 +121,7 @@ impl BacktestCommand {
                     (options.end_date - options.start_date).num_days() + 1
                 );
 
+                let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
                     "Trade Days".to_string(),
@@ -158,11 +162,17 @@ impl BacktestCommand {
                                 ]);
                             }
                             BacktestEvent::Error(err) => {
-                                println!("{}", err.to_string().red());
+                                errors.insert(fund_name.to_string(), err);
                             }
                         }
                     }
                 }
+
+                for (fund_name, err) in errors {
+                    println!("[{fund_name}][!] {}", err.to_string().red());
+                }
+
+                println!();
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();
                 table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);

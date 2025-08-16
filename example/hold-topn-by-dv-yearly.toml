@@ -1,4 +1,4 @@
-title = "A virtual fund that select top N stocks by dividend and rebalance each year"
+title = "A virtual fund that hold top N stocks by dividend each year"
 
 # Candidate tickers defined with sources
 tickers_sources = ["cnindex:399312"]

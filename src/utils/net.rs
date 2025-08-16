@@ -1,5 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
+use log::debug;
 use reqwest::Method;
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{Jitter, RetryTransientMiddleware, policies::ExponentialBackoff};
@@ -41,11 +42,9 @@ pub async fn http_get(
     if response.status().is_success() {
         Ok(response.bytes().await?.to_vec())
     } else {
-        Err(VfError::HttpStatusError(format!(
-            "{} {}",
-            response.status(),
-            response.text().await.ok().unwrap_or_default()
-        )))
+        debug!("[HTTP Status Error] {:?}", response);
+
+        Err(VfError::HttpStatusError(response.status().to_string()))
     }
 }
 
