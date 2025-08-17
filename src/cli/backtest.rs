@@ -108,19 +108,19 @@ impl BacktestCommand {
             );
         }
 
+        println!(
+            "[Initial cash] {} \t [Days] {}",
+            options.init_cash,
+            (options.end_date - options.start_date).num_days() + 1
+        );
+
         let spinner = ProgressBar::new_spinner();
         spinner
-            .set_style(ProgressStyle::with_template("{msg} {spinner:.cyan} [{elapsed}]").unwrap());
+            .set_style(ProgressStyle::with_template("[{elapsed}] {msg} {spinner:.cyan}").unwrap());
         spinner.enable_steady_tick(Duration::from_millis(100));
 
         match api::backtest(&self.funds, &options).await {
             Ok(streams) => {
-                println!(
-                    "[Initial cash] {} \t [Days] {}",
-                    options.init_cash,
-                    (options.end_date - options.start_date).num_days() + 1
-                );
-
                 let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
@@ -135,13 +135,13 @@ impl BacktestCommand {
                     while let Some(event) = stream.next().await {
                         match event {
                             BacktestEvent::Buy(s) => {
-                                println!("[{fund_name}][+] {s}");
+                                spinner.println(format!("[{fund_name}][+] {s}"));
                             }
                             BacktestEvent::Sell(s) => {
-                                println!("[{fund_name}][-] {s}");
+                                spinner.println(format!("[{fund_name}][-] {s}"));
                             }
                             BacktestEvent::Info(s) => {
-                                println!("[{fund_name}][i] {}", s.bright_black());
+                                spinner.println(format!("[{fund_name}][i] {}", s.bright_black()));
                             }
                             BacktestEvent::Result(fund_result) => {
                                 table_data.push(vec![
@@ -173,11 +173,15 @@ impl BacktestCommand {
                     }
                 }
 
-                for (fund_name, err) in errors {
-                    println!("[{fund_name}][!] {}", err.to_string().red());
+                for (fund_name, err) in &errors {
+                    spinner.println(format!("[{fund_name}][!] {}", err.to_string().red()));
                 }
 
-                println!();
+                if errors.is_empty() {
+                    spinner.finish_with_message(format!("{}", "✔".to_string().green()));
+                } else {
+                    spinner.finish_with_message(format!("{}", "!".to_string().yellow()));
+                }
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();
                 table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
