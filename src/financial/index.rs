@@ -13,6 +13,7 @@ pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<V
             "date": date.format("%Y%m").to_string(),
         }),
         true,
+        10,
     )
     .await?;
 

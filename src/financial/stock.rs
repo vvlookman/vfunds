@@ -44,6 +44,7 @@ pub async fn fetch_stock_daily_price(
                     "adjust": adjust_param,
                 }),
                 false,
+                10,
             )
             .await?;
 
@@ -69,6 +70,7 @@ pub async fn fetch_stock_daily_price(
                     "adjust": adjust_param,
                 }),
                 false,
+                10,
             )
             .await?;
 
@@ -93,6 +95,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
                     "symbol": ticker.symbol,
                 }),
                 true,
+                60,
             )
             .await?;
 
@@ -131,6 +134,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
                     "symbol": ticker.symbol,
                 }),
                 false,
+                60,
             )
             .await?;
 
@@ -179,7 +183,7 @@ mod tests {
         let ticker = Ticker::from_str("000001").unwrap();
         let detail = fetch_stock_detail(&ticker).await.unwrap();
 
-        assert_eq!(detail.title, "中国平安");
+        assert_eq!(detail.title, "平安银行");
     }
 
     #[tokio::test]

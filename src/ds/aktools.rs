@@ -17,6 +17,7 @@ pub async fn call_public_api(
     path: &str,
     params: &serde_json::Value,
     stable: bool,
+    request_delay_secs: u64,
 ) -> VfResult<serde_json::Value> {
     let api_url = join_url(
         std::env::var("AKTOOLS_API")
@@ -49,8 +50,11 @@ pub async fn call_public_api(
             }
         }
 
+        if request_delay_secs > 0 {
+            sleep(tokio::time::Duration::from_secs(request_delay_secs)).await;
+        }
+
         let bytes = http_get(&api_url, Some(path), &query, &HashMap::new(), 3).await?;
-        sleep(tokio::time::Duration::from_secs(1)).await;
 
         let now = Local::now();
         let expire = if stable {
