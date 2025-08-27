@@ -124,6 +124,7 @@ impl BacktestCommand {
                 let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
+                    "Final Day".to_string(),
                     "Trade Days".to_string(),
                     "Profit".to_string(),
                     "ARR".to_string(),
@@ -146,6 +147,10 @@ impl BacktestCommand {
                             BacktestEvent::Result(fund_result) => {
                                 table_data.push(vec![
                                     fund_name.to_string(),
+                                    fund_result
+                                        .final_trade_date
+                                        .map(|v| utils::datetime::date_to_str(&v))
+                                        .unwrap_or("-".to_string()),
                                     format!("{}", fund_result.trade_days),
                                     format!("{:.2}", fund_result.profit),
                                     fund_result

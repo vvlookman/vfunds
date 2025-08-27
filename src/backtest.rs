@@ -49,6 +49,7 @@ pub struct BacktestStream {
 }
 
 pub struct BacktestResult {
+    pub final_trade_date: Option<NaiveDate>,
     pub trade_days: usize,
     pub profit: f64,
     pub annual_return_rate: Option<f64>,
@@ -177,6 +178,7 @@ pub async fn backtest_fund(
                 }
             }
 
+            let final_trade_date = trade_date_values.last().map(|(d, _)| *d);
             let final_cash = trade_date_values
                 .last()
                 .map(|(_, v)| *v)
@@ -190,6 +192,7 @@ pub async fn backtest_fund(
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
             Ok(BacktestResult {
+                final_trade_date,
                 trade_days: trade_date_values.len(),
                 profit,
                 annual_return_rate,
