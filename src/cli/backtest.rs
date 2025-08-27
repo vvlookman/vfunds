@@ -92,7 +92,7 @@ impl BacktestCommand {
         let options = BacktestOptions {
             init_cash: self.init_cash,
             start_date: self.start_date,
-            end_date: self.end_date.unwrap_or(Local::now().naive_local().into()),
+            end_date: self.end_date.unwrap_or(Local::now().date_naive()),
             risk_free_rate: self.risk_free_rate,
             stamp_duty_rate: self.stamp_duty_rate,
             stamp_duty_min_fee: self.stamp_duty_min_fee,

@@ -8,7 +8,7 @@ use crate::{
     error::*,
     financial::{
         Portfolio,
-        stock::{StockField, fetch_stock_daily_backward_adjusted_price},
+        stock::{StockAdjust, StockField, fetch_stock_daily_price},
     },
     rule::Rule,
     spec::{Frequency, FundDefinition},
@@ -163,9 +163,10 @@ pub async fn backtest_fund(
                 let tickers = context.fund_definition.all_tickers(&date).await?;
                 for ticker in tickers {
                     // Check if today is trade date
-                    let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
+                    let stock_daily =
+                        fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
                     if stock_daily
-                        .get_value::<f64>(&date, &StockField::Price.to_string())
+                        .get_value::<f64>(&date, &StockField::PriceClose.to_string())
                         .is_some()
                     {
                         let total_value = context.calc_total_value(&date).await?;
@@ -218,9 +219,9 @@ impl BacktestContext<'_> {
         for (ticker_str, units) in &self.portfolio.positions {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
+            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
             if let Some(price) =
-                stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
             {
                 let value = *units as f64 * price;
                 let fee = calc_sell_fee(value, self.options);

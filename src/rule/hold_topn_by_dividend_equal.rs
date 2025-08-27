@@ -1,16 +1,14 @@
 use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
-use log::debug;
+use chrono::{Datelike, Duration, NaiveDate};
 use tokio::sync::mpsc::Sender;
 
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
     financial::stock::{
-        StockField, fetch_stock_daily_backward_adjusted_price, fetch_stock_daily_indicators,
-        fetch_stock_detail,
+        StockAdjust, StockField, fetch_stock_daily_price, fetch_stock_detail, fetch_stock_dividends,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -40,11 +38,6 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let indicator = self
-                .options
-                .get("indicator")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default();
             let sort = self
                 .options
                 .get("sort")
@@ -59,17 +52,34 @@ impl RuleExecutor for Executor {
 
             let date_str = utils::datetime::date_to_str(date);
 
-            let indicator_field = StockField::from_str(indicator)?;
+            let date_ttm_from = date.with_year(date.year() - 1).unwrap() + Duration::days(1);
+
             let mut stocks_indicator: Vec<(String, f64)> = vec![];
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
 
-                let stock_daily = fetch_stock_daily_indicators(&ticker).await?;
-                if let Some(val) =
-                    stock_daily.get_latest_value::<f64>(date, &indicator_field.to_string())
+                let daily_price = fetch_stock_daily_price(&ticker, StockAdjust::No).await?;
+                let dividends = fetch_stock_dividends(&ticker).await?;
+                let dividend_ratios = dividends.get_values::<f64>(
+                    &date_ttm_from,
+                    date,
+                    &StockField::DividendRatio.to_string(),
+                );
+
+                let mut dividend = 0.0;
+                for (dividend_date, dividend_ratio) in dividend_ratios {
+                    if let Some(price) = daily_price
+                        .get_latest_value::<f64>(&dividend_date, &StockField::PriceClose.to_string())
+                    {
+                        dividend += price * dividend_ratio;
+                    }
+                }
+
+                if let Some(price) =
+                    daily_price.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                 {
-                    stocks_indicator.push((ticker_str, val));
-                    debug!("[{indicator}][{date_str}] {ticker} = {val}");
+                    let indicator = dividend / price;
+                    stocks_indicator.push((ticker_str, indicator));
                 }
             }
 
@@ -107,9 +117,10 @@ impl RuleExecutor for Executor {
                 if !selected_tickers.contains(ticker_str) {
                     let ticker = Ticker::from_str(ticker_str)?;
 
-                    let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
+                    let stock_daily =
+                        fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
                     if let Some(price) =
-                        stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                        stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                     {
                         let sell_units =
                             *(context.portfolio.positions.get(ticker_str).unwrap_or(&0)) as f64;
@@ -137,9 +148,9 @@ impl RuleExecutor for Executor {
             for ticker_str in &selected_tickers {
                 let ticker = Ticker::from_str(ticker_str)?;
 
-                let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
+                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
                 if let Some(price) =
-                    stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                    stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                 {
                     let holding_units = context.portfolio.positions.get(ticker_str).unwrap_or(&0);
                     let mut holding_value = *holding_units as f64 * price;

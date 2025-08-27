@@ -184,4 +184,50 @@ impl DailyDataset {
 
         None
     }
+
+    pub fn get_values<T: NumCast>(
+        &self,
+        date_from: &NaiveDate,
+        date_to: &NaiveDate,
+        field_name: &str,
+    ) -> Vec<(NaiveDate, T)> {
+        if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            if let Ok(df) = self
+                .df
+                .clone()
+                .lazy()
+                .filter(
+                    col(&self.date_field_name)
+                        .gt_eq(lit(*date_from))
+                        .lt_eq(lit(*date_to)),
+                )
+                .collect()
+            {
+                let mut vals = vec![];
+
+                if let (Some(idx_date), Some(idx_val)) = (
+                    df.get_column_index(&self.date_field_name),
+                    df.get_column_index(origin_field_name),
+                ) {
+                    for row in df.iter() {
+                        if let (Ok(col_date), Ok(col_val)) = (row.get(idx_date), row.get(idx_val)) {
+                            if let (Some(date_days_after_epoch), Some(val)) =
+                                (col_date.extract::<i32>(), col_val.extract::<T>())
+                            {
+                                if let Some(date) = utils::datetime::date_from_days_after_epoch(
+                                    date_days_after_epoch,
+                                ) {
+                                    vals.push((date, val));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return vals;
+            }
+        }
+
+        vec![]
+    }
 }

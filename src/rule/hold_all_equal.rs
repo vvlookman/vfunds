@@ -7,7 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::stock::{StockField, fetch_stock_daily_backward_adjusted_price, fetch_stock_detail},
+    financial::stock::{StockAdjust, StockField, fetch_stock_daily_price, fetch_stock_detail},
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     utils,
 };
@@ -42,9 +42,9 @@ impl RuleExecutor for Executor {
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
 
-                let stock_daily = fetch_stock_daily_backward_adjusted_price(&ticker).await?;
+                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
                 if let Some(price) =
-                    stock_daily.get_latest_value::<f64>(date, &StockField::Price.to_string())
+                    stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                 {
                     let holding_units = context.portfolio.positions.get(&ticker_str).unwrap_or(&0);
                     let mut holding_value = *holding_units as f64 * price;
