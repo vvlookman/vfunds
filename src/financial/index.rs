@@ -14,6 +14,7 @@ pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<V
         }),
         true,
         10,
+        None,
     )
     .await?;
 

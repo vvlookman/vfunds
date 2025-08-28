@@ -45,6 +45,7 @@ pub async fn fetch_stock_daily_price(
                 }),
                 false,
                 10,
+                None,
             )
             .await?;
 
@@ -71,6 +72,7 @@ pub async fn fetch_stock_daily_price(
                 }),
                 false,
                 10,
+                None,
             )
             .await?;
 
@@ -95,7 +97,8 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
                     "symbol": ticker.symbol,
                 }),
                 true,
-                60,
+                10,
+                Some("https://www.eastmoney.com"),
             )
             .await?;
 
@@ -134,7 +137,8 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
                     "symbol": ticker.symbol,
                 }),
                 false,
-                60,
+                10,
+                Some("https://www.eastmoney.com"),
             )
             .await?;
 
