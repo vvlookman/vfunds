@@ -165,7 +165,7 @@ pub async fn backtest_fund(
                 for ticker in tickers {
                     // Check if today is trade date
                     let stock_daily =
-                        fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+                        fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
                     if stock_daily
                         .get_value::<f64>(&date, &StockField::PriceClose.to_string())
                         .is_some()
@@ -222,7 +222,7 @@ impl BacktestContext<'_> {
         for (ticker_str, units) in &self.portfolio.positions {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
             if let Some(price) =
                 stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
             {

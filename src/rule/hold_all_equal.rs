@@ -42,7 +42,7 @@ impl RuleExecutor for Executor {
             for ticker in tickers {
                 let ticker_str = ticker.to_string();
 
-                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
                 if let Some(price) =
                     stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                 {

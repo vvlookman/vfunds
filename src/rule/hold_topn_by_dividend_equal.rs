@@ -68,9 +68,10 @@ impl RuleExecutor for Executor {
 
                 let mut dividend = 0.0;
                 for (dividend_date, dividend_ratio) in dividend_ratios {
-                    if let Some(price) = daily_price
-                        .get_latest_value::<f64>(&dividend_date, &StockField::PriceClose.to_string())
-                    {
+                    if let Some(price) = daily_price.get_latest_value::<f64>(
+                        &dividend_date,
+                        &StockField::PriceClose.to_string(),
+                    ) {
                         dividend += price * dividend_ratio;
                     }
                 }
@@ -118,9 +119,9 @@ impl RuleExecutor for Executor {
                     let ticker = Ticker::from_str(ticker_str)?;
 
                     let stock_daily =
-                        fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
-                    if let Some(price) =
-                        stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
+                        fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
+                    if let Some(price) = stock_daily
+                        .get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                     {
                         let sell_units =
                             *(context.portfolio.positions.get(ticker_str).unwrap_or(&0)) as f64;
@@ -148,7 +149,7 @@ impl RuleExecutor for Executor {
             for ticker_str in &selected_tickers {
                 let ticker = Ticker::from_str(ticker_str)?;
 
-                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
                 if let Some(price) =
                     stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
                 {

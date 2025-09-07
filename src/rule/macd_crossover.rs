@@ -79,7 +79,7 @@ impl RuleExecutor for Executor {
         for (ticker_str, units) in context.portfolio.positions.clone() {
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::PriceClose.to_string(),
@@ -143,7 +143,7 @@ impl RuleExecutor for Executor {
 
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Backward).await?;
+            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
             let latest_prices = stock_daily.get_latest_values::<f64>(
                 date,
                 &StockField::PriceClose.to_string(),
