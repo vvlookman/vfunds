@@ -1,36 +1,26 @@
 use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
-use fake_user_agent::get_rua;
 use log::debug;
-use rand::Rng;
 use serde_json::Value;
-use tokio::time::sleep;
 
 use crate::{
     cache,
     error::VfResult,
-    utils::{
-        compress,
-        net::{http_get, join_url},
-    },
+    utils::{compress, net::http_get},
 };
 
 pub async fn call_api(
     path: &str,
     params: &serde_json::Value,
     stable: bool,
-    request_delay_secs: u64,
-    request_referer: Option<&str>,
 ) -> VfResult<serde_json::Value> {
-    let api_url = join_url(
-        std::env::var("AKTOOLS_API")
-            .as_deref()
-            .unwrap_or("http://127.0.0.1:8080"),
-        "/api/public",
-    )?;
+    let api_url = std::env::var("QMT_API")
+        .as_deref()
+        .unwrap_or("http://192.168.0.222:9000")
+        .to_string();
 
-    let cache_key = format!("aktools:{path}?{params}");
+    let cache_key = format!("qmt:{path}?{params}");
 
     let bytes = if let Some(data) = cache::get(&cache_key).await? {
         compress::decode(&data)?
@@ -54,21 +44,7 @@ pub async fn call_api(
             }
         }
 
-        if request_delay_secs > 0 {
-            let secs = ((request_delay_secs as f64) * rand::rng().random_range(0.67..=1.33)) as u64;
-            sleep(tokio::time::Duration::from_secs(secs)).await;
-        }
-
-        let mut headers: HashMap<String, String> = HashMap::new();
-        headers.insert(
-            reqwest::header::USER_AGENT.to_string(),
-            get_rua().to_string(),
-        );
-
-        if let Some(referer) = request_referer {
-            headers.insert(reqwest::header::REFERER.to_string(), referer.to_string());
-        }
-
+        let headers: HashMap<String, String> = HashMap::new();
         let bytes = http_get(&api_url, Some(path), &query, &headers, 3).await?;
         debug!(
             "[HTTP OK] {api_url}/{path}?{}",

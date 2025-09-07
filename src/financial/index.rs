@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::{ds::aktools, error::VfResult, ticker::Ticker};
 
 pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-    let json = aktools::call_public_api(
+    let json = aktools::call_api(
         "/index_detail_cni",
         &json!({
             "symbol": symbol,

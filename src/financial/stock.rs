@@ -37,7 +37,7 @@ pub async fn fetch_stock_daily_price(
                 StockAdjust::Forward => "qfq",
             };
 
-            let json = aktools::call_public_api(
+            let json = aktools::call_api(
                 "/stock_zh_a_hist",
                 &json!({
                     "symbol": ticker.symbol,
@@ -64,7 +64,7 @@ pub async fn fetch_stock_daily_price(
                 StockAdjust::Forward => "qfq",
             };
 
-            let json = aktools::call_public_api(
+            let json = aktools::call_api(
                 "/stock_hk_hist",
                 &json!({
                     "symbol": ticker.symbol,
@@ -91,7 +91,7 @@ pub async fn fetch_stock_daily_price(
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     match ticker.exchange.as_str() {
         "SSE" | "SZSE" => {
-            let json = aktools::call_public_api(
+            let json = aktools::call_api(
                 "/stock_individual_info_em",
                 &json!({
                     "symbol": ticker.symbol,
@@ -131,7 +131,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
 pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
     match ticker.exchange.as_str() {
         "SSE" | "SZSE" => {
-            let json = aktools::call_public_api(
+            let json = aktools::call_api(
                 "/stock_fhps_detail_em",
                 &json!({
                     "symbol": ticker.symbol,
