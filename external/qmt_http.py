@@ -15,6 +15,13 @@ def df_to_json(df):
     return df.to_dict(orient="records")
 
 
+@app.get("/detail/{stock}")
+def detail(stock: str):
+    data = xtdata.get_instrument_detail(stock_code=stock)
+
+    return data
+
+
 @app.get("/dividend/{stock}")
 def dividend(stock: str):
     df = xtdata.get_divid_factors(stock_code=stock)
