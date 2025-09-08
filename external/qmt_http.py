@@ -14,10 +14,18 @@ def df_to_json(df):
     return df.to_dict(orient="records")
 
 
+@app.get("/dividend/{stock}")
+def dividend(stock: str):
+    df = xtdata.get_divid_factors(stock_code=stock)
+
+    return df_to_json(df)
+
+
 @app.get("/kline/{stock}")
 def kline(stock: str, period: str = '1d', dividend_type: str = 'front_ratio'):
     xtdata.download_history_data2(stock, period, incrementally=True)
-    data = xtdata.get_market_data(stock_list=[stock], dividend_type=dividend_type)
+    data = xtdata.get_market_data(
+        stock_list=[stock], dividend_type=dividend_type)
 
     df = pd.concat([df.T for df in data.values()], axis=1)
     df.columns = data.keys()
