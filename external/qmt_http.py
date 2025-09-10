@@ -25,10 +25,20 @@ def detail(stock: str):
 @app.get("/dividend/{stock}")
 def dividend(stock: str):
     df = xtdata.get_divid_factors(stock_code=stock)
-    df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
-        'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
+
+    if 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
+            'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
 
     return df_to_json(df)
+
+
+@app.get("/index_weight/{index}")
+def index_weight(index: str):
+    xtdata.download_index_weight()
+    data = xtdata.get_index_weight(index_code=index)
+
+    return data
 
 
 @app.get("/kline/{stock}")
@@ -39,8 +49,10 @@ def kline(stock: str, period: str = '1d', dividend_type: str = 'front_ratio'):
 
     df = pd.concat([df.T for df in data.values()], axis=1)
     df.columns = data.keys()
-    df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
-        'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
+
+    if 'time' in df.columns:
+        df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
+            'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
 
     return df_to_json(df)
 
@@ -50,11 +62,16 @@ def report(stock: str, table: str = 'PershareIndex'):
     xtdata.download_financial_data2(stock_list=[stock], table_list=[table])
     data = xtdata.get_financial_data(stock_list=[stock], table_list=[table])
 
-    df = data[stock][table]
-    df['date'] = df['m_anntime'].str.replace(
-        r'(\d{4})(\d{2})(\d{2})', r'\1-\2-\3', regex=True)
+    if stock in data and table in data[stock]:
+        df = data[stock][table]
 
-    return df_to_json(df)
+        if 'm_anntime' in df.columns:
+            df['date'] = df['m_anntime'].str.replace(
+                r'(\d{4})(\d{2})(\d{2})', r'\1-\2-\3', regex=True)
+
+        return df_to_json(df)
+    else:
+        return []
 
 
 @app.get("/")
