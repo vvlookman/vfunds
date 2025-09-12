@@ -70,6 +70,17 @@ impl Display for Ticker {
     }
 }
 
+impl Ticker {
+    pub fn to_qmt_code(&self) -> String {
+        match self.exchange.to_uppercase().as_str() {
+            "SSE" => format!("{}.SH", self.symbol),
+            "SZSE" => format!("{}.SZ", self.symbol),
+            "HKEX" => format!("{}.HK", self.symbol),
+            _ => format!("{}.{}", self.symbol, self.exchange),
+        }
+    }
+}
+
 impl FromStr for TickersSource {
     type Err = VfError;
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {

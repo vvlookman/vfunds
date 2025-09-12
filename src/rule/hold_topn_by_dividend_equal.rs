@@ -2,13 +2,15 @@ use std::{cmp::Ordering, collections::HashMap, str::FromStr};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate};
-use tokio::sync::mpsc::Sender;
+use log::debug;
+use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
     financial::stock::{
-        StockAdjust, StockField, fetch_stock_daily_price, fetch_stock_detail, fetch_stock_dividends,
+        StockDividendAdjust, StockDividendField, StockKlineField, fetch_stock_detail,
+        fetch_stock_dividends, fetch_stock_kline,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -49,55 +51,83 @@ impl RuleExecutor for Executor {
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(10);
+            let continuous_years = self
+                .options
+                .get("continuous_years")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(3);
 
             let date_str = utils::datetime::date_to_str(date);
-
             let date_ttm_from = date.with_year(date.year() - 1).unwrap() + Duration::days(1);
+            let date_years_from = date
+                .with_year(date.year() - continuous_years as i32)
+                .unwrap()
+                + Duration::days(1);
 
-            let mut stocks_indicator: Vec<(String, f64)> = vec![];
-            for ticker in tickers {
+            let mut last_time = Instant::now();
+            let mut calc_count: usize = 0;
+            let mut indicators: Vec<(String, f64)> = vec![];
+            for ticker in &tickers {
                 let ticker_str = ticker.to_string();
 
-                let daily_price = fetch_stock_daily_price(&ticker, StockAdjust::No).await?;
-                let dividends = fetch_stock_dividends(&ticker).await?;
-                let dividend_ratios = dividends.get_values::<f64>(
-                    &date_ttm_from,
-                    date,
-                    &StockField::DividendRatio.to_string(),
-                );
+                let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
+                if let Some(price) =
+                    kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+                {
+                    let dividends = fetch_stock_dividends(ticker).await?;
 
-                let mut dividend = 0.0;
-                for (dividend_date, dividend_ratio) in dividend_ratios {
-                    if let Some(price) = daily_price.get_latest_value::<f64>(
-                        &dividend_date,
-                        &StockField::PriceClose.to_string(),
-                    ) {
-                        dividend += price * dividend_ratio;
+                    let ttm_interests = dividends.get_values::<f64>(
+                        &date_ttm_from,
+                        date,
+                        &StockDividendField::Interest.to_string(),
+                    );
+                    let ttm_interest_sum = ttm_interests.iter().map(|x| x.1).sum::<f64>();
+
+                    let years_interests = dividends.get_values::<f64>(
+                        &date_years_from,
+                        date,
+                        &StockDividendField::Interest.to_string(),
+                    );
+
+                    if ttm_interest_sum > 0.0
+                        && price > 0.0
+                        && years_interests.len() as u64 >= continuous_years
+                    {
+                        let indicator = ttm_interest_sum / price;
+                        debug!("[{date_str}] {ticker_str} = {indicator:.4}");
+
+                        indicators.push((ticker_str, indicator));
                     }
                 }
 
-                if let Some(price) =
-                    daily_price.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
-                {
-                    let indicator = dividend / price;
-                    stocks_indicator.push((ticker_str, indicator));
+                calc_count += 1;
+
+                if last_time.elapsed().as_secs() > 5 {
+                    let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
+                    let _ = event_sender
+                        .send(BacktestEvent::Info(format!(
+                            "[{date_str}] {calc_progress_pct:.2}% ..."
+                        )))
+                        .await;
+
+                    last_time = Instant::now();
                 }
             }
 
             match sort.as_str() {
-                "desc" => stocks_indicator
-                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal)),
-                _ => stocks_indicator
-                    .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)),
+                "desc" => {
+                    indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal))
+                }
+                _ => indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)),
             };
 
             {
                 let mut top_tickers_str = String::from("");
-                for (ticker_str, indicator) in stocks_indicator.iter().take(2 * limit as usize) {
+                for (ticker_str, indicator) in indicators.iter().take(2 * limit as usize) {
                     let ticker = Ticker::from_str(ticker_str)?;
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
-                    top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.2} "));
+                    top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.4} "));
                 }
 
                 let _ = event_sender
@@ -107,7 +137,7 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let selected_tickers: Vec<_> = stocks_indicator
+            let selected_tickers: Vec<_> = indicators
                 .iter()
                 .take(limit as usize)
                 .map(|x| x.0.to_string())
@@ -118,10 +148,10 @@ impl RuleExecutor for Executor {
                 if !selected_tickers.contains(ticker_str) {
                     let ticker = Ticker::from_str(ticker_str)?;
 
-                    let stock_daily =
-                        fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
-                    if let Some(price) = stock_daily
-                        .get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
+                    let kline =
+                        fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+                    if let Some(price) =
+                        kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
                     {
                         let sell_units =
                             *(context.portfolio.positions.get(ticker_str).unwrap_or(&0)) as f64;
@@ -149,9 +179,9 @@ impl RuleExecutor for Executor {
             for ticker_str in &selected_tickers {
                 let ticker = Ticker::from_str(ticker_str)?;
 
-                let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
+                let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
                 if let Some(price) =
-                    stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
+                    kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
                 {
                     let holding_units = context.portfolio.positions.get(ticker_str).unwrap_or(&0);
                     let mut holding_value = *holding_units as f64 * price;

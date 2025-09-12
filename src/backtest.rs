@@ -1,6 +1,7 @@
 use std::{collections::HashMap, str::FromStr};
 
 use chrono::NaiveDate;
+use log::debug;
 use tokio::sync::{mpsc, mpsc::Receiver};
 
 use crate::{
@@ -8,13 +9,16 @@ use crate::{
     error::*,
     financial::{
         Portfolio,
-        stock::{StockAdjust, StockField, fetch_stock_daily_price},
+        stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
     },
     rule::Rule,
     spec::{Frequency, FundDefinition},
     ticker::Ticker,
-    utils::financial::{
-        calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+    utils::{
+        datetime,
+        financial::{
+            calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+        },
     },
 };
 
@@ -161,20 +165,20 @@ pub async fn backtest_fund(
                     rule_executed_date.insert(rule_index, date);
                 }
 
-                let tickers = context.fund_definition.all_tickers(&date).await?;
-                for ticker in tickers {
-                    // Check if today is trade date
-                    let stock_daily =
-                        fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
-                    if stock_daily
-                        .get_value::<f64>(&date, &StockField::PriceClose.to_string())
-                        .is_some()
-                    {
-                        let total_value = context.calc_total_value(&date).await?;
-                        trade_date_values.push((date, total_value));
+                // Calculate trade day values
+                let bench_ticker = Ticker::from_str("SSE:000300")?;
+                let bench_kline =
+                    fetch_stock_kline(&bench_ticker, StockDividendAdjust::ForwardProp).await?;
+                if bench_kline
+                    .get_value::<f64>(&date, &StockKlineField::Close.to_string())
+                    .is_some()
+                {
+                    let total_value = context.calc_total_value(&date).await?;
+                    trade_date_values.push((date, total_value));
 
-                        break;
-                    }
+                    debug!("[{}] ✔", datetime::date_to_str(&date));
+                } else {
+                    debug!("[{}] ○", datetime::date_to_str(&date));
                 }
             }
 
@@ -222,9 +226,9 @@ impl BacktestContext<'_> {
         for (ticker_str, units) in &self.portfolio.positions {
             let ticker = Ticker::from_str(ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
+            let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             if let Some(price) =
-                stock_daily.get_latest_value::<f64>(date, &StockField::PriceClose.to_string())
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
             {
                 let value = *units as f64 * price;
                 let fee = calc_sell_fee(value, self.options);

@@ -199,20 +199,20 @@ impl DailyDataset {
                 .filter(
                     col(&self.date_field_name)
                         .gt_eq(lit(*date_from))
-                        .lt_eq(lit(*date_to)),
+                        .and(col(&self.date_field_name).lt_eq(lit(*date_to))),
                 )
                 .collect()
             {
                 let mut vals = vec![];
 
-                if let (Some(idx_date), Some(idx_val)) = (
-                    df.get_column_index(&self.date_field_name),
-                    df.get_column_index(origin_field_name),
+                if let (Ok(col_date), Ok(col_val)) = (
+                    df.column(&self.date_field_name),
+                    df.column(origin_field_name),
                 ) {
-                    for row in df.iter() {
-                        if let (Ok(col_date), Ok(col_val)) = (row.get(idx_date), row.get(idx_val)) {
+                    for i in 0..col_date.len() {
+                        if let (Ok(cell_date), Ok(cell_val)) = (col_date.get(i), col_val.get(i)) {
                             if let (Some(date_days_after_epoch), Some(val)) =
-                                (col_date.extract::<i32>(), col_val.extract::<T>())
+                                (cell_date.extract::<i32>(), cell_val.extract::<T>())
                             {
                                 if let Some(date) = utils::datetime::date_from_days_after_epoch(
                                     date_days_after_epoch,

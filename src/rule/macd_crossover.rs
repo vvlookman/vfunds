@@ -7,7 +7,9 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
-    financial::stock::{StockAdjust, StockField, fetch_stock_daily_price, fetch_stock_detail},
+    financial::stock::{
+        StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
+    },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
     utils,
@@ -79,10 +81,10 @@ impl RuleExecutor for Executor {
         for (ticker_str, units) in context.portfolio.positions.clone() {
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
-            let latest_prices = stock_daily.get_latest_values::<f64>(
+            let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+            let latest_prices = kline.get_latest_values::<f64>(
                 date,
-                &StockField::PriceClose.to_string(),
+                &StockKlineField::Close.to_string(),
                 macd_period_slow + macd_period_signal + macd_slope_window,
             );
             let macds = utils::financial::calc_macd(
@@ -143,10 +145,10 @@ impl RuleExecutor for Executor {
 
             let ticker = Ticker::from_str(&ticker_str)?;
 
-            let stock_daily = fetch_stock_daily_price(&ticker, StockAdjust::Forward).await?;
-            let latest_prices = stock_daily.get_latest_values::<f64>(
+            let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+            let latest_prices = kline.get_latest_values::<f64>(
                 date,
-                &StockField::PriceClose.to_string(),
+                &StockKlineField::Close.to_string(),
                 macd_period_slow + macd_period_signal + macd_slope_window,
             );
             let macds = utils::financial::calc_macd(

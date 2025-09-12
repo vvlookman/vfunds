@@ -1,161 +1,134 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
+use dashmap::DashMap;
 use serde_json::json;
 
-use crate::{data::daily::*, ds::aktools, error::*, ticker::Ticker};
+use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker};
 
-#[allow(dead_code)]
-pub enum StockAdjust {
-    No,
-    Backward,
-    Forward,
-}
-
+#[derive(Clone)]
 pub struct StockDetail {
     pub title: String,
 }
 
 #[derive(strum::Display, strum::EnumString)]
-#[strum(ascii_case_insensitive)]
-pub enum StockField {
-    DividendRatio,
-    PriceOpen,
-    PriceClose,
-    PriceHigh,
-    PriceLow,
+#[allow(dead_code)]
+pub enum StockDividendAdjust {
+    Backward,
+    BackwardProp,
+    Forward,
+    ForwardProp,
+    No,
 }
 
-pub async fn fetch_stock_daily_price(
-    ticker: &Ticker,
-    adjust: StockAdjust,
-) -> VfResult<DailyDataset> {
-    match ticker.exchange.as_str() {
-        "SSE" | "SZSE" => {
-            let adjust_param = match adjust {
-                StockAdjust::No => "",
-                StockAdjust::Backward => "hfq",
-                StockAdjust::Forward => "qfq",
-            };
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockDividendField {
+    Interest,
+    PriceAdjustmentFactor,
+}
 
-            let json = aktools::call_api(
-                "/stock_zh_a_hist",
-                &json!({
-                    "symbol": ticker.symbol,
-                    "adjust": adjust_param,
-                }),
-                false,
-                10,
-                None,
-            )
-            .await?;
-
-            let mut value_field_names: HashMap<String, String> = HashMap::new();
-            value_field_names.insert(StockField::PriceOpen.to_string(), "开盘".to_string());
-            value_field_names.insert(StockField::PriceClose.to_string(), "收盘".to_string());
-            value_field_names.insert(StockField::PriceHigh.to_string(), "最高".to_string());
-            value_field_names.insert(StockField::PriceLow.to_string(), "最低".to_string());
-
-            DailyDataset::from_json(&json, "日期", &value_field_names)
-        }
-        "HKEX" => {
-            let adjust_param = match adjust {
-                StockAdjust::No => "",
-                StockAdjust::Backward => "hfq",
-                StockAdjust::Forward => "qfq",
-            };
-
-            let json = aktools::call_api(
-                "/stock_hk_hist",
-                &json!({
-                    "symbol": ticker.symbol,
-                    "adjust": adjust_param,
-                }),
-                false,
-                10,
-                None,
-            )
-            .await?;
-
-            let mut value_field_names: HashMap<String, String> = HashMap::new();
-            value_field_names.insert(StockField::PriceClose.to_string(), "收盘".to_string());
-
-            DailyDataset::from_json(&json, "日期", &value_field_names)
-        }
-        _ => Err(VfError::Invalid(
-            "UNSUPPORTED_EXCHANGE",
-            format!("Unsupported exchange '{}'", ticker.exchange),
-        )),
-    }
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockKlineField {
+    Open,
+    Close,
+    High,
+    Low,
 }
 
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
-    match ticker.exchange.as_str() {
-        "SSE" | "SZSE" => {
-            let json = aktools::call_api(
-                "/stock_individual_info_em",
-                &json!({
-                    "symbol": ticker.symbol,
-                }),
-                true,
-                10,
-                Some("https://www.eastmoney.com"),
-            )
-            .await?;
-
-            if let Some(array) = json.as_array() {
-                for item in array {
-                    if item["item"].as_str() == Some("股票简称") {
-                        if let Some(value) = item["value"].as_str() {
-                            return Ok(StockDetail {
-                                title: value.to_string(),
-                            });
-                        }
-
-                        break;
-                    }
-                }
-            }
-
-            Err(VfError::NoData(
-                "NO_STOCK_DETAIL",
-                format!("Detail of stock '{ticker}' not exists"),
-            ))
-        }
-        _ => Err(VfError::Invalid(
-            "UNSUPPORTED_EXCHANGE",
-            format!("Unsupported exchange '{}'", ticker.exchange),
-        )),
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_DETAIL_CACHE.get(&cache_key) {
+        return Ok(result.clone());
     }
+
+    let json = qmt::call_api(
+        &format!("/detail/{}", ticker.to_qmt_code()),
+        &json!({}),
+        true,
+    )
+    .await?;
+
+    let title = json["InstrumentName"].as_str().unwrap_or_default();
+
+    let result = StockDetail {
+        title: title.to_string(),
+    };
+    STOCK_DETAIL_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
 }
 
 pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
-    match ticker.exchange.as_str() {
-        "SSE" | "SZSE" => {
-            let json = aktools::call_api(
-                "/stock_fhps_detail_em",
-                &json!({
-                    "symbol": ticker.symbol,
-                }),
-                false,
-                10,
-                Some("https://www.eastmoney.com"),
-            )
-            .await?;
-
-            let mut value_field_names: HashMap<String, String> = HashMap::new();
-            value_field_names.insert(
-                StockField::DividendRatio.to_string(),
-                "现金分红-股息率".to_string(),
-            );
-
-            DailyDataset::from_json(&json, "预案公告日", &value_field_names)
-        }
-        _ => Err(VfError::Invalid(
-            "UNSUPPORTED_EXCHANGE",
-            format!("Unsupported exchange '{}'", ticker.exchange),
-        )),
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_DIVIDENDS_CACHE.get(&cache_key) {
+        return Ok(result.clone());
     }
+
+    let json = qmt::call_api(
+        &format!("/dividend/{}", ticker.to_qmt_code()),
+        &json!({}),
+        true,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockDividendField::Interest.to_string(),
+        "interest".to_string(),
+    );
+    fields.insert(
+        StockDividendField::PriceAdjustmentFactor.to_string(),
+        "dr".to_string(),
+    );
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    STOCK_DIVIDENDS_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
 }
+
+pub async fn fetch_stock_kline(
+    ticker: &Ticker,
+    adjust: StockDividendAdjust,
+) -> VfResult<DailyDataset> {
+    let cache_key = format!("{ticker}/{adjust}");
+    if let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let param_dividend_type = match adjust {
+        StockDividendAdjust::Backward => "back",
+        StockDividendAdjust::BackwardProp => "back_ratio",
+        StockDividendAdjust::Forward => "front",
+        StockDividendAdjust::ForwardProp => "front_ratio",
+        StockDividendAdjust::No => "none",
+    };
+
+    let json = qmt::call_api(
+        &format!("/kline/{}", ticker.to_qmt_code()),
+        &json!({
+            "dividend_type": param_dividend_type,
+        }),
+        true,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(StockKlineField::Open.to_string(), "open".to_string());
+    fields.insert(StockKlineField::Close.to_string(), "close".to_string());
+    fields.insert(StockKlineField::High.to_string(), "high".to_string());
+    fields.insert(StockKlineField::Low.to_string(), "low".to_string());
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    STOCK_KLINE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
+static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
+static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
 
 #[cfg(test)]
 mod tests {
@@ -164,23 +137,6 @@ mod tests {
     use chrono::Local;
 
     use super::*;
-
-    #[tokio::test]
-    async fn test_fetch_stock_daily_price() {
-        let ticker = Ticker::from_str("000001").unwrap();
-        let dataset = fetch_stock_daily_price(&ticker, StockAdjust::No)
-            .await
-            .unwrap();
-
-        let data = dataset
-            .get_latest_value::<f64>(
-                &Local::now().date_naive(),
-                &StockField::PriceClose.to_string(),
-            )
-            .unwrap();
-
-        assert!(data > 0.0);
-    }
 
     #[tokio::test]
     async fn test_fetch_stock_detail() {
@@ -198,7 +154,24 @@ mod tests {
         let data = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
-                &StockField::DividendRatio.to_string(),
+                &StockDividendField::PriceAdjustmentFactor.to_string(),
+            )
+            .unwrap();
+
+        assert!(data > 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_stock_kline() {
+        let ticker = Ticker::from_str("000001").unwrap();
+        let dataset = fetch_stock_kline(&ticker, StockDividendAdjust::No)
+            .await
+            .unwrap();
+
+        let data = dataset
+            .get_latest_value::<f64>(
+                &Local::now().date_naive(),
+                &StockKlineField::Close.to_string(),
             )
             .unwrap();
 

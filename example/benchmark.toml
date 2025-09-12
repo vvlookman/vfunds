@@ -1,0 +1,7 @@
+title = "Benchmark"
+
+# All candidate tickers
+tickers = ["SSE:000300"]
+
+[[rules]]
+name = "hold_all_equal"

@@ -20,7 +20,6 @@ pub async fn call_api(
     path: &str,
     params: &serde_json::Value,
     stable: bool,
-    request_delay_secs: u64,
     request_referer: Option<&str>,
 ) -> VfResult<serde_json::Value> {
     let api_url = join_url(
@@ -54,8 +53,12 @@ pub async fn call_api(
             }
         }
 
-        if request_delay_secs > 0 {
-            let secs = ((request_delay_secs as f64) * rand::rng().random_range(0.67..=1.33)) as u64;
+        let request_delay_secs: f64 = std::env::var("QMT_DELAY")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(10.0);
+        if request_delay_secs > 0.0 {
+            let secs = (request_delay_secs * rand::rng().random_range(0.67..=1.33)) as u64;
             sleep(tokio::time::Duration::from_secs(secs)).await;
         }
 

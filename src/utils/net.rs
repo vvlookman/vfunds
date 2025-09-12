@@ -58,3 +58,16 @@ pub fn join_url(base_url: &str, extend_url: &str) -> Result<String, url::ParseEr
 
     Ok(url.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_join_url() {
+        assert_eq!(
+            join_url("http://127.0.0.1:8000/", "/hello").unwrap(),
+            "http://127.0.0.1:8000/hello"
+        );
+    }
+}

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
 use log::debug;
 use serde_json::Value;
+use tokio::time::sleep;
 
 use crate::{
     cache,
@@ -44,10 +45,18 @@ pub async fn call_api(
             }
         }
 
+        let request_delay_secs: f64 = std::env::var("QMT_DELAY")
+            .ok()
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        if request_delay_secs > 0.0 {
+            sleep(tokio::time::Duration::from_secs(request_delay_secs as u64)).await;
+        }
+
         let headers: HashMap<String, String> = HashMap::new();
         let bytes = http_get(&api_url, Some(path), &query, &headers, 3).await?;
         debug!(
-            "[HTTP OK] {api_url}/{path}?{}",
+            "[HTTP OK] {api_url}{path}?{}",
             query
                 .iter()
                 .map(|(k, v)| format!("{k}={v}"))
