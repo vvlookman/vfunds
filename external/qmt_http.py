@@ -44,17 +44,19 @@ def index_weight(index: str):
 @app.get("/kline/{stock}")
 def kline(stock: str, period: str = '1d', dividend_type: str = 'front_ratio'):
     xtdata.download_history_data2(stock, period)
-    data = xtdata.get_market_data(
+    data = xtdata.get_market_data_ex(
         stock_list=[stock], dividend_type=dividend_type)
 
-    df = pd.concat([df.T for df in data.values()], axis=1)
-    df.columns = data.keys()
+    if stock in data:
+      df = data[stock]
 
-    if 'time' in df.columns:
-        df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
-            'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
+       if 'time' in df.columns:
+            df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
+                'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
 
-    return df_to_json(df)
+        return df_to_json(df)
+    else:
+        return []
 
 
 @app.get("/report/{stock}")

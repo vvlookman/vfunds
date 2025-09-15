@@ -7,12 +7,12 @@ tickers = ["688981"]
 name = "hold_all_equal"
 
 [[rules]]
-name = "macd_crossover"
+name = "sizing_by_macd_crossover"
 frequency = "1d"
 
 [rules.options]
 macd_period_fast = 18
 macd_period_slow = 36
 macd_period_signal = 12
-macd_slope_window = 5
-rsi_perid = 21
+macd_slope_window = 7
+rsi_period = 21

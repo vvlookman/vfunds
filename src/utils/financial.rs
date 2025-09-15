@@ -77,11 +77,13 @@ pub fn calc_sharpe_ratio(daily_values: &[f64], risk_free_rate: f64) -> Option<f6
         let return_std = stats::std(&daily_return);
 
         if let (Some(return_mean), Some(return_std)) = (return_mean, return_std) {
-            let annual_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
             let annual_volatility = return_std * (TRADE_DAYS_PER_YEAR).sqrt();
-            let sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility;
+            if annual_volatility > 0.0 {
+                let annual_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
+                let sharpe_ratio = (annual_return - risk_free_rate) / annual_volatility;
 
-            return Some(sharpe_ratio);
+                return Some(sharpe_ratio);
+            }
         }
     }
 
@@ -100,11 +102,14 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
                 .collect();
             if daily_return_downside.len() > 1 {
                 if let Some(return_std_downside) = stats::std(&daily_return_downside) {
-                    let annual_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
                     let annual_volatility = return_std_downside * (TRADE_DAYS_PER_YEAR).sqrt();
-                    let sortino_ratio = (annual_return - min_acceptable_return) / annual_volatility;
+                    if annual_volatility > 0.0 {
+                        let annual_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
+                        let sortino_ratio =
+                            (annual_return - min_acceptable_return) / annual_volatility;
 
-                    return Some(sortino_ratio);
+                        return Some(sortino_ratio);
+                    }
                 }
             }
         }

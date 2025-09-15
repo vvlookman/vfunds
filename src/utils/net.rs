@@ -13,6 +13,7 @@ pub async fn http_get(
     path: Option<&str>,
     query: &HashMap<String, String>,
     headers: &HashMap<String, String>,
+    timeout_secs: u64,
     max_retries: u64,
 ) -> VfResult<Vec<u8>> {
     let request_url = if let Some(path) = path {
@@ -22,15 +23,19 @@ pub async fn http_get(
     };
 
     let retry_policy = ExponentialBackoff::builder()
-        .retry_bounds(Duration::from_secs(10), Duration::from_secs(30))
+        .retry_bounds(Duration::from_secs(1), Duration::from_secs(timeout_secs))
         .jitter(Jitter::Bounded)
         .base(2)
-        .build_with_total_retry_duration_and_max_retries(Duration::from_secs(max_retries * 30));
+        .build_with_total_retry_duration_and_max_retries(Duration::from_secs(
+            max_retries * timeout_secs,
+        ));
     let client = ClientBuilder::new(reqwest::Client::new())
         .with(RetryTransientMiddleware::new_with_policy(retry_policy))
         .build();
 
-    let mut request_builder = client.request(Method::GET, request_url);
+    let mut request_builder = client
+        .request(Method::GET, request_url)
+        .timeout(Duration::from_secs(timeout_secs));
     request_builder = request_builder.query(query);
 
     for (k, v) in headers {

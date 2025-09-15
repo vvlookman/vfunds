@@ -4,7 +4,7 @@ title = "A virtual fund that hold top N stocks by dividend each year"
 tickers_sources = ["cnindex:399312"]
 
 [[rules]]
-name = "hold_topn_by_dividend_equal"
+name = "hold_dividend_topn_equal"
 frequency = "1y"
 
 [rules.options]

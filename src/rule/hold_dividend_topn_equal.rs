@@ -69,6 +69,7 @@ impl RuleExecutor for Executor {
             let mut indicators: Vec<(String, f64)> = vec![];
             for ticker in &tickers {
                 let ticker_str = ticker.to_string();
+                debug!("[{date_str}] {ticker_str}");
 
                 let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                 if let Some(price) =
@@ -106,7 +107,7 @@ impl RuleExecutor for Executor {
                     let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] {calc_progress_pct:.2}% ..."
+                            "[{date_str}] Σ {calc_progress_pct:.2}% ..."
                         )))
                         .await;
 

@@ -72,7 +72,7 @@ pub async fn call_api(
             headers.insert(reqwest::header::REFERER.to_string(), referer.to_string());
         }
 
-        let bytes = http_get(&api_url, Some(path), &query, &headers, 3).await?;
+        let bytes = http_get(&api_url, Some(path), &query, &headers, 30, 3).await?;
         debug!(
             "[HTTP OK] {api_url}/{path}?{}",
             query
