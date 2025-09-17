@@ -51,6 +51,13 @@ pub struct BacktestCommand {
     funds: Vec<String>,
 
     #[arg(
+        short = 'b',
+        long = "benchmark",
+        help = "Benchmark ticket, e.g. -b 510300"
+    )]
+    benchmark: Option<String>,
+
+    #[arg(
         short = 'r',
         long = "risk-free",
         default_value_t = 0.02,
@@ -93,6 +100,7 @@ impl BacktestCommand {
             init_cash: self.init_cash,
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().date_naive()),
+            benchmark: self.benchmark.clone(),
             risk_free_rate: self.risk_free_rate,
             stamp_duty_rate: self.stamp_duty_rate,
             stamp_duty_min_fee: self.stamp_duty_min_fee,
@@ -123,7 +131,7 @@ impl BacktestCommand {
             Ok(streams) => {
                 let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
-                    "".to_string(),
+                    utils::datetime::date_to_str(&self.start_date),
                     "Final Day".to_string(),
                     "Trade Days".to_string(),
                     "Profit".to_string(),

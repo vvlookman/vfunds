@@ -8,8 +8,8 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::{
-    cache,
-    error::VfResult,
+    CACHE_ONLY, cache,
+    error::{VfError, VfResult},
     utils::{
         compress,
         net::{http_get, join_url},
@@ -19,7 +19,7 @@ use crate::{
 pub async fn call_api(
     path: &str,
     params: &serde_json::Value,
-    stable: bool,
+    expire_days: Option<i64>,
     request_referer: Option<&str>,
 ) -> VfResult<serde_json::Value> {
     let api_url = join_url(
@@ -34,6 +34,13 @@ pub async fn call_api(
     let bytes = if let Some(data) = cache::get(&cache_key).await? {
         compress::decode(&data)?
     } else {
+        if *CACHE_ONLY {
+            return Err(VfError::NoData(
+                "NO_CACHE_DATA",
+                format!("Cache with key '{cache_key}' not exists"),
+            ));
+        }
+
         let mut query = HashMap::new();
         if let Some(params) = params.as_object() {
             for (k, v) in params.iter() {
@@ -83,11 +90,11 @@ pub async fn call_api(
         );
 
         let now = Local::now();
-        let expire = if stable {
-            (now + Duration::days(30)).naive_local()
+        let expire = if let Some(expire_days) = expire_days {
+            (now + Duration::days(expire_days)).naive_local()
         } else {
             if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
-                let today = now.date_naive();
+                let today = now.naive_local().date();
                 let today_close = today.and_time(market_close_time);
 
                 if now.time() < today_close.time() {

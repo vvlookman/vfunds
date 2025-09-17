@@ -18,16 +18,12 @@ use crate::{
 pub struct Executor {
     #[allow(dead_code)]
     options: HashMap<String, serde_json::Value>,
-
-    re_entry_cash: HashMap<String, f64>,
 }
 
 impl Executor {
     pub fn new(definition: &RuleDefinition) -> Self {
         Self {
             options: definition.options.clone(),
-
-            re_entry_cash: HashMap::new(),
         }
     }
 }
@@ -105,7 +101,7 @@ impl RuleExecutor for Executor {
                     .collect();
                 let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
-                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi > rsi_low {
+                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender
@@ -121,8 +117,9 @@ impl RuleExecutor for Executor {
 
                         context.portfolio.cash += cash;
                         context.portfolio.positions.remove(&ticker_str);
-
-                        self.re_entry_cash
+                        context
+                            .portfolio
+                            .sideline_cash
                             .entry(ticker_str.to_string())
                             .and_modify(|x| *x += cash)
                             .or_insert(cash);
@@ -137,9 +134,9 @@ impl RuleExecutor for Executor {
             }
         }
 
-        for (ticker_str, cash) in self.re_entry_cash.clone() {
+        for (ticker_str, cash) in context.portfolio.sideline_cash.clone() {
             if context.portfolio.positions.contains_key(&ticker_str) {
-                self.re_entry_cash.remove(&ticker_str);
+                context.portfolio.sideline_cash.remove(&ticker_str);
                 continue;
             }
 
@@ -169,7 +166,7 @@ impl RuleExecutor for Executor {
                     .collect();
                 let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
 
-                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi < rsi_high {
+                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;
 
                     let _ = event_sender
@@ -194,8 +191,7 @@ impl RuleExecutor for Executor {
                                 .entry(ticker_str.to_string())
                                 .and_modify(|x| *x += buy_units as u64)
                                 .or_insert(buy_units as u64);
-
-                            self.re_entry_cash.remove(&ticker_str);
+                            context.portfolio.sideline_cash.remove(&ticker_str);
 
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(

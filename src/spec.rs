@@ -26,34 +26,9 @@ pub struct FundDefinition {
     pub rules: Vec<RuleDefinition>,
 }
 
-#[derive(
-    Serialize, Deserialize, Clone, Debug, Default, PartialEq, strum::Display, strum::EnumString,
-)]
-#[strum(ascii_case_insensitive)]
-pub enum Frequency {
-    #[default]
-    Once,
-
-    #[strum(serialize = "1d")]
-    Daily,
-
-    #[strum(serialize = "1w", serialize = "7d")]
-    Weekly,
-
-    #[strum(serialize = "2w", serialize = "14d")]
-    Biweekly,
-
-    #[strum(serialize = "1m")]
-    Monthly,
-
-    #[strum(serialize = "3m")]
-    Quarterly,
-
-    #[strum(serialize = "6m")]
-    Semiannually,
-
-    #[strum(serialize = "12m", serialize = "1y")]
-    Annually,
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Frequency {
+    pub days: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -98,6 +73,22 @@ fn deserialize_frequency<'de, D>(deserializer: D) -> Result<Frequency, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let s = String::deserialize(deserializer)?;
-    Frequency::from_str(&s).map_err(serde::de::Error::custom)
+    let s = String::deserialize(deserializer)?.to_lowercase();
+
+    let days: i64 = if s.ends_with("d") {
+        s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?
+    } else if s.ends_with("w") {
+        let weeks: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
+        7 * weeks
+    } else if s.ends_with("m") {
+        let months: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
+        30 * months
+    } else if s.ends_with("y") {
+        let years: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
+        365 * years
+    } else {
+        0
+    };
+
+    Ok(Frequency { days })
 }

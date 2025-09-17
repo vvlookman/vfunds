@@ -2,7 +2,12 @@ use std::{fs::read_dir, path::PathBuf};
 
 use rayon::prelude::*;
 
-use crate::{WORKSPACE, backtest, error::*, spec::FundDefinition, utils};
+use crate::{
+    WORKSPACE, backtest,
+    error::*,
+    spec::{FundDefinition, RuleDefinition},
+    utils,
+};
 
 pub type BacktestEvent = backtest::BacktestEvent;
 pub type BacktestOptions = backtest::BacktestOptions;
@@ -26,6 +31,21 @@ pub async fn backtest(
                 format!("Fund '{fund_name}' not exists"),
             ));
         }
+    }
+
+    if let Some(benchmark_str) = &options.benchmark {
+        let fund_definition = FundDefinition {
+            title: format!("Benchmark: {benchmark_str}"),
+            tickers: vec![benchmark_str.to_string()],
+            rules: vec![RuleDefinition {
+                name: "hold_all_equal".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let stream = backtest::backtest_fund(&fund_definition, options).await?;
+        streams.push((format!("# {benchmark_str} #"), stream));
     }
 
     for (fund_name, fund_definition) in funds {

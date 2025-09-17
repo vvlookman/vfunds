@@ -12,7 +12,7 @@ pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<V
             "symbol": symbol,
             "date": date.format("%Y%m").to_string(),
         }),
-        true,
+        Some(30),
         None,
     )
     .await?;
@@ -23,6 +23,34 @@ pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<V
         for item in array {
             if let Some(obj) = item.as_object() {
                 if let Some(ticker_str) = obj["样本代码"].as_str() {
+                    if let Ok(ticker) = Ticker::from_str(ticker_str) {
+                        tickers.push(ticker);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(tickers)
+}
+
+pub async fn fetch_csindex_tickers(symbol: &str) -> VfResult<Vec<Ticker>> {
+    let json = aktools::call_api(
+        "/index_stock_cons_weight_csindex",
+        &json!({
+            "symbol": symbol,
+        }),
+        Some(30),
+        None,
+    )
+    .await?;
+
+    let mut tickers: Vec<Ticker> = vec![];
+
+    if let Some(array) = json.as_array() {
+        for item in array {
+            if let Some(obj) = item.as_object() {
+                if let Some(ticker_str) = obj["成分券代码"].as_str() {
                     if let Ok(ticker) = Ticker::from_str(ticker_str) {
                         tickers.push(ticker);
                     }

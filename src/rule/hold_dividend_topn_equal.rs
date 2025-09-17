@@ -9,8 +9,8 @@ use crate::{
     backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
     financial::stock::{
-        StockDividendAdjust, StockDividendField, StockKlineField, fetch_stock_detail,
-        fetch_stock_dividends, fetch_stock_kline,
+        StockDividendAdjust, StockDividendField, StockKlineField, StockReportRershareField,
+        fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline, fetch_stock_report_pershare,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -40,33 +40,41 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let sort = self
+            let filter_roe_floor = self
                 .options
-                .get("sort")
-                .and_then(|v| v.as_str())
-                .unwrap_or("desc")
-                .to_lowercase();
+                .get("filter_roe_floor")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
             let limit = self
                 .options
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(10);
-            let continuous_years = self
+            let lookback_years = self
                 .options
-                .get("continuous_years")
+                .get("lookback_years")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(3);
 
-            let date_str = utils::datetime::date_to_str(date);
-            let date_ttm_from = date.with_year(date.year() - 1).unwrap() + Duration::days(1);
-            let date_years_from = date
-                .with_year(date.year() - continuous_years as i32)
-                .unwrap()
-                + Duration::days(1);
+            if filter_roe_floor < 0.0 {
+                panic!("filter_roe_floor must >= 0");
+            }
 
+            if limit == 0 || limit > 100 {
+                panic!("limit must > 0 and <= 100");
+            }
+
+            if lookback_years == 0 || lookback_years > 100 {
+                panic!("lookback_years must > 0 and <= 100");
+            }
+
+            let date_str = utils::datetime::date_to_str(date);
+            let date_from =
+                date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
+
+            let mut indicators: Vec<(String, f64)> = vec![];
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
-            let mut indicators: Vec<(String, f64)> = vec![];
             for ticker in &tickers {
                 let ticker_str = ticker.to_string();
                 debug!("[{date_str}] {ticker_str}");
@@ -75,29 +83,34 @@ impl RuleExecutor for Executor {
                 if let Some(price) =
                     kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
                 {
-                    let dividends = fetch_stock_dividends(ticker).await?;
+                    if price > 0.0 {
+                        let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                    let ttm_interests = dividends.get_values::<f64>(
-                        &date_ttm_from,
-                        date,
-                        &StockDividendField::Interest.to_string(),
-                    );
-                    let ttm_interest_sum = ttm_interests.iter().map(|x| x.1).sum::<f64>();
+                        let roe = report_pershare
+                            .get_latest_value::<f64>(
+                                date,
+                                &StockReportRershareField::RoeRate.to_string(),
+                            )
+                            .unwrap_or(0.0)
+                            / 100.0;
 
-                    let years_interests = dividends.get_values::<f64>(
-                        &date_years_from,
-                        date,
-                        &StockDividendField::Interest.to_string(),
-                    );
+                        if roe > filter_roe_floor {
+                            let dividends = fetch_stock_dividends(ticker).await?;
 
-                    if ttm_interest_sum > 0.0
-                        && price > 0.0
-                        && years_interests.len() as u64 >= continuous_years
-                    {
-                        let indicator = ttm_interest_sum / price;
-                        debug!("[{date_str}] {ticker_str} = {indicator:.4}");
+                            let interests = dividends.get_values::<f64>(
+                                &date_from,
+                                date,
+                                &StockDividendField::Interest.to_string(),
+                            );
+                            let interest_sum = interests.iter().map(|x| x.1).sum::<f64>();
 
-                        indicators.push((ticker_str, indicator));
+                            if interest_sum > 0.0 && interests.len() as u64 >= lookback_years {
+                                let indicator = interest_sum / price;
+                                debug!("[{date_str}] {ticker_str} = {indicator:.4} (ROE={roe:.4})");
+
+                                indicators.push((ticker_str, indicator));
+                            }
+                        }
                     }
                 }
 
@@ -114,13 +127,7 @@ impl RuleExecutor for Executor {
                     last_time = Instant::now();
                 }
             }
-
-            match sort.as_str() {
-                "desc" => {
-                    indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal))
-                }
-                _ => indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal)),
-            };
+            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             {
                 let mut top_tickers_str = String::from("");

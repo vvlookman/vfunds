@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 
 use crate::{
     error::{VfError, VfResult},
-    financial::index::fetch_cnindex_tickers,
+    financial::index::{fetch_cnindex_tickers, fetch_csindex_tickers},
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -36,9 +36,15 @@ impl FromStr for Ticker {
                     || s.starts_with("601")
                     || s.starts_with("603")
                     || s.starts_with("688")
+                    || s.starts_with("51")
                 {
                     Some("SSE")
-                } else if s.starts_with("000") || s.starts_with("002") || s.starts_with("300") {
+                } else if s.starts_with("000")
+                    || s.starts_with("002")
+                    || s.starts_with("300")
+                    || s.starts_with("15")
+                    || s.starts_with("16")
+                {
                     Some("SZSE")
                 } else {
                     None
@@ -111,6 +117,7 @@ impl TickersSource {
     pub async fn extract_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
         let tickers = match self.name.to_lowercase().as_str() {
             "cnindex" => fetch_cnindex_tickers(&self.symbol, date).await?,
+            "csindex" => fetch_csindex_tickers(&self.symbol).await?,
             _ => {
                 return Err(VfError::Invalid(
                     "UNSUPPORTED_TICKERS_SOURCE",

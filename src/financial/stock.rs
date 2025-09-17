@@ -36,6 +36,17 @@ pub enum StockKlineField {
     Low,
 }
 
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockReportRershareField {
+    Bps,
+    Cfps,
+    Eps,
+    GrossProfitRate,
+    NetProfitRate,
+    RoeRate,
+}
+
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_DETAIL_CACHE.get(&cache_key) {
@@ -45,7 +56,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let json = qmt::call_api(
         &format!("/detail/{}", ticker.to_qmt_code()),
         &json!({}),
-        true,
+        Some(30),
     )
     .await?;
 
@@ -68,7 +79,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
     let json = qmt::call_api(
         &format!("/dividend/{}", ticker.to_qmt_code()),
         &json!({}),
-        true,
+        None,
     )
     .await?;
 
@@ -110,7 +121,7 @@ pub async fn fetch_stock_kline(
         &json!({
             "dividend_type": param_dividend_type,
         }),
-        true,
+        None,
     )
     .await?;
 
@@ -126,9 +137,58 @@ pub async fn fetch_stock_kline(
     Ok(result)
 }
 
+pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDataset> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_REPORT_PERSHARE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "PershareIndex",
+        }),
+        None,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportRershareField::Bps.to_string(),
+        "s_fa_bps".to_string(),
+    );
+    fields.insert(
+        StockReportRershareField::Cfps.to_string(),
+        "s_fa_ocfps".to_string(),
+    );
+    fields.insert(
+        StockReportRershareField::Eps.to_string(),
+        "s_fa_eps_basic".to_string(),
+    );
+    fields.insert(
+        StockReportRershareField::GrossProfitRate.to_string(),
+        "gross_profit".to_string(),
+    );
+    fields.insert(
+        StockReportRershareField::NetProfitRate.to_string(),
+        "net_profit".to_string(),
+    );
+    fields.insert(
+        StockReportRershareField::RoeRate.to_string(),
+        "equity_roe".to_string(),
+    );
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
 static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
 static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
 static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
+static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+    LazyLock::new(DashMap::new);
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,7 @@
-use std::fs::create_dir_all;
+use std::{fs::create_dir_all, time::Duration};
 
 use chrono::{Local, NaiveDateTime};
-use libsql::Builder;
+use libsql::{Builder, Connection};
 
 use crate::{CACHE_PATH, error::VfResult};
 
@@ -10,8 +10,7 @@ pub async fn init() -> VfResult<()> {
         create_dir_all(cache_dir)?;
     }
 
-    let db = Builder::new_local(&*CACHE_PATH).build().await?;
-    let conn = db.connect()?;
+    let conn = connect().await?;
     conn.execute(
         r#"
 CREATE TABLE IF NOT EXISTS "cache" (
@@ -27,8 +26,7 @@ CREATE TABLE IF NOT EXISTS "cache" (
 }
 
 pub async fn get(key: &str) -> VfResult<Option<Vec<u8>>> {
-    let db = Builder::new_local(&*CACHE_PATH).build().await?;
-    let conn = db.connect()?;
+    let conn = connect().await?;
 
     let mut rows = conn
         .query(
@@ -56,8 +54,7 @@ LIMIT 1
 pub async fn upsert(key: &str, data: &[u8], expire: &NaiveDateTime) -> VfResult<()> {
     let expire_str = expire.format("%Y-%m-%d %H:%M:%S").to_string();
 
-    let db = Builder::new_local(&*CACHE_PATH).build().await?;
-    let conn = db.connect()?;
+    let conn = connect().await?;
 
     let tx = conn.transaction().await?;
     {
@@ -102,4 +99,14 @@ VALUES
     tx.commit().await?;
 
     Ok(())
+}
+
+async fn connect() -> VfResult<Connection> {
+    let db = Builder::new_local(&*CACHE_PATH).build().await?;
+    let conn = db.connect()?;
+
+    conn.busy_timeout(Duration::from_secs(5))?;
+    conn.query("PRAGMA journal_mode=WAL;", ()).await?;
+
+    Ok(conn)
 }

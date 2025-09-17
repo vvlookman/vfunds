@@ -38,6 +38,14 @@ pub async fn init(workspace: Option<PathBuf>) {
     }
 }
 
+static CACHE_ONLY: LazyLock<bool> = LazyLock::new(|| {
+    let v = env::var("CACHE_ONLY")
+        .as_deref()
+        .unwrap_or_default()
+        .to_lowercase();
+    v == "true" || v == "t" || v == "yes" || v == "y"
+});
+
 static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
         Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),

@@ -103,6 +103,26 @@ impl DailyDataset {
         }
     }
 
+    pub fn get_dates(&self) -> Vec<NaiveDate> {
+        let mut dates = vec![];
+
+        if let Ok(col_date) = self.df.column(&self.date_field_name) {
+            for i in 0..col_date.len() {
+                if let Ok(cell_date) = col_date.get(i) {
+                    if let Some(date_days_after_epoch) = cell_date.extract::<i32>() {
+                        if let Some(date) =
+                            utils::datetime::date_from_days_after_epoch(date_days_after_epoch)
+                        {
+                            dates.push(date);
+                        }
+                    }
+                }
+            }
+        }
+
+        dates
+    }
+
     pub fn get_latest_value<T: NumCast>(&self, date: &NaiveDate, field_name: &str) -> Option<T> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
             if let Ok(df) = self
@@ -163,26 +183,6 @@ impl DailyDataset {
         }
 
         vec![]
-    }
-
-    pub fn get_value<T: NumCast>(&self, date: &NaiveDate, field_name: &str) -> Option<T> {
-        if let Some(origin_field_name) = self.value_field_names.get(field_name) {
-            if let Ok(df) = self
-                .df
-                .clone()
-                .lazy()
-                .filter(col(&self.date_field_name).eq(lit(*date)))
-                .collect()
-            {
-                if let Ok(col) = df.column(origin_field_name) {
-                    if let Ok(val) = col.get(0) {
-                        return val.extract::<T>();
-                    }
-                }
-            }
-        }
-
-        None
     }
 
     pub fn get_values<T: NumCast>(

@@ -42,7 +42,7 @@ def index_weight(index: str):
 
 
 @app.get("/kline/{stock}")
-def kline(stock: str, period: str = '1d', dividend_type: str = 'front_ratio'):
+def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
     xtdata.download_history_data2(stock, period)
     data = xtdata.get_market_data_ex(
         stock_list=[stock], dividend_type=dividend_type)

@@ -1,0 +1,13 @@
+title = "持有股息率最高的N个股票"
+
+# 从沪深300中挑选股票
+tickers_sources = ["csindex:000300"]
+
+[[rules]]
+name = "hold_dividend_topn_equal"
+frequency = "1y"
+
+[rules.options]
+limit = 5
+lookback_years = 3
+filter_roe_floor = 0.02

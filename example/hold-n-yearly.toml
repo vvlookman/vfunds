@@ -1,8 +1,0 @@
-title = "A virtual fund that hold N stocks equally each year"
-
-# All candidate tickers
-tickers = ["688981", "000333"]
-
-[[rules]]
-name = "hold_all_equal"
-frequency = "1y"

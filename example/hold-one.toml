@@ -1,7 +1,0 @@
-title = "A virtual fund that hold a stock"
-
-# All candidate tickers
-tickers = ["688981"]
-
-[[rules]]
-name = "hold_all_equal"

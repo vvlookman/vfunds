@@ -1,0 +1,24 @@
+title = "根据MACD对美国ETF进行调仓"
+
+tickers = [
+  "513100", # 纳斯达克100ETF
+  "513500", # 标普500ETF
+  "518880", # 黄金ETF
+]
+
+[[rules]]
+name = "hold_all_equal"
+frequency = "1y"
+
+[[rules]]
+name = "sizing_by_macd_crossover"
+frequency = "1d"
+
+[rules.options]
+macd_period_fast = 30
+macd_period_slow = 60
+macd_period_signal = 14
+macd_slope_window = 5
+rsi_period = 14
+rsi_low = 35
+rsi_high = 65

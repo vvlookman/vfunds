@@ -10,9 +10,10 @@ use crate::{
     financial::{
         Portfolio,
         stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
+        tool::fetch_trade_dates,
     },
     rule::Rule,
-    spec::{Frequency, FundDefinition},
+    spec::FundDefinition,
     ticker::Ticker,
     utils::{
         datetime,
@@ -41,6 +42,7 @@ pub struct BacktestOptions {
     pub init_cash: f64,
     pub start_date: NaiveDate,
     pub end_date: NaiveDate,
+    pub benchmark: Option<String>,
     pub risk_free_rate: f64,
     pub stamp_duty_rate: f64,
     pub stamp_duty_min_fee: f64,
@@ -106,6 +108,7 @@ pub async fn backtest_fund(
                 portfolio: &mut Portfolio::new(options.init_cash),
             };
 
+            let trade_dates = fetch_trade_dates().await?;
             let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
             let days = (options.end_date - options.start_date).num_days() as u64 + 1;
 
@@ -116,63 +119,24 @@ pub async fn backtest_fund(
                 .collect::<Vec<_>>();
             let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             for date in options.start_date.iter_days().take(days as usize) {
-                for (rule_index, rule) in rules.iter_mut().enumerate() {
-                    if let Some(executed_date) = rule_executed_date.get(&rule_index) {
-                        let executed_days = (date - *executed_date).num_days();
-                        match rule.definition().frequency {
-                            Frequency::Once => {
+                if trade_dates.contains(&date) {
+                    for (rule_index, rule) in rules.iter_mut().enumerate() {
+                        if let Some(executed_date) = rule_executed_date.get(&rule_index) {
+                            let executed_days = (date - *executed_date).num_days();
+                            let frequency_days = rule.definition().frequency.days;
+                            if frequency_days > 0 {
+                                if executed_days < frequency_days {
+                                    continue;
+                                }
+                            } else {
                                 continue;
                             }
-                            Frequency::Daily => {
-                                if executed_days < 1 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Weekly => {
-                                if executed_days < 7 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Biweekly => {
-                                if executed_days < 14 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Monthly => {
-                                if executed_days < 31 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Quarterly => {
-                                if executed_days < 92 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Semiannually => {
-                                if executed_days < 183 {
-                                    continue;
-                                }
-                            }
-                            Frequency::Annually => {
-                                if executed_days < 366 {
-                                    continue;
-                                }
-                            }
                         }
+
+                        rule.exec(&mut context, &date, sender.clone()).await?;
+                        rule_executed_date.insert(rule_index, date);
                     }
 
-                    rule.exec(&mut context, &date, sender.clone()).await?;
-                    rule_executed_date.insert(rule_index, date);
-                }
-
-                // Calculate trade day values
-                let bench_ticker = Ticker::from_str("SSE:000300")?;
-                let bench_kline =
-                    fetch_stock_kline(&bench_ticker, StockDividendAdjust::ForwardProp).await?;
-                if bench_kline
-                    .get_value::<f64>(&date, &StockKlineField::Close.to_string())
-                    .is_some()
-                {
                     let total_value = context.calc_total_value(&date).await?;
                     trade_date_values.push((date, total_value));
 
