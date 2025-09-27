@@ -38,7 +38,7 @@ pub async fn backtest(
             title: format!("Benchmark: {benchmark_str}"),
             tickers: vec![benchmark_str.to_string()],
             rules: vec![RuleDefinition {
-                name: "hold_all_equal".to_string(),
+                name: "hold_equal".to_string(),
                 ..Default::default()
             }],
             ..Default::default()

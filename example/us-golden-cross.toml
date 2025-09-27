@@ -7,7 +7,7 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_all_equal"
+name = "hold_equal"
 frequency = "1y"
 
 [[rules]]

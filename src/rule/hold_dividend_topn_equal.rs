@@ -134,7 +134,6 @@ impl RuleExecutor for Executor {
                 for (ticker_str, indicator) in indicators.iter().take(2 * limit as usize) {
                     let ticker = Ticker::from_str(ticker_str)?;
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;
-
                     top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.4} "));
                 }
 

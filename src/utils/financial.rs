@@ -16,6 +16,20 @@ pub fn calc_annual_return_rate(start_value: f64, end_value: f64, days: u64) -> O
     None
 }
 
+pub fn calc_annual_volatility(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_return = stats::pct_change(daily_values);
+
+        if let Some(return_std) = stats::std(&daily_return) {
+            let annual_volatility = return_std * (TRADE_DAYS_PER_YEAR).sqrt();
+
+            return Some(annual_volatility);
+        }
+    }
+
+    None
+}
+
 pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f64, f64, f64)> {
     let mut results: Vec<(f64, f64, f64)> = vec![];
 
@@ -73,10 +87,9 @@ pub fn calc_sharpe_ratio(daily_values: &[f64], risk_free_rate: f64) -> Option<f6
     if daily_values.len() > 1 {
         let daily_return = stats::pct_change(daily_values);
 
-        let return_mean = stats::mean(&daily_return);
-        let return_std = stats::std(&daily_return);
-
-        if let (Some(return_mean), Some(return_std)) = (return_mean, return_std) {
+        if let (Some(return_mean), Some(return_std)) =
+            (stats::mean(&daily_return), stats::std(&daily_return))
+        {
             let annual_volatility = return_std * (TRADE_DAYS_PER_YEAR).sqrt();
             if annual_volatility > 0.0 {
                 let annual_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
