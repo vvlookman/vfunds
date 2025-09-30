@@ -36,10 +36,6 @@ tickers = [
   "161715", # 大宗商品LOF
 ]
 
-# [[rules]]
-# name = "hold_equal"
-# frequency = "1y"
-
 [[rules]]
 name = "hold_top_trend_equal"
 frequency = "2w"

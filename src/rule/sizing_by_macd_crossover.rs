@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -11,7 +11,6 @@ use crate::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
-    ticker::Ticker,
     utils,
 };
 
@@ -74,9 +73,7 @@ impl RuleExecutor for Executor {
 
         let date_str = utils::datetime::date_to_str(date);
 
-        for (ticker_str, units) in context.portfolio.positions.clone() {
-            let ticker = Ticker::from_str(&ticker_str)?;
-
+        for (ticker, units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices = kline.get_latest_values::<f64>(
                 date,
@@ -116,11 +113,11 @@ impl RuleExecutor for Executor {
                         let cash = value - fee;
 
                         context.portfolio.cash += cash;
-                        context.portfolio.positions.remove(&ticker_str);
+                        context.portfolio.positions.remove(&ticker);
                         context
                             .portfolio
                             .sideline_cash
-                            .entry(ticker_str.to_string())
+                            .entry(ticker.clone())
                             .and_modify(|x| *x += cash)
                             .or_insert(cash);
 
@@ -134,13 +131,11 @@ impl RuleExecutor for Executor {
             }
         }
 
-        for (ticker_str, cash) in context.portfolio.sideline_cash.clone() {
-            if context.portfolio.positions.contains_key(&ticker_str) {
-                context.portfolio.sideline_cash.remove(&ticker_str);
+        for (ticker, cash) in context.portfolio.sideline_cash.clone() {
+            if context.portfolio.positions.contains_key(&ticker) {
+                context.portfolio.sideline_cash.remove(&ticker);
                 continue;
             }
-
-            let ticker = Ticker::from_str(&ticker_str)?;
 
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices = kline.get_latest_values::<f64>(
@@ -188,10 +183,10 @@ impl RuleExecutor for Executor {
                             context
                                 .portfolio
                                 .positions
-                                .entry(ticker_str.to_string())
+                                .entry(ticker.clone())
                                 .and_modify(|x| *x += buy_units as u64)
                                 .or_insert(buy_units as u64);
-                            context.portfolio.sideline_cash.remove(&ticker_str);
+                            context.portfolio.sideline_cash.remove(&ticker);
 
                             let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(

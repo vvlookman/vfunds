@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -6,7 +6,6 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    backtest::{calc_buy_fee, calc_sell_fee},
     error::VfResult,
     financial::stock::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
@@ -62,13 +61,11 @@ impl RuleExecutor for Executor {
         if !tickers.is_empty() {
             let date_str = utils::datetime::date_to_str(date);
 
-            let mut factors: Vec<(String, [f64; 4])> = vec![];
+            let mut factors: Vec<(Ticker, [f64; 4])> = vec![];
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
             for ticker in &tickers {
-                let ticker_str = ticker.to_string();
-
-                if context.portfolio.sideline_cash.contains_key(&ticker_str) {
+                if context.portfolio.sideline_cash.contains_key(ticker) {
                     continue;
                 }
 
@@ -82,7 +79,7 @@ impl RuleExecutor for Executor {
                 if prices.len() < lookback_trade_days as usize {
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{ticker_str}] No enough data!"
+                            "[{date_str}] [{ticker}] No enough data!"
                         )))
                         .await;
                     continue;
@@ -95,7 +92,7 @@ impl RuleExecutor for Executor {
                 ) {
                     let momentum = prices[prices.len() - 1] / prices[0] - 1.0;
 
-                    factors.push((ticker_str, [sharpe, volatility, max_drawdown, momentum]));
+                    factors.push((ticker.clone(), [sharpe, volatility, max_drawdown, momentum]));
                 }
 
                 calc_count += 1;
@@ -118,11 +115,11 @@ impl RuleExecutor for Executor {
                 normalized_factor_values.push(utils::math::normalize_min_max(&factor_values));
             }
 
-            let mut indicators: Vec<(String, f64)> = factors
+            let mut indicators: Vec<(Ticker, f64)> = factors
                 .iter()
                 .enumerate()
                 .map(|(i, x)| {
-                    let ticker_str = &x.0;
+                    let ticker = &x.0;
 
                     let sharpe = normalized_factor_values[0][i];
                     let volatility = normalized_factor_values[1][i];
@@ -133,9 +130,9 @@ impl RuleExecutor for Executor {
                         + 4.0 * (1.0 - volatility)
                         + 1.0 * (1.0 - max_drawdown)
                         + 1.0 * momentum;
-                    debug!("[{date_str}] {ticker_str}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Mom={momentum:.4})");
+                    debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Mom={momentum:.4})");
 
-                    (ticker_str.clone(), indicator)
+                    (ticker.clone(), indicator)
                 })
                 .collect();
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
@@ -144,9 +141,8 @@ impl RuleExecutor for Executor {
 
             if !filetered_indicators.is_empty() {
                 let mut top_tickers_str = String::from("");
-                for (ticker_str, indicator) in &filetered_indicators {
-                    let ticker = Ticker::from_str(ticker_str)?;
-                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
+                for (ticker, indicator) in &filetered_indicators {
+                    let ticker_title = fetch_stock_detail(ticker).await?.title;
                     top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.4} "));
                 }
 
@@ -157,104 +153,19 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let selected_tickers: Vec<_> = filetered_indicators
+            let selected_tickers: Vec<Ticker> = filetered_indicators
                 .iter()
-                .map(|x| x.0.to_string())
+                .map(|(ticker, _)| ticker.clone())
                 .collect();
-
-            let holding_tickers: Vec<_> = context.portfolio.positions.keys().cloned().collect();
-            for ticker_str in &holding_tickers {
-                if !selected_tickers.contains(ticker_str) {
-                    let ticker = Ticker::from_str(ticker_str)?;
-
-                    let kline =
-                        fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
-                    if let Some(price) =
-                        kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                    {
-                        let sell_units =
-                            *(context.portfolio.positions.get(ticker_str).unwrap_or(&0)) as f64;
-                        if sell_units > 0.0 {
-                            let value = sell_units * price;
-                            let fee = calc_sell_fee(value, context.options);
-                            let cash = value - fee;
-
-                            context.portfolio.cash += cash;
-                            context.portfolio.positions.remove(ticker_str);
-
-                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
-                            let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"
-                                )))
-                                .await;
-                        }
-                    }
-                }
-            }
 
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / selected_tickers.len() as f64;
-            for ticker_str in &selected_tickers {
-                let ticker = Ticker::from_str(ticker_str)?;
 
-                let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
-                if let Some(price) =
-                    kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                {
-                    let holding_units = context.portfolio.positions.get(ticker_str).unwrap_or(&0);
-                    let mut holding_value = *holding_units as f64 * price;
-                    holding_value -= calc_sell_fee(holding_value, context.options);
-
-                    if holding_value < ticker_value {
-                        let mut buy_value = ticker_value - holding_value;
-                        buy_value -= calc_buy_fee(buy_value, context.options);
-
-                        let buy_units = (buy_value / price).floor();
-                        if buy_units > 0.0 {
-                            let value = buy_units * price;
-                            let fee = calc_buy_fee(value, context.options);
-                            let cost = value + fee;
-
-                            context.portfolio.cash -= cost;
-                            context
-                                .portfolio
-                                .positions
-                                .insert(ticker_str.to_string(), holding_units + buy_units as u64);
-
-                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
-                            let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
-                                )))
-                                .await;
-                        }
-                    } else {
-                        let mut sell_value = holding_value - ticker_value;
-                        sell_value -= calc_sell_fee(sell_value, context.options);
-
-                        let sell_units = (sell_value / price).floor();
-                        if sell_units > 0.0 {
-                            let value = sell_units * price;
-                            let fee = calc_sell_fee(value, context.options);
-                            let cash = value - fee;
-
-                            context.portfolio.cash += cash;
-                            context
-                                .portfolio
-                                .positions
-                                .insert(ticker_str.to_string(), holding_units - sell_units as u64);
-
-                            let ticker_title = fetch_stock_detail(&ticker).await?.title;
-                            let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{sell_units} -> +${cash:.2}"
-                                )))
-                                .await;
-                        }
-                    }
-                }
-            }
+            let target: Vec<(Ticker, f64)> = selected_tickers
+                .into_iter()
+                .map(|ticker| (ticker, ticker_value))
+                .collect();
+            context.rebalance(&target, date, event_sender).await?;
         }
 
         Ok(())
