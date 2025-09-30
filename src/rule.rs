@@ -11,6 +11,7 @@ use crate::{
 pub mod hold_equal;
 pub mod hold_risk_parity;
 pub mod hold_top_dividend_equal;
+pub mod hold_top_factors_score_equal;
 pub mod hold_top_trend_equal;
 pub mod sizing_by_macd_crossover;
 
@@ -40,6 +41,9 @@ impl Rule {
             "hold_risk_parity" => Box::new(hold_risk_parity::Executor::new(definition)),
             "hold_top_dividend_equal" => {
                 Box::new(hold_top_dividend_equal::Executor::new(definition))
+            }
+            "hold_top_factors_score_equal" => {
+                Box::new(hold_top_factors_score_equal::Executor::new(definition))
             }
             "hold_top_trend_equal" => Box::new(hold_top_trend_equal::Executor::new(definition)),
             "sizing_by_macd_crossover" => {

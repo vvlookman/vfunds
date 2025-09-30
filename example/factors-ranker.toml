@@ -1,0 +1,19 @@
+title = "持有多因子评分最高的N个ETF"
+
+tickers = [
+  "510300", # 沪深300ETF
+  "159949", # 创业板50ETF
+  "513100", # 纳斯达克100ETF
+  "513500", # 标普500ETF
+  "518880", # 黄金ETF
+  "511260", # 十年国债ETF
+  "161715", # 大宗商品LOF
+]
+
+[[rules]]
+name = "hold_top_factors_score_equal"
+frequency = "2w"
+
+[rules.options]
+limit = 3
+lookback_trade_days = 20

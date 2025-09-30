@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     let n = values.len();
     let sum: f64 = values.iter().sum();
@@ -70,6 +72,32 @@ pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     }
 
     result
+}
+
+pub fn normalize_min_max(values: &[f64]) -> Vec<f64> {
+    let max = values
+        .iter()
+        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .unwrap_or(&1.0);
+
+    let min = values
+        .iter()
+        .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+        .unwrap_or(&0.0);
+
+    let range = max - min;
+    let is_constant = range.abs() < f64::EPSILON;
+
+    values
+        .iter()
+        .map(|x| {
+            if is_constant {
+                1.0
+            } else {
+                (*x - *min) / range
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
