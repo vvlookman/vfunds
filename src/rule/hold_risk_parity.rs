@@ -37,24 +37,22 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let tickers = context.fund_definition.all_tickers(date).await?;
-        if !tickers.is_empty() {
-            let lookback_trade_days = self
-                .options
-                .get("lookback_trade_days")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(126);
-            let weight_scale_max = self
-                .options
-                .get("weight_scale_max")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(4.0);
-            let weight_scale_min = self
-                .options
-                .get("weight_scale_min")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.25);
-
+        let lookback_trade_days = self
+            .options
+            .get("lookback_trade_days")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(126);
+        let weight_scale_max = self
+            .options
+            .get("weight_scale_max")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(4.0);
+        let weight_scale_min = self
+            .options
+            .get("weight_scale_min")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.25);
+        {
             if lookback_trade_days == 0 {
                 panic!("lookback_trade_days must > 0");
             }
@@ -66,7 +64,10 @@ impl RuleExecutor for Executor {
             if weight_scale_min > 1.0 {
                 panic!("weight_scale_min must <= 1.0");
             }
+        }
 
+        let tickers = context.fund_definition.all_tickers(date).await?;
+        if !tickers.is_empty() {
             let date_str = utils::datetime::date_to_str(date);
 
             let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();

@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 pub fn mean(values: &[f64]) -> Option<f64> {
     let sum = values.iter().sum::<f64>();
     let count = values.len();
@@ -21,6 +23,31 @@ pub fn pct_change(values: &[f64]) -> Vec<f64> {
     }
 
     pct_changes
+}
+
+pub fn quantile(values: &[f64], quantile: f64) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+
+    if !(0.0..=1.0).contains(&quantile) {
+        return None;
+    }
+
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+
+    let n = sorted.len();
+    let pos = (n as f64 - 1.0) * quantile;
+    let lower = pos.floor() as usize;
+    let upper = pos.ceil() as usize;
+    let weight = pos - lower as f64;
+
+    if upper >= n {
+        Some(sorted[lower])
+    } else {
+        Some(sorted[lower] * (1.0 - weight) + sorted[upper] * weight)
+    }
 }
 
 pub fn slope(values: &[f64]) -> Option<f64> {
@@ -75,6 +102,19 @@ mod tests {
     #[test]
     fn test_pct_change() {
         assert_eq!(pct_change(&vec![1.0, 1.0, 2.0, 3.0]), [0.0, 1.0, 0.5]);
+    }
+
+    #[test]
+    fn test_quantile() {
+        let data = [1.0, 2.0, 3.0, 4.0, 5.0];
+
+        assert_eq!(quantile(&data, 0.0), Some(1.0));
+        assert_eq!(quantile(&data, 0.1), Some(1.4));
+        assert_eq!(quantile(&data, 0.25), Some(2.0));
+        assert_eq!(quantile(&data, 0.5), Some(3.0));
+        assert_eq!(quantile(&data, 0.75), Some(4.0));
+        assert_eq!(quantile(&data, 0.9), Some(4.6));
+        assert_eq!(quantile(&data, 1.0), Some(5.0));
     }
 
     #[test]

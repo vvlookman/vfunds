@@ -60,7 +60,7 @@ pub async fn call_api(
             }
         }
 
-        let request_delay_secs: f64 = std::env::var("QMT_DELAY")
+        let request_delay_secs: f64 = std::env::var("AKTOOLS_DELAY")
             .ok()
             .and_then(|s| s.parse::<f64>().ok())
             .unwrap_or(10.0);

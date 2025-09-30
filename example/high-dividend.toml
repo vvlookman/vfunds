@@ -4,10 +4,10 @@ title = "持有股息率最高的N个股票"
 tickers_sources = ["csindex:000300"]
 
 [[rules]]
-name = "hold_dividend_topn_equal"
+name = "hold_top_dividend_equal"
 frequency = "1y"
 
 [rules.options]
+filter_roe_floor = 0.02
 limit = 5
 lookback_years = 3
-filter_roe_floor = 0.02

@@ -48,15 +48,15 @@ def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
         stock_list=[stock], dividend_type=dividend_type)
 
     if stock in data:
-      df = data[stock]
+        df = data[stock]
 
-       if 'time' in df.columns:
+        if 'time' in df.columns:
             df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
                 'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
 
         return df_to_json(df)
     else:
-        return []
+        raise HTTPException(status_code=404)
 
 
 @app.get("/report/{stock}")
@@ -73,7 +73,7 @@ def report(stock: str, table: str = 'PershareIndex'):
 
         return df_to_json(df)
     else:
-        return []
+        raise HTTPException(status_code=404)
 
 
 @app.get("/")

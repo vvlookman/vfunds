@@ -8,9 +8,10 @@ use crate::{
     spec::RuleDefinition,
 };
 
-pub mod hold_dividend_topn_equal;
 pub mod hold_equal;
 pub mod hold_risk_parity;
+pub mod hold_top_dividend_equal;
+pub mod hold_top_trend_equal;
 pub mod sizing_by_macd_crossover;
 
 pub struct Rule {
@@ -36,10 +37,11 @@ impl Rule {
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "hold_equal" => Box::new(hold_equal::Executor::new(definition)),
-            "hold_dividend_topn_equal" => {
-                Box::new(hold_dividend_topn_equal::Executor::new(definition))
-            }
             "hold_risk_parity" => Box::new(hold_risk_parity::Executor::new(definition)),
+            "hold_top_dividend_equal" => {
+                Box::new(hold_top_dividend_equal::Executor::new(definition))
+            }
+            "hold_top_trend_equal" => Box::new(hold_top_trend_equal::Executor::new(definition)),
             "sizing_by_macd_crossover" => {
                 Box::new(sizing_by_macd_crossover::Executor::new(definition))
             }

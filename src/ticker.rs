@@ -24,11 +24,10 @@ impl FromStr for Ticker {
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
         let s = s.trim();
 
-        let parts: Vec<_> = s.splitn(2, ':').collect();
-        if parts.len() == 2 {
+        if let Some((symbol, exchange)) = s.rsplit_once('.') {
             Ok(Self {
-                exchange: parts[0].trim().to_uppercase().to_string(),
-                symbol: parts[1].trim().to_uppercase().to_string(),
+                exchange: exchange.trim().to_uppercase().to_string(),
+                symbol: symbol.trim().to_uppercase().to_string(),
             })
         } else {
             let exchange = if s.len() == 6 {
@@ -37,20 +36,21 @@ impl FromStr for Ticker {
                     || s.starts_with("603")
                     || s.starts_with("688")
                     || s.starts_with("51")
+                    || s.starts_with("588")
                 {
-                    Some("SSE")
+                    Some("SH")
                 } else if s.starts_with("000")
                     || s.starts_with("002")
                     || s.starts_with("300")
                     || s.starts_with("15")
                     || s.starts_with("16")
                 {
-                    Some("SZSE")
+                    Some("SZ")
                 } else {
                     None
                 }
             } else if s.len() == 5 {
-                Some("HKEX")
+                Some("HK")
             } else {
                 None
             };
@@ -72,18 +72,13 @@ impl FromStr for Ticker {
 
 impl Display for Ticker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.exchange, self.symbol)
+        write!(f, "{}.{}", self.symbol, self.exchange)
     }
 }
 
 impl Ticker {
     pub fn to_qmt_code(&self) -> String {
-        match self.exchange.to_uppercase().as_str() {
-            "SSE" => format!("{}.SH", self.symbol),
-            "SZSE" => format!("{}.SZ", self.symbol),
-            "HKEX" => format!("{}.HK", self.symbol),
-            _ => format!("{}.{}", self.symbol, self.exchange),
-        }
+        format!("{}.{}", self.symbol, self.exchange)
     }
 }
 

@@ -1,7 +1,4 @@
-use std::{
-    path::PathBuf,
-    sync::{PoisonError, RwLockReadGuard},
-};
+use std::path::PathBuf;
 
 pub type VfResult<T> = Result<T, VfError>;
 
@@ -31,6 +28,9 @@ pub enum VfError {
     #[error("[Lock Error] {0}")]
     LockError(String),
 
+    #[error("[Machine Learning Error] {0}")]
+    MachineLearningError(String),
+
     #[error("[No Data] {1}")]
     NoData(&'static str, String),
 
@@ -59,8 +59,8 @@ pub enum VfError {
     SqlError(#[from] ::libsql::Error),
 }
 
-impl From<PoisonError<RwLockReadGuard<'_, PathBuf>>> for VfError {
-    fn from(err: PoisonError<std::sync::RwLockReadGuard<'_, PathBuf>>) -> Self {
+impl From<std::sync::PoisonError<std::sync::RwLockReadGuard<'_, PathBuf>>> for VfError {
+    fn from(err: std::sync::PoisonError<std::sync::RwLockReadGuard<'_, PathBuf>>) -> Self {
         Self::LockError(err.to_string())
     }
 }

@@ -38,36 +38,37 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let tickers = context.fund_definition.all_tickers(date).await?;
-        if !tickers.is_empty() {
-            let filter_roe_floor = self
-                .options
-                .get("filter_roe_floor")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-            let limit = self
-                .options
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(10);
-            let lookback_years = self
-                .options
-                .get("lookback_years")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(3);
-
+        let filter_roe_floor = self
+            .options
+            .get("filter_roe_floor")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let limit = self
+            .options
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10);
+        let lookback_years = self
+            .options
+            .get("lookback_years")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3);
+        {
             if filter_roe_floor < 0.0 {
                 panic!("filter_roe_floor must >= 0");
             }
 
-            if limit == 0 || limit > 100 {
-                panic!("limit must > 0 and <= 100");
+            if limit == 0 {
+                panic!("limit must > 0");
             }
 
-            if lookback_years == 0 || lookback_years > 100 {
-                panic!("lookback_years must > 0 and <= 100");
+            if lookback_years == 0 {
+                panic!("lookback_years must > 0");
             }
+        }
 
+        let tickers = context.fund_definition.all_tickers(date).await?;
+        if !tickers.is_empty() {
             let date_str = utils::datetime::date_to_str(date);
             let date_from =
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
@@ -129,7 +130,7 @@ impl RuleExecutor for Executor {
             }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            {
+            if !indicators.is_empty() {
                 let mut top_tickers_str = String::from("");
                 for (ticker_str, indicator) in indicators.iter().take(2 * limit as usize) {
                     let ticker = Ticker::from_str(ticker_str)?;

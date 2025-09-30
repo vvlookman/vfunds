@@ -55,7 +55,7 @@ pub async fn call_api(
         let request_delay_secs: f64 = std::env::var("QMT_DELAY")
             .ok()
             .and_then(|s| s.parse::<f64>().ok())
-            .unwrap_or(1.0);
+            .unwrap_or(3.0);
         if request_delay_secs > 0.0 {
             sleep(tokio::time::Duration::from_secs(request_delay_secs as u64)).await;
         }

@@ -5,7 +5,7 @@ Virtual Funds Backtesting and Comparison
 ## Develop
 
 ```sh
-cargo run -- backtest -w ./example -s 2015-05-08 -e 2025-05-08 # Run example backtest
+LOG="vfunds=debug" cargo run -- backtest -w ./example -s 2015-05-08 -e 2025-05-08 # Run example backtest
 ```
 
 ## Release
