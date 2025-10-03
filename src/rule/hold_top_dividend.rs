@@ -6,9 +6,10 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
+    PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::stock::{
-        StockDividendAdjust, StockDividendField, StockKlineField, StockReportRershareField,
+        StockDividendAdjust, StockDividendField, StockKlineField, StockReportPershareField,
         fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline, fetch_stock_report_pershare,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
@@ -37,6 +38,8 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let rule_name = mod_name!();
+
         let filter_roe_floor = self
             .options
             .get("filter_roe_floor")
@@ -73,59 +76,70 @@ impl RuleExecutor for Executor {
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
-            let mut last_time = Instant::now();
-            let mut calc_count: usize = 0;
-            for ticker in &tickers {
-                debug!("[{date_str}] {ticker}");
+            {
+                let mut last_time = Instant::now();
+                let mut calc_count: usize = 0;
+                for ticker in &tickers {
+                    debug!("[{date_str}] {ticker}");
 
-                let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
-                if let Some(price) =
-                    kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                {
-                    if price > 0.0 {
-                        let report_pershare = fetch_stock_report_pershare(ticker).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
+                    if let Some(price) =
+                        kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+                    {
+                        if price > 0.0 {
+                            let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                        let roe = report_pershare
-                            .get_latest_value::<f64>(
-                                date,
-                                &StockReportRershareField::RoeRate.to_string(),
-                            )
-                            .unwrap_or(0.0)
-                            / 100.0;
+                            let roe = report_pershare
+                                .get_latest_value::<f64>(
+                                    date,
+                                    &StockReportPershareField::RoeRate.to_string(),
+                                )
+                                .unwrap_or(0.0)
+                                / 100.0;
 
-                        if roe > filter_roe_floor {
-                            let dividends = fetch_stock_dividends(ticker).await?;
+                            if roe > filter_roe_floor {
+                                let dividends = fetch_stock_dividends(ticker).await?;
 
-                            let interests = dividends.get_values::<f64>(
-                                &date_from,
-                                date,
-                                &StockDividendField::Interest.to_string(),
-                            );
-                            let interest_sum = interests.iter().map(|x| x.1).sum::<f64>();
+                                let interests = dividends.get_values::<f64>(
+                                    &date_from,
+                                    date,
+                                    &StockDividendField::Interest.to_string(),
+                                );
+                                let interest_sum = interests.iter().map(|x| x.1).sum::<f64>();
 
-                            if interest_sum > 0.0 && interests.len() as u64 >= lookback_years {
-                                let indicator = interest_sum / price;
-                                debug!("[{date_str}] {ticker} = {indicator:.4} (ROE={roe:.4})");
+                                if interest_sum > 0.0 && interests.len() as u64 >= lookback_years {
+                                    let indicator = interest_sum / price;
+                                    debug!(
+                                        "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ROE={roe:.4})"
+                                    );
 
-                                indicators.push((ticker.clone(), indicator));
+                                    indicators.push((ticker.clone(), indicator));
+                                }
                             }
                         }
                     }
+
+                    calc_count += 1;
+
+                    if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
+                        let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
+                        let _ = event_sender
+                            .send(BacktestEvent::Toast(format!(
+                                "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
+                            )))
+                            .await;
+
+                        last_time = Instant::now();
+                    }
                 }
 
-                calc_count += 1;
-
-                if last_time.elapsed().as_secs() > 5 {
-                    let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
-                    let _ = event_sender
-                        .send(BacktestEvent::Info(format!(
-                            "[{date_str}] Σ {calc_progress_pct:.2}% ..."
-                        )))
-                        .await;
-
-                    last_time = Instant::now();
-                }
+                let _ = event_sender
+                    .send(BacktestEvent::Toast(format!(
+                        "[{date_str}] [{rule_name}] Σ 100%"
+                    )))
+                    .await;
             }
+
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             if !indicators.is_empty() {
@@ -137,7 +151,7 @@ impl RuleExecutor for Executor {
 
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
-                        "[{date_str}] {top_tickers_str}"
+                        "[{date_str}] [{rule_name}] {top_tickers_str}"
                     )))
                     .await;
             }
@@ -150,11 +164,22 @@ impl RuleExecutor for Executor {
 
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / selected_tickers.len() as f64;
-
             let target: Vec<(Ticker, f64)> = selected_tickers
                 .into_iter()
                 .map(|ticker| (ticker, ticker_value))
                 .collect();
+
+            let target_str = target
+                .iter()
+                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
+                )))
+                .await;
+
             context.rebalance(&target, date, event_sender).await?;
         }
 

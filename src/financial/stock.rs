@@ -1,13 +1,19 @@
 use std::{collections::HashMap, sync::LazyLock};
 
+use chrono::NaiveDate;
 use dashmap::DashMap;
 use serde_json::json;
 
-use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker};
+use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker, utils};
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct StockDetail {
     pub title: String,
+    pub trading_date: Option<NaiveDate>,
+    pub pre_close_price: Option<f64>,
+    pub float_volume: Option<u64>,
+    pub total_volume: Option<u64>,
 }
 
 #[derive(strum::Display, strum::EnumString)]
@@ -34,11 +40,31 @@ pub enum StockKlineField {
     Close,
     High,
     Low,
+    Volume,
 }
 
 #[derive(strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
-pub enum StockReportRershareField {
+pub enum StockReportCapitalField {
+    ReportDate,
+    Total,
+    Circulating,
+    FreeFloat,
+}
+
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockReportIncomeField {
+    ReportDate,
+    Revenue,
+    OperatingProfit,
+    TotalProfit,
+}
+
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockReportPershareField {
+    ReportDate,
     Bps,
     Cfps,
     Eps,
@@ -61,9 +87,19 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     .await?;
 
     let title = json["InstrumentName"].as_str().unwrap_or_default();
+    let trading_date = json["TradingDay"]
+        .as_str()
+        .and_then(|s| utils::datetime::date_from_str(s).ok());
+    let pre_close_price = json["PreClose"].as_f64();
+    let float_volume = json["FloatVolume"].as_u64();
+    let total_volume = json["TotalVolume"].as_u64();
 
     let result = StockDetail {
         title: title.to_string(),
+        trading_date,
+        pre_close_price,
+        float_volume,
+        total_volume,
     };
     STOCK_DETAIL_CACHE.insert(cache_key, result.clone());
 
@@ -130,9 +166,88 @@ pub async fn fetch_stock_kline(
     fields.insert(StockKlineField::Close.to_string(), "close".to_string());
     fields.insert(StockKlineField::High.to_string(), "high".to_string());
     fields.insert(StockKlineField::Low.to_string(), "low".to_string());
+    fields.insert(StockKlineField::Volume.to_string(), "volume".to_string());
 
     let result = DailyDataset::from_json(&json, "date", &fields)?;
     STOCK_KLINE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailyDataset> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_REPORT_CAPITAL_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "Capital",
+        }),
+        None,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportCapitalField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportCapitalField::Total.to_string(),
+        "total_capital".to_string(),
+    );
+    fields.insert(
+        StockReportCapitalField::Circulating.to_string(),
+        "circulating_capital".to_string(),
+    );
+    fields.insert(
+        StockReportCapitalField::FreeFloat.to_string(),
+        "freeFloatCapital".to_string(),
+    );
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    STOCK_REPORT_CAPITAL_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailyDataset> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_REPORT_INCOME_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "Income",
+        }),
+        None,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportIncomeField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::Revenue.to_string(),
+        "revenue".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::OperatingProfit.to_string(),
+        "oper_profit".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::TotalProfit.to_string(),
+        "tot_profit".to_string(),
+    );
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
@@ -154,27 +269,31 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
 
     let mut fields: HashMap<String, String> = HashMap::new();
     fields.insert(
-        StockReportRershareField::Bps.to_string(),
+        StockReportPershareField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::Bps.to_string(),
         "s_fa_bps".to_string(),
     );
     fields.insert(
-        StockReportRershareField::Cfps.to_string(),
+        StockReportPershareField::Cfps.to_string(),
         "s_fa_ocfps".to_string(),
     );
     fields.insert(
-        StockReportRershareField::Eps.to_string(),
+        StockReportPershareField::Eps.to_string(),
         "s_fa_eps_basic".to_string(),
     );
     fields.insert(
-        StockReportRershareField::GrossProfitRate.to_string(),
+        StockReportPershareField::GrossProfitRate.to_string(),
         "gross_profit".to_string(),
     );
     fields.insert(
-        StockReportRershareField::NetProfitRate.to_string(),
+        StockReportPershareField::NetProfitRate.to_string(),
         "net_profit".to_string(),
     );
     fields.insert(
-        StockReportRershareField::RoeRate.to_string(),
+        StockReportPershareField::RoeRate.to_string(),
         "equity_roe".to_string(),
     );
 
@@ -187,6 +306,10 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
 static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
 static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
 static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
+static STOCK_REPORT_CAPITAL_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+    LazyLock::new(DashMap::new);
+static STOCK_REPORT_INCOME_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+    LazyLock::new(DashMap::new);
 static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailyDataset>> =
     LazyLock::new(DashMap::new);
 

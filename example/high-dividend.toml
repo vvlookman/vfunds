@@ -1,10 +1,9 @@
-title = "持有股息率最高的N个股票"
+title = "持有股息率最高的股票"
 
-# 从沪深300中挑选股票
-tickers_sources = ["csindex:000300"]
+ticker_sources = ["000510.csi"]
 
 [[rules]]
-name = "hold_top_dividend_equal"
+name = "hold_top_dividend"
 frequency = "1y"
 
 [rules.options]

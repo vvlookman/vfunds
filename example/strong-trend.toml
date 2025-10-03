@@ -1,4 +1,4 @@
-title = "持有趋势增强得分最高的N个ETF"
+title = "持有趋势增强得分最高的ETF"
 
 # tickers = [
 #   "510300", # 沪深300
@@ -37,7 +37,7 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_top_trend_equal"
+name = "hold_top_trend"
 frequency = "2w"
 
 [rules.options]

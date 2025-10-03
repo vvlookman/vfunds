@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    backtest::{calc_buy_fee, calc_sell_fee},
+    backtest::calc_buy_fee,
     error::VfResult,
     financial::stock::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
@@ -35,6 +35,8 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let rule_name = mod_name!();
+
         let macd_period_fast = self
             .options
             .get("macd_period_fast")
@@ -73,12 +75,12 @@ impl RuleExecutor for Executor {
 
         let date_str = utils::datetime::date_to_str(date);
 
-        for (ticker, units) in context.portfolio.positions.clone() {
+        for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices = kline.get_latest_values::<f64>(
                 date,
                 &StockKlineField::Close.to_string(),
-                macd_period_slow + macd_period_signal + macd_slope_window,
+                (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
             );
             let macds = utils::financial::calc_macd(
                 &latest_prices,
@@ -103,30 +105,11 @@ impl RuleExecutor for Executor {
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] {ticker}({ticker_title}) MACD Sell Signal"
+                            "[{date_str}] [{rule_name}] Sell Signal {ticker}({ticker_title})"
                         )))
                         .await;
 
-                    if let Some(price) = latest_prices.last() {
-                        let value = price * units as f64;
-                        let fee = calc_sell_fee(value, context.options);
-                        let cash = value - fee;
-
-                        context.portfolio.cash += cash;
-                        context.portfolio.positions.remove(&ticker);
-                        context
-                            .portfolio
-                            .sideline_cash
-                            .entry(ticker.clone())
-                            .and_modify(|x| *x += cash)
-                            .or_insert(cash);
-
-                        let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{units} -> +${cash:.2}"
-                                )))
-                                .await;
-                    }
+                    context.exit(&ticker, date, event_sender.clone()).await?;
                 }
             }
         }
@@ -141,7 +124,7 @@ impl RuleExecutor for Executor {
             let latest_prices = kline.get_latest_values::<f64>(
                 date,
                 &StockKlineField::Close.to_string(),
-                macd_period_slow + macd_period_signal + macd_slope_window,
+                (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
             );
             let macds = utils::financial::calc_macd(
                 &latest_prices,
@@ -166,35 +149,14 @@ impl RuleExecutor for Executor {
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] {ticker}({ticker_title}) MACD Buy Signal"
+                            "[{date_str}] [{rule_name}] Buy Signal {ticker}({ticker_title})"
                         )))
                         .await;
 
-                    let buy_value = cash - calc_buy_fee(cash, context.options);
-
-                    if let Some(price) = latest_prices.last() {
-                        let buy_units = (buy_value / price).floor();
-                        if buy_units > 0.0 {
-                            let value = buy_units * price;
-                            let fee = calc_buy_fee(value, context.options);
-                            let cost = value + fee;
-
-                            context.portfolio.cash -= cost;
-                            context
-                                .portfolio
-                                .positions
-                                .entry(ticker.clone())
-                                .and_modify(|x| *x += buy_units as u64)
-                                .or_insert(buy_units as u64);
-                            context.portfolio.sideline_cash.remove(&ticker);
-
-                            let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) {price:.2}x{buy_units} -> -${cost:.2}"
-                                )))
-                                .await;
-                        }
-                    }
+                    let ticker_value = cash - calc_buy_fee(cash, context.options);
+                    context
+                        .scale(&ticker, ticker_value, date, event_sender.clone())
+                        .await?;
                 }
             }
         }

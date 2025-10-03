@@ -10,6 +10,16 @@ use std::{
 use directories::ProjectDirs;
 use rayon::iter::*;
 
+#[macro_export]
+macro_rules! mod_name {
+    () => {
+        std::module_path!()
+            .rsplit("::")
+            .next()
+            .unwrap_or(std::module_path!())
+    };
+}
+
 pub mod api;
 pub mod error;
 pub mod spec;
@@ -38,6 +48,14 @@ pub async fn init(workspace: Option<PathBuf>) {
     }
 }
 
+mod backtest;
+mod cache;
+mod data;
+mod ds;
+mod financial;
+mod rule;
+mod ticker;
+
 static CACHE_ONLY: LazyLock<bool> = LazyLock::new(|| {
     let v = env::var("CACHE_ONLY")
         .as_deref()
@@ -54,16 +72,10 @@ static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     .join("cache.db")
 });
 
+static PROGRESS_INTERVAL_SECS: u64 = 3;
+
 static WORKSPACE: LazyLock<RwLock<PathBuf>> =
     LazyLock::new(|| RwLock::new(env::current_dir().expect("Unable to get current directory!")));
-
-mod backtest;
-mod cache;
-mod data;
-mod ds;
-mod financial;
-mod rule;
-mod ticker;
 
 impl VecOptions<'_> {
     pub fn get(&self, name: &str) -> Option<String> {

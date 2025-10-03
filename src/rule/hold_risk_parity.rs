@@ -36,6 +36,8 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let rule_name = mod_name!();
+
         let lookback_trade_days = self
             .options
             .get("lookback_trade_days")
@@ -79,7 +81,7 @@ impl RuleExecutor for Executor {
                 let prices = kline.get_latest_values::<f64>(
                     date,
                     &StockKlineField::Close.to_string(),
-                    lookback_trade_days as usize,
+                    lookback_trade_days as u32,
                 );
                 if let Some(vol) = calc_annual_volatility(&prices) {
                     ticker_inverse_vols.insert(ticker, if vol > 0.0 { 1.0 / vol } else { 0.0 });
@@ -113,18 +115,31 @@ impl RuleExecutor for Executor {
                 }
 
                 let _ = event_sender
-                    .send(BacktestEvent::Info(format!("[{date_str}] {tickers_str}")))
+                    .send(BacktestEvent::Info(format!(
+                        "[{date_str}] [{rule_name}] {tickers_str}"
+                    )))
                     .await;
             }
 
             let total_value = context.calc_total_value(date).await?;
             let position_value =
                 total_value - context.portfolio.sideline_cash.values().sum::<f64>();
-
             let target: Vec<(Ticker, f64)> = ticker_weights_adj
                 .into_iter()
                 .map(|(ticker, weight)| (ticker, position_value * weight))
                 .collect();
+
+            let target_str = target
+                .iter()
+                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
+                )))
+                .await;
+
             context.rebalance(&target, date, event_sender).await?;
         }
 

@@ -1,0 +1,28 @@
+title = "根据基于市场整体PE/PS的估值高低对持有的ETF进行动态调仓"
+
+tickers = [
+  "510300", # 沪深300ETF
+  "159949", # 创业板50ETF
+  "513100", # 纳斯达克100ETF
+  "513500", # 标普500ETF
+  "518880", # 黄金ETF
+  "511260", # 十年国债ETF
+  "161715", # 大宗商品LOF
+]
+
+[[rules]]
+name = "hold_equal"
+frequency = "1y"
+
+[[rules]]
+name = "sizing_by_valuation"
+frequency = "1m"
+
+[rules.options]
+lookback_years = 6
+pe_quantile_ceil = 0.9
+pe_quantile_floor = 0.5
+ps_quantile_ceil = 0.8
+ps_quantile_floor = 0.2
+ticker_watch_index = { "510300" = "000300.csi", "159949" = "399673.cni" }
+watch_period_days = 28

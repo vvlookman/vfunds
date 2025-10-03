@@ -61,6 +61,14 @@ def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
 
 @app.get("/report/{stock}")
 def report(stock: str, table: str = 'PershareIndex'):
+    # 'Balance'          # 资产负债表
+    # 'Income'           # 利润表
+    # 'CashFlow'         # 现金流量表
+    # 'Capital'          # 股本表
+    # 'Holdernum'        # 股东数
+    # 'Top10holder'      # 十大股东
+    # 'Top10flowholder'  # 十大流通股东
+    # 'PershareIndex'    # 每股指标
     xtdata.download_financial_data2(stock_list=[stock], table_list=[table])
     data = xtdata.get_financial_data(stock_list=[stock], table_list=[table])
 

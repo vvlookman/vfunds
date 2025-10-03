@@ -6,6 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
+    PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::stock::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
@@ -37,6 +38,8 @@ impl RuleExecutor for Executor {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let rule_name = mod_name!();
+
         let limit = self
             .options
             .get("limit")
@@ -62,51 +65,60 @@ impl RuleExecutor for Executor {
             let date_str = utils::datetime::date_to_str(date);
 
             let mut factors: Vec<(Ticker, [f64; 4])> = vec![];
-            let mut last_time = Instant::now();
-            let mut calc_count: usize = 0;
-            for ticker in &tickers {
-                if context.portfolio.sideline_cash.contains_key(ticker) {
-                    continue;
+            {
+                let mut last_time = Instant::now();
+                let mut calc_count: usize = 0;
+                for ticker in &tickers {
+                    if context.portfolio.sideline_cash.contains_key(ticker) {
+                        continue;
+                    }
+
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    let prices = kline.get_latest_values::<f64>(
+                        date,
+                        &StockKlineField::Close.to_string(),
+                        lookback_trade_days as u32,
+                    );
+
+                    if prices.len() < lookback_trade_days as usize {
+                        let _ = event_sender
+                            .send(BacktestEvent::Info(format!(
+                                "[{date_str}] [{ticker}] [{rule_name}] No enough data!"
+                            )))
+                            .await;
+                        continue;
+                    }
+
+                    if let (Some(sharpe), Some(volatility), Some(max_drawdown)) = (
+                        calc_sharpe_ratio(&prices, 0.02),
+                        calc_annual_volatility(&prices),
+                        calc_max_drawdown(&prices),
+                    ) {
+                        let momentum = prices[prices.len() - 1] / prices[0] - 1.0;
+
+                        factors
+                            .push((ticker.clone(), [sharpe, volatility, max_drawdown, momentum]));
+                    }
+
+                    calc_count += 1;
+
+                    if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
+                        let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
+                        let _ = event_sender
+                            .send(BacktestEvent::Toast(format!(
+                                "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
+                            )))
+                            .await;
+
+                        last_time = Instant::now();
+                    }
                 }
 
-                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                let prices = kline.get_latest_values::<f64>(
-                    date,
-                    &StockKlineField::Close.to_string(),
-                    lookback_trade_days as usize,
-                );
-
-                if prices.len() < lookback_trade_days as usize {
-                    let _ = event_sender
-                        .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{ticker}] No enough data!"
-                        )))
-                        .await;
-                    continue;
-                }
-
-                if let (Some(sharpe), Some(volatility), Some(max_drawdown)) = (
-                    calc_sharpe_ratio(&prices, 0.02),
-                    calc_annual_volatility(&prices),
-                    calc_max_drawdown(&prices),
-                ) {
-                    let momentum = prices[prices.len() - 1] / prices[0] - 1.0;
-
-                    factors.push((ticker.clone(), [sharpe, volatility, max_drawdown, momentum]));
-                }
-
-                calc_count += 1;
-
-                if last_time.elapsed().as_secs() > 5 {
-                    let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
-                    let _ = event_sender
-                        .send(BacktestEvent::Info(format!(
-                            "[{date_str}] Σ {calc_progress_pct:.2}% ..."
-                        )))
-                        .await;
-
-                    last_time = Instant::now();
-                }
+                let _ = event_sender
+                    .send(BacktestEvent::Toast(format!(
+                        "[{date_str}] [{rule_name}] Σ 100%"
+                    )))
+                    .await;
             }
 
             let mut normalized_factor_values: Vec<Vec<f64>> = vec![];
@@ -148,7 +160,7 @@ impl RuleExecutor for Executor {
 
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
-                        "[{date_str}] {top_tickers_str}"
+                        "[{date_str}] [{rule_name}] {top_tickers_str}"
                     )))
                     .await;
             }
@@ -160,11 +172,22 @@ impl RuleExecutor for Executor {
 
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / selected_tickers.len() as f64;
-
             let target: Vec<(Ticker, f64)> = selected_tickers
                 .into_iter()
                 .map(|ticker| (ticker, ticker_value))
                 .collect();
+
+            let target_str = target
+                .iter()
+                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
+                )))
+                .await;
+
             context.rebalance(&target, date, event_sender).await?;
         }
 

@@ -13,9 +13,9 @@ pub struct Ticker {
     pub symbol: String,
 }
 
-#[derive(Clone, Debug)]
-pub struct TickersSource {
-    pub name: String,
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct TickersIndex {
+    pub provider: String,
     pub symbol: String,
 }
 
@@ -62,8 +62,8 @@ impl FromStr for Ticker {
                 })
             } else {
                 Err(VfError::Invalid(
-                    "UNSUPPORTED_EXCHANGE",
-                    format!("Unsupported exchange '{s}'"),
+                    "INVALID_TICKER",
+                    format!("Invalid ticker '{s}'"),
                 ))
             }
         }
@@ -82,41 +82,40 @@ impl Ticker {
     }
 }
 
-impl FromStr for TickersSource {
+impl FromStr for TickersIndex {
     type Err = VfError;
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
         let s = s.trim();
 
-        let parts: Vec<_> = s.splitn(2, ':').collect();
-        if parts.len() == 2 {
+        if let Some((symbol, provider)) = s.rsplit_once('.') {
             Ok(Self {
-                name: parts[0].trim().to_uppercase().to_string(),
-                symbol: parts[1].trim().to_uppercase().to_string(),
+                provider: provider.trim().to_uppercase().to_string(),
+                symbol: symbol.trim().to_uppercase().to_string(),
             })
         } else {
             Err(VfError::Invalid(
-                "UNSUPPORTED_TICKERS_SOURCE",
-                format!("Unsupported tickers source '{s}'"),
+                "INVALID_TICKERS_INDEX",
+                format!("Invalid tickers index '{s}'"),
             ))
         }
     }
 }
 
-impl Display for TickersSource {
+impl Display for TickersIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.name, self.symbol)
+        write!(f, "{}.{}", self.symbol, self.provider)
     }
 }
 
-impl TickersSource {
-    pub async fn extract_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-        let tickers = match self.name.to_lowercase().as_str() {
-            "cnindex" => fetch_cnindex_tickers(&self.symbol, date).await?,
-            "csindex" => fetch_csindex_tickers(&self.symbol).await?,
+impl TickersIndex {
+    pub async fn all_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
+        let tickers = match self.provider.as_str() {
+            "CNI" | "CNINDEX" => fetch_cnindex_tickers(&self.symbol, date).await?,
+            "CSI" | "CSINDEX" => fetch_csindex_tickers(&self.symbol).await?,
             _ => {
                 return Err(VfError::Invalid(
-                    "UNSUPPORTED_TICKERS_SOURCE",
-                    format!("Unsupported tickers source '{self}'"),
+                    "UNSUPPORTED_TICKERS_INDEX",
+                    format!("Unsupported tickers index '{self}'"),
                 ));
             }
         };

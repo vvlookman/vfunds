@@ -1,4 +1,4 @@
-title = "持有多因子评分最高的N个ETF"
+title = "持有多因子评分最高的ETF"
 
 tickers = [
   "510300", # 沪深300ETF
@@ -11,7 +11,7 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_top_factors_score_equal"
+name = "hold_top_factors_score"
 frequency = "2w"
 
 [rules.options]

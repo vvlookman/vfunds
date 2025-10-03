@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::VfResult,
-    ticker::{Ticker, TickersSource},
+    ticker::{Ticker, TickersIndex},
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -20,7 +20,7 @@ pub struct FundDefinition {
     pub tickers: Vec<String>,
 
     #[serde(default)]
-    pub tickers_sources: Vec<String>,
+    pub ticker_sources: Vec<String>,
 
     #[serde(default)]
     pub rules: Vec<RuleDefinition>,
@@ -56,11 +56,10 @@ impl FundDefinition {
             tickers.insert(ticker);
         }
 
-        for tickers_source_str in &self.tickers_sources {
-            let tickers_source = TickersSource::from_str(tickers_source_str)?;
-            let tickers_from_source = tickers_source.extract_tickers(date).await?;
-
-            for ticker in tickers_from_source {
+        for ticker_source_str in &self.ticker_sources {
+            let ticker_source = TickersIndex::from_str(ticker_source_str)?;
+            let index_tickers = ticker_source.all_tickers(date).await?;
+            for ticker in index_tickers {
                 tickers.insert(ticker);
             }
         }
