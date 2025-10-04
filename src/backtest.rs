@@ -8,7 +8,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT,
+    CHANNEL_BUFFER_DEFAULT, WORKSPACE,
     error::*,
     financial::{
         Portfolio,
@@ -50,6 +50,7 @@ pub struct BacktestOptions {
     pub stamp_duty_min_fee: f64,
     pub broker_commission_rate: f64,
     pub broker_commission_min_fee: f64,
+    pub output_daily_values: bool,
 }
 
 pub struct BacktestStream {
@@ -94,11 +95,13 @@ pub fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
 }
 
 pub async fn backtest_fund(
+    fund_name: &str,
     fund_definition: &FundDefinition,
     options: &BacktestOptions,
 ) -> VfResult<BacktestStream> {
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
+    let fund_name = fund_name.to_string();
     let fund_definition = fund_definition.clone();
     let options = options.clone();
 
@@ -148,6 +151,21 @@ pub async fn backtest_fund(
                 }
             }
 
+            if options.output_daily_values {
+                let workspace = { WORKSPACE.read()? };
+                let path = workspace.join(format!("{fund_name}.csv"));
+
+                let mut wtr = csv::Writer::from_path(&path)?;
+                wtr.write_record(["date", "value"])?;
+                for (trade_date, value) in &trade_date_values {
+                    wtr.write_record(&[
+                        utils::datetime::date_to_str(trade_date),
+                        format!("{value:.2}"),
+                    ])?;
+                }
+                wtr.flush()?;
+            }
+
             let final_trade_date = trade_date_values.last().map(|(d, _)| *d);
             let final_cash = trade_date_values
                 .last()
@@ -155,7 +173,6 @@ pub async fn backtest_fund(
                 .unwrap_or(options.init_cash);
             let profit = final_cash - options.init_cash;
             let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
-
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
             let max_drawdown = calc_max_drawdown(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);

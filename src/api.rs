@@ -44,12 +44,12 @@ pub async fn backtest(
             ..Default::default()
         };
 
-        let stream = backtest::backtest_fund(&fund_definition, options).await?;
+        let stream = backtest::backtest_fund(benchmark_str, &fund_definition, options).await?;
         streams.push((format!("# {benchmark_str} #"), stream));
     }
 
     for (fund_name, fund_definition) in funds {
-        let stream = backtest::backtest_fund(&fund_definition, options).await?;
+        let stream = backtest::backtest_fund(&fund_name, &fund_definition, options).await?;
         streams.push((fund_name, stream));
     }
 

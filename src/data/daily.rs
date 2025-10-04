@@ -6,10 +6,7 @@ use polars::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::{
-    error::{VfError, VfResult},
-    utils,
-};
+use crate::error::{VfError, VfResult};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DailyDataset {
@@ -66,7 +63,7 @@ impl DailyDataset {
                                         let days_after_epoch: i32 = if let Ok((date, _)) =
                                             NaiveDate::parse_and_remainder(s, "%Y-%m-%d")
                                         {
-                                            utils::datetime::days_after_epoch(&date).unwrap_or(0)
+                                            date.to_epoch_days()
                                         } else {
                                             0
                                         };
@@ -110,9 +107,7 @@ impl DailyDataset {
             for i in 0..col_date.len() {
                 if let Ok(cell_date) = col_date.get(i) {
                     if let Some(date_days_after_epoch) = cell_date.extract::<i32>() {
-                        if let Some(date) =
-                            utils::datetime::date_from_days_after_epoch(date_days_after_epoch)
-                        {
+                        if let Some(date) = NaiveDate::from_epoch_days(date_days_after_epoch) {
                             dates.push(date);
                         }
                     }
@@ -261,9 +256,9 @@ impl DailyDataset {
                             if let (Some(date_days_after_epoch), Some(val)) =
                                 (cell_date.extract::<i32>(), cell_val.extract::<T>())
                             {
-                                if let Some(date) = utils::datetime::date_from_days_after_epoch(
-                                    date_days_after_epoch,
-                                ) {
+                                if let Some(date) =
+                                    NaiveDate::from_epoch_days(date_days_after_epoch)
+                                {
                                     vals.push((date, val));
                                 }
                             }

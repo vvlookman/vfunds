@@ -31,7 +31,7 @@ pub struct BacktestCommand {
         short = 's',
         long = "start",
         value_parser = utils::datetime::date_from_str,
-        help = "Start date of backtest, e.g. -s 2022-08-08"
+        help = "Start date of backtest, e.g. -s 2019-08-08"
     )]
     start_date: NaiveDate,
 
@@ -53,7 +53,7 @@ pub struct BacktestCommand {
     #[arg(
         short = 'b',
         long = "benchmark",
-        help = "Benchmark ticket, e.g. -b 510300"
+        help = "Benchmark ticker, e.g. -b 510300"
     )]
     benchmark: Option<String>,
 
@@ -92,6 +92,9 @@ pub struct BacktestCommand {
         help = "The broker-commission minimal fee, the default value is 5"
     )]
     broker_commission_min_fee: f64,
+
+    #[arg(short = 'O', help = "Output daily values of backtest results")]
+    output_daily_values: bool,
 }
 
 impl BacktestCommand {
@@ -106,6 +109,7 @@ impl BacktestCommand {
             stamp_duty_min_fee: self.stamp_duty_min_fee,
             broker_commission_rate: self.broker_commission_rate,
             broker_commission_min_fee: self.broker_commission_min_fee,
+            output_daily_values: self.output_daily_values,
         };
 
         if options.end_date <= options.start_date {

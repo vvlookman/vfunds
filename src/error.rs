@@ -7,6 +7,9 @@ pub enum VfError {
     #[error("[Concurrent Error] {0}")]
     ConcurrentError(#[from] ::tokio::task::JoinError),
 
+    #[error("[CSV Error] {0}")]
+    CsvError(#[from] ::csv::Error),
+
     #[error("[Dataframe Error] {0}")]
     DataframeError(#[from] ::polars::error::PolarsError),
 

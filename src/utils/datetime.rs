@@ -10,10 +10,6 @@ pub struct FiscalQuarter {
     pub quarter: u8, // 1, 2, 3, 4
 }
 
-pub fn date_from_days_after_epoch(days: i32) -> Option<NaiveDate> {
-    NaiveDate::from_num_days_from_ce_opt(719163 + days)
-}
-
 pub fn date_from_str(s: &str) -> VfResult<NaiveDate> {
     if let Ok(date) = NaiveDate::parse_from_str(s, "%Y%m%d") {
         Ok(date)
@@ -55,15 +51,6 @@ pub fn date_to_fiscal_quarter(date: &NaiveDate) -> FiscalQuarter {
 pub fn date_to_str(date: &NaiveDate) -> String {
     date.format("%Y-%m-%d").to_string()
 }
-
-pub fn days_after_epoch(date: &NaiveDate) -> Option<i32> {
-    let num_days = date.signed_duration_since(EPOCH).num_days();
-    let days: i32 = num_days.try_into().ok()?;
-
-    Some(days)
-}
-
-static EPOCH: NaiveDate = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
 
 impl FiscalQuarter {
     pub fn new(year: i32, quarter: u8) -> Self {
