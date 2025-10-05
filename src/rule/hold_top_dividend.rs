@@ -14,7 +14,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils,
+    utils::datetime::date_to_str,
 };
 
 pub struct Executor {
@@ -71,7 +71,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
             let date_from =
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
 

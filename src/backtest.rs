@@ -8,7 +8,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT, WORKSPACE,
+    CHANNEL_BUFFER_DEFAULT,
     error::*,
     financial::{
         Portfolio,
@@ -18,9 +18,11 @@ use crate::{
     rule::Rule,
     spec::FundDefinition,
     ticker::Ticker,
-    utils,
-    utils::financial::{
-        calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+    utils::{
+        datetime::date_to_str,
+        financial::{
+            calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+        },
     },
 };
 
@@ -50,7 +52,6 @@ pub struct BacktestOptions {
     pub stamp_duty_min_fee: f64,
     pub broker_commission_rate: f64,
     pub broker_commission_min_fee: f64,
-    pub output_daily_values: bool,
 }
 
 pub struct BacktestStream {
@@ -58,8 +59,7 @@ pub struct BacktestStream {
 }
 
 pub struct BacktestResult {
-    pub final_trade_date: Option<NaiveDate>,
-    pub trade_days: usize,
+    pub trade_date_values: Vec<(NaiveDate, f64)>,
     pub profit: f64,
     pub annual_return_rate: Option<f64>,
     pub max_drawdown: Option<f64>,
@@ -95,13 +95,11 @@ pub fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
 }
 
 pub async fn backtest_fund(
-    fund_name: &str,
     fund_definition: &FundDefinition,
     options: &BacktestOptions,
 ) -> VfResult<BacktestStream> {
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
-    let fund_name = fund_name.to_string();
     let fund_definition = fund_definition.clone();
     let options = options.clone();
 
@@ -113,9 +111,7 @@ pub async fn backtest_fund(
                 portfolio: &mut Portfolio::new(options.init_cash),
             };
 
-            let trade_dates = fetch_trade_dates().await?;
             let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
-            let days = (options.end_date - options.start_date).num_days() as u64 + 1;
 
             let mut rules = fund_definition
                 .rules
@@ -123,6 +119,9 @@ pub async fn backtest_fund(
                 .map(Rule::from_definition)
                 .collect::<Vec<_>>();
             let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
+
+            let days = (options.end_date - options.start_date).num_days() as u64 + 1;
+            let trade_dates = fetch_trade_dates().await?;
             for date in options.start_date.iter_days().take(days as usize) {
                 if trade_dates.contains(&date) {
                     for (rule_index, rule) in rules.iter_mut().enumerate() {
@@ -145,28 +144,12 @@ pub async fn backtest_fund(
                     let total_value = context.calc_total_value(&date).await?;
                     trade_date_values.push((date, total_value));
 
-                    debug!("[{}] ✔", utils::datetime::date_to_str(&date));
+                    debug!("[{}] ✔", date_to_str(&date));
                 } else {
-                    debug!("[{}] ○", utils::datetime::date_to_str(&date));
+                    debug!("[{}] ○", date_to_str(&date));
                 }
             }
 
-            if options.output_daily_values {
-                let workspace = { WORKSPACE.read()? };
-                let path = workspace.join(format!("{fund_name}.csv"));
-
-                let mut wtr = csv::Writer::from_path(&path)?;
-                wtr.write_record(["date", "value"])?;
-                for (trade_date, value) in &trade_date_values {
-                    wtr.write_record(&[
-                        utils::datetime::date_to_str(trade_date),
-                        format!("{value:.2}"),
-                    ])?;
-                }
-                wtr.flush()?;
-            }
-
-            let final_trade_date = trade_date_values.last().map(|(d, _)| *d);
             let final_cash = trade_date_values
                 .last()
                 .map(|(_, v)| *v)
@@ -179,8 +162,7 @@ pub async fn backtest_fund(
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
             Ok(BacktestResult {
-                final_trade_date,
-                trade_days: trade_date_values.len(),
+                trade_date_values,
                 profit,
                 annual_return_rate,
                 max_drawdown,
@@ -232,7 +214,7 @@ impl BacktestContext<'_> {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = utils::datetime::date_to_str(date);
+        let date_str = date_to_str(date);
 
         let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
         if let Some(price) =
@@ -267,7 +249,7 @@ impl BacktestContext<'_> {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = utils::datetime::date_to_str(date);
+        let date_str = date_to_str(date);
 
         let holding_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
         for ticker in &holding_tickers {
@@ -319,7 +301,7 @@ impl BacktestContext<'_> {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = utils::datetime::date_to_str(date);
+        let date_str = date_to_str(date);
 
         let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
         if let Some(price) =

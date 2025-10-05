@@ -8,7 +8,7 @@ use crate::{
     error::VfResult,
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils,
+    utils::datetime::date_to_str,
 };
 
 pub struct Executor {
@@ -36,7 +36,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
 
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / tickers.len() as f64;

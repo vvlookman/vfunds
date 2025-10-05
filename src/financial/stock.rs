@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use dashmap::DashMap;
 use serde_json::json;
 
-use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker, utils};
+use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker, utils::datetime::date_from_str};
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -89,7 +89,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let title = json["InstrumentName"].as_str().unwrap_or_default();
     let trading_date = json["TradingDay"]
         .as_str()
-        .and_then(|s| utils::datetime::date_from_str(s).ok());
+        .and_then(|s| date_from_str(s).ok());
     let pre_close_price = json["PreClose"].as_f64();
     let float_volume = json["FloatVolume"].as_u64();
     let total_volume = json["TotalVolume"].as_u64();

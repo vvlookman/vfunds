@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use chrono::{Local, NaiveDate};
 use colored::Colorize;
@@ -13,8 +13,8 @@ use tokio::time::Duration;
 use vfunds::{
     api,
     api::{BacktestEvent, BacktestOptions},
-    error::VfError,
-    utils,
+    error::{VfError, VfResult},
+    utils::datetime::{date_from_str, date_to_str},
 };
 
 #[derive(clap::Args)]
@@ -30,7 +30,7 @@ pub struct BacktestCommand {
     #[arg(
         short = 's',
         long = "start",
-        value_parser = utils::datetime::date_from_str,
+        value_parser = date_from_str,
         help = "Start date of backtest, e.g. -s 2019-08-08"
     )]
     start_date: NaiveDate,
@@ -38,7 +38,7 @@ pub struct BacktestCommand {
     #[arg(
         short = 'e',
         long = "end",
-        value_parser = utils::datetime::date_from_str,
+        value_parser = date_from_str,
         help = "End date of backtest, the default value is today, e.g. -e 2025-08-08"
     )]
     end_date: Option<NaiveDate>,
@@ -93,8 +93,12 @@ pub struct BacktestCommand {
     )]
     broker_commission_min_fee: f64,
 
-    #[arg(short = 'O', help = "Output daily values of backtest results")]
-    output_daily_values: bool,
+    #[arg(
+        short = 'o',
+        long = "output",
+        help = "Output backtest results to the specified directory"
+    )]
+    output_dir: Option<PathBuf>,
 }
 
 impl BacktestCommand {
@@ -109,14 +113,13 @@ impl BacktestCommand {
             stamp_duty_min_fee: self.stamp_duty_min_fee,
             broker_commission_rate: self.broker_commission_rate,
             broker_commission_min_fee: self.broker_commission_min_fee,
-            output_daily_values: self.output_daily_values,
         };
 
         if options.end_date <= options.start_date {
             panic!(
                 "The end date {} cannot be earlier than the start date {}",
-                utils::datetime::date_to_str(&options.end_date),
-                utils::datetime::date_to_str(&options.start_date)
+                date_to_str(&options.end_date),
+                date_to_str(&options.start_date)
             );
         }
 
@@ -140,11 +143,11 @@ impl BacktestCommand {
             Ok(streams) => {
                 let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
-                    utils::datetime::date_to_str(&self.start_date),
-                    "Final Day".to_string(),
-                    "Trade Days".to_string(),
+                    date_to_str(&self.start_date),
+                    "Final Date".to_string(),
+                    "T Days".to_string(),
                     "Profit".to_string(),
-                    "ARR".to_string(),
+                    "Annualized Return".to_string(),
                     "Max Drawdown".to_string(),
                     "Sharpe Ratio".to_string(),
                     "Sortino Ratio".to_string(),
@@ -169,10 +172,11 @@ impl BacktestCommand {
                                 table_data.push(vec![
                                     fund_name.to_string(),
                                     fund_result
-                                        .final_trade_date
-                                        .map(|v| utils::datetime::date_to_str(&v))
+                                        .trade_date_values
+                                        .last()
+                                        .map(|(d, _)| date_to_str(d))
                                         .unwrap_or("-".to_string()),
-                                    format!("{}", fund_result.trade_days),
+                                    format!("{}", fund_result.trade_date_values.len()),
                                     format!("{:.2}", fund_result.profit),
                                     fund_result
                                         .annual_return_rate
@@ -191,6 +195,28 @@ impl BacktestCommand {
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
                                 ]);
+
+                                if let Some(output_dir) = &self.output_dir {
+                                    let output_daily_values =
+                                        |values: &Vec<(NaiveDate, f64)>| -> VfResult<()> {
+                                            let path = output_dir.join(format!("{fund_name}.csv"));
+                                            let mut csv_writer = csv::Writer::from_path(&path)?;
+                                            csv_writer.write_record(["date", "value"])?;
+                                            for (date, value) in values {
+                                                csv_writer.write_record(&[
+                                                    date_to_str(date),
+                                                    format!("{value:.2}"),
+                                                ])?;
+                                            }
+                                            csv_writer.flush()?;
+                                            Ok(())
+                                        };
+                                    if let Err(err) =
+                                        output_daily_values(&fund_result.trade_date_values)
+                                    {
+                                        errors.insert(fund_name.to_string(), err);
+                                    }
+                                }
                             }
                             BacktestEvent::Error(err) => {
                                 errors.insert(fund_name.to_string(), err);

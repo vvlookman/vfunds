@@ -11,7 +11,11 @@ use crate::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
-    utils,
+    utils::{
+        datetime::date_to_str,
+        financial::{calc_macd, calc_rsi},
+        stats::slope,
+    },
 };
 
 pub struct Executor {
@@ -73,7 +77,7 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_f64())
             .unwrap_or(70.0);
 
-        let date_str = utils::datetime::date_to_str(date);
+        let date_str = date_to_str(date);
 
         for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
@@ -82,11 +86,11 @@ impl RuleExecutor for Executor {
                 &StockKlineField::Close.to_string(),
                 (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
             );
-            let macds = utils::financial::calc_macd(
+            let macds = calc_macd(
                 &latest_prices,
                 (macd_period_fast, macd_period_slow, macd_period_signal),
             );
-            let rsis = utils::financial::calc_rsi(&latest_prices, rsi_period);
+            let rsis = calc_rsi(&latest_prices, rsi_period);
 
             if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
                 (macds.last(), macds.iter().rev().nth(1), rsis.last())
@@ -98,7 +102,7 @@ impl RuleExecutor for Executor {
                     .rev()
                     .map(|v| v.2)
                     .collect();
-                let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
+                let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;
@@ -126,11 +130,11 @@ impl RuleExecutor for Executor {
                 &StockKlineField::Close.to_string(),
                 (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
             );
-            let macds = utils::financial::calc_macd(
+            let macds = calc_macd(
                 &latest_prices,
                 (macd_period_fast, macd_period_slow, macd_period_signal),
             );
-            let rsis = utils::financial::calc_rsi(&latest_prices, rsi_period);
+            let rsis = calc_rsi(&latest_prices, rsi_period);
 
             if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
                 (macds.last(), macds.iter().rev().nth(1), rsis.last())
@@ -142,7 +146,7 @@ impl RuleExecutor for Executor {
                     .rev()
                     .map(|v| v.2)
                     .collect();
-                let macd_slope = utils::stats::slope(&macd_hists).unwrap_or(0.0);
+                let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
                     let ticker_title = fetch_stock_detail(&ticker).await?.title;

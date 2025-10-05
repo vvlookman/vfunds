@@ -16,7 +16,10 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::{Ticker, TickersIndex},
-    utils,
+    utils::{
+        datetime::{FiscalQuarter, date_from_str, date_to_fiscal_quarter, date_to_str},
+        stats::quantile,
+    },
 };
 
 pub struct Executor {
@@ -138,7 +141,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
             let date_from =
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
 
@@ -170,11 +173,11 @@ impl RuleExecutor for Executor {
                             Some(ps_sell),
                         ) = (
                             pe_values.last(),
-                            utils::stats::quantile(&pe_values, pe_quantile_ceil - 0.1),
-                            utils::stats::quantile(&pe_values, pe_quantile_ceil),
+                            quantile(&pe_values, pe_quantile_ceil - 0.1),
+                            quantile(&pe_values, pe_quantile_ceil),
                             ps_values.last(),
-                            utils::stats::quantile(&ps_values, ps_quantile_ceil - 0.1),
-                            utils::stats::quantile(&ps_values, ps_quantile_ceil),
+                            quantile(&ps_values, ps_quantile_ceil - 0.1),
+                            quantile(&ps_values, ps_quantile_ceil),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2} ps={ps:.2}  ps_overvalued={ps_overvalued:.2} ps_sell={ps_sell:.2}"
@@ -209,11 +212,11 @@ impl RuleExecutor for Executor {
                             Some(ps_buy),
                         ) = (
                             pe_values.last(),
-                            utils::stats::quantile(&pe_values, pe_quantile_floor + 0.1),
-                            utils::stats::quantile(&pe_values, pe_quantile_floor),
+                            quantile(&pe_values, pe_quantile_floor + 0.1),
+                            quantile(&pe_values, pe_quantile_floor),
                             ps_values.last(),
-                            utils::stats::quantile(&ps_values, ps_quantile_floor + 0.1),
-                            utils::stats::quantile(&ps_values, ps_quantile_floor),
+                            quantile(&ps_values, ps_quantile_floor + 0.1),
+                            quantile(&ps_values, ps_quantile_floor),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2} ps={ps:.2} ps_undervalued={ps_undervalued:.2} ps_buy={ps_buy:.2}"
@@ -285,7 +288,7 @@ impl Executor {
         let mut valuation_indicators: Vec<(NaiveDate, f64, f64)> = vec![];
 
         let rule_name = mod_name!();
-        let date_str = utils::datetime::date_to_str(date_to);
+        let date_str = date_to_str(date_to);
 
         let watch_days = date_to.signed_duration_since(*date_from).num_days() + 1;
         let period_count = (watch_days as f64 / watch_period_days as f64).ceil() as i64;
@@ -303,7 +306,7 @@ impl Executor {
             }
 
             let tickers = index.all_tickers(&watch_date).await?;
-            let watch_date_str = utils::datetime::date_to_str(&watch_date);
+            let watch_date_str = date_to_str(&watch_date);
 
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
@@ -336,15 +339,13 @@ impl Executor {
                         5,
                     ),
                 ) {
-                    let mut fiscal_epss: Vec<(utils::datetime::FiscalQuarter, f64)> = vec![];
+                    let mut fiscal_epss: Vec<(FiscalQuarter, f64)> = vec![];
                     {
-                        let mut current_fiscal_quarter: Option<utils::datetime::FiscalQuarter> =
-                            None;
+                        let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
                         for (eps, date_label) in epss {
                             if let Some(date_label_str) = date_label {
-                                if let Ok(date) = utils::datetime::date_from_str(&date_label_str) {
-                                    let fiscal_quarter =
-                                        utils::datetime::date_to_fiscal_quarter(&date);
+                                if let Ok(date) = date_from_str(&date_label_str) {
+                                    let fiscal_quarter = date_to_fiscal_quarter(&date);
 
                                     if let Some(current_fiscal_quarter) = current_fiscal_quarter {
                                         if fiscal_quarter.prev() != current_fiscal_quarter {
@@ -360,15 +361,13 @@ impl Executor {
                         }
                     }
 
-                    let mut fiscal_revenues: Vec<(utils::datetime::FiscalQuarter, f64)> = vec![];
+                    let mut fiscal_revenues: Vec<(FiscalQuarter, f64)> = vec![];
                     {
-                        let mut current_fiscal_quarter: Option<utils::datetime::FiscalQuarter> =
-                            None;
+                        let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
                         for (revenue, date_label) in revenues {
                             if let Some(date_label_str) = date_label {
-                                if let Ok(date) = utils::datetime::date_from_str(&date_label_str) {
-                                    let fiscal_quarter =
-                                        utils::datetime::date_to_fiscal_quarter(&date);
+                                if let Ok(date) = date_from_str(&date_label_str) {
+                                    let fiscal_quarter = date_to_fiscal_quarter(&date);
 
                                     if let Some(current_fiscal_quarter) = current_fiscal_quarter {
                                         if fiscal_quarter.prev() != current_fiscal_quarter {

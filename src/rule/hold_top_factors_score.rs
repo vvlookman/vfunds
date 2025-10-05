@@ -13,8 +13,11 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils,
-    utils::financial::{calc_annual_volatility, calc_max_drawdown, calc_sharpe_ratio},
+    utils::{
+        datetime::date_to_str,
+        financial::{calc_annual_volatility, calc_max_drawdown, calc_sharpe_ratio},
+        math::normalize_min_max,
+    },
 };
 
 pub struct Executor {
@@ -62,7 +65,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
 
             let mut factors: Vec<(Ticker, [f64; 4])> = vec![];
             {
@@ -124,7 +127,7 @@ impl RuleExecutor for Executor {
             let mut normalized_factor_values: Vec<Vec<f64>> = vec![];
             for j in 0..4 {
                 let factor_values: Vec<f64> = factors.iter().map(|x| x.1[j]).collect();
-                normalized_factor_values.push(utils::math::normalize_min_max(&factor_values));
+                normalized_factor_values.push(normalize_min_max(&factor_values));
             }
 
             let mut indicators: Vec<(Ticker, f64)> = factors

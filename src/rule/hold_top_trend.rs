@@ -18,8 +18,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils,
-    utils::financial::calc_annual_return_rate,
+    utils::{datetime::date_to_str, financial::calc_annual_return_rate, stats::quantile},
 };
 
 pub struct Executor {
@@ -85,7 +84,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             {
@@ -196,7 +195,7 @@ impl RuleExecutor for Executor {
 
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            let threshold = utils::stats::quantile(
+            let threshold = quantile(
                 &indicators.iter().map(|x| x.1).collect::<Vec<f64>>(),
                 filter_quantile,
             )

@@ -11,8 +11,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils,
-    utils::{financial::calc_annual_volatility, math::constraint_array},
+    utils::{datetime::date_to_str, financial::calc_annual_volatility, math::constraint_array},
 };
 
 pub struct Executor {
@@ -69,7 +68,7 @@ impl RuleExecutor for Executor {
 
         let tickers = context.fund_definition.all_tickers(date).await?;
         if !tickers.is_empty() {
-            let date_str = utils::datetime::date_to_str(date);
+            let date_str = date_to_str(date);
 
             let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();
             for ticker in tickers {
