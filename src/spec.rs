@@ -1,8 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-    str::FromStr,
-};
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -48,23 +44,26 @@ impl FundDefinition {
         confy::load_path(path).map_err(Into::into)
     }
 
-    pub async fn all_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-        let mut tickers: HashSet<Ticker> = HashSet::new();
+    pub async fn all_tickers(
+        &self,
+        date: &NaiveDate,
+    ) -> VfResult<HashMap<Ticker, Option<TickersIndex>>> {
+        let mut all_tickers: HashMap<Ticker, Option<TickersIndex>> = HashMap::new();
 
         for ticker_str in &self.tickers {
             let ticker = Ticker::from_str(ticker_str)?;
-            tickers.insert(ticker);
+            all_tickers.insert(ticker, None);
         }
 
         for ticker_source_str in &self.ticker_sources {
             let ticker_source = TickersIndex::from_str(ticker_source_str)?;
             let index_tickers = ticker_source.all_tickers(date).await?;
             for ticker in index_tickers {
-                tickers.insert(ticker);
+                all_tickers.insert(ticker, Some(ticker_source.clone()));
             }
         }
 
-        Ok(tickers.into_iter().collect())
+        Ok(all_tickers)
     }
 }
 

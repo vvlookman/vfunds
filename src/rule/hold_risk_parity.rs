@@ -71,19 +71,20 @@ impl RuleExecutor for Executor {
             let date_str = date_to_str(date);
 
             let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();
-            for ticker in tickers {
-                if context.portfolio.sideline_cash.contains_key(&ticker) {
+            for ticker in tickers.keys() {
+                if context.portfolio.sideline_cash.contains_key(ticker) {
                     continue;
                 }
 
-                let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
                 let prices = kline.get_latest_values::<f64>(
                     date,
                     &StockKlineField::Close.to_string(),
                     lookback_trade_days as u32,
                 );
                 if let Some(vol) = calc_annualized_volatility(&prices) {
-                    ticker_inverse_vols.insert(ticker, if vol > 0.0 { 1.0 / vol } else { 0.0 });
+                    ticker_inverse_vols
+                        .insert(ticker.clone(), if vol > 0.0 { 1.0 / vol } else { 0.0 });
                 }
             }
 

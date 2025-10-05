@@ -79,7 +79,7 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
-                for ticker in &tickers {
+                for ticker in tickers.keys() {
                     debug!("[{date_str}] {ticker}");
 
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;

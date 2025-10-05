@@ -41,7 +41,7 @@ impl RuleExecutor for Executor {
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / tickers.len() as f64;
             let target: Vec<(Ticker, f64)> = tickers
-                .into_iter()
+                .into_keys()
                 .map(|ticker| (ticker, ticker_value))
                 .collect();
 

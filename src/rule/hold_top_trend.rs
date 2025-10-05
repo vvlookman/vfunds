@@ -90,7 +90,7 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
-                for ticker in &tickers {
+                for ticker in tickers.keys() {
                     if context.portfolio.sideline_cash.contains_key(ticker) {
                         continue;
                     }

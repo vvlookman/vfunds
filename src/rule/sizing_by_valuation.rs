@@ -83,6 +83,10 @@ impl RuleExecutor for Executor {
             .options
             .get("ticker_watch_index")
             .and_then(|v| v.as_object());
+        let ticker_source_watch_index = self
+            .options
+            .get("ticker_source_watch_index")
+            .and_then(|v| v.as_object());
         let watch_period_days = self
             .options
             .get("watch_period_days")
@@ -139,19 +143,44 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let tickers = context.fund_definition.all_tickers(date).await?;
-        if !tickers.is_empty() {
+        let mut ticker_source_watch_index_map: HashMap<TickersIndex, TickersIndex> = HashMap::new();
+        if let Some(ticker_source_watch_index) = ticker_source_watch_index {
+            for (k, v) in ticker_source_watch_index {
+                if let Some(v_str) = v.as_str() {
+                    if let (Ok(ticker_source), Ok(watch_index)) =
+                        (TickersIndex::from_str(k), TickersIndex::from_str(v_str))
+                    {
+                        ticker_source_watch_index_map.insert(ticker_source, watch_index);
+                    }
+                }
+            }
+        }
+
+        let all_tickers = context.fund_definition.all_tickers(date).await?;
+        let watching_tickers = context.watching_tickers();
+        if !watching_tickers.is_empty() {
             let date_str = date_to_str(date);
             let date_from =
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
 
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
-            for ticker in &tickers {
-                if let Some(watch_index) = ticker_watch_index_map.get(ticker) {
+            for ticker in &watching_tickers {
+                let watch_index: Option<TickersIndex> =
+                    if let Some(index) = ticker_watch_index_map.get(ticker) {
+                        Some(index.clone())
+                    } else {
+                        if let Some(Some(ticker_source)) = all_tickers.get(ticker) {
+                            ticker_source_watch_index_map.get(ticker_source).cloned()
+                        } else {
+                            None
+                        }
+                    };
+
+                if let Some(watch_index) = watch_index {
                     let valuation_indicators = self
                         .calc_valuation_indicators(
-                            watch_index,
+                            &watch_index,
                             &date_from,
                             date,
                             watch_period_days as i64,
@@ -254,7 +283,8 @@ impl RuleExecutor for Executor {
                 calc_count += 1;
 
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                    let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
+                    let calc_progress_pct =
+                        calc_count as f64 / watching_tickers.len() as f64 * 100.0;
                     let _ = event_sender
                         .send(BacktestEvent::Toast(format!(
                             "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."

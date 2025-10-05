@@ -407,6 +407,13 @@ impl BacktestContext<'_> {
 
         Ok(())
     }
+
+    pub fn watching_tickers(&self) -> Vec<Ticker> {
+        let hold_tickers: Vec<Ticker> = self.portfolio.positions.keys().cloned().collect();
+        let sideline_tickers: Vec<Ticker> = self.portfolio.sideline_cash.keys().cloned().collect();
+
+        hold_tickers.into_iter().chain(sideline_tickers).collect()
+    }
 }
 
 impl BacktestStream {
