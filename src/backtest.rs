@@ -21,7 +21,8 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annual_return_rate, calc_max_drawdown, calc_sharpe_ratio, calc_sortino_ratio,
+            calc_annual_return_rate, calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio,
+            calc_sortino_ratio, calc_win_rate,
         },
     },
 };
@@ -63,7 +64,10 @@ pub struct BacktestResult {
     pub profit: f64,
     pub annual_return_rate: Option<f64>,
     pub max_drawdown: Option<f64>,
+    pub win_rate: Option<f64>,
+    pub profit_factor: Option<f64>,
     pub sharpe_ratio: Option<f64>,
+    pub calmar_ratio: Option<f64>,
     pub sortino_ratio: Option<f64>,
 }
 
@@ -158,7 +162,14 @@ pub async fn backtest_fund(
             let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
             let max_drawdown = calc_max_drawdown(&daily_values);
+            let win_rate = calc_win_rate(&daily_values);
+            let profit_factor = calc_profit_factor(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
+            let calmar_ratio = if let (Some(arr), Some(mdd)) = (annual_return_rate, max_drawdown) {
+                if mdd > 0.0 { Some(arr / mdd) } else { None }
+            } else {
+                None
+            };
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
             Ok(BacktestResult {
@@ -166,7 +177,10 @@ pub async fn backtest_fund(
                 profit,
                 annual_return_rate,
                 max_drawdown,
+                win_rate,
+                profit_factor,
                 sharpe_ratio,
+                calmar_ratio,
                 sortino_ratio,
             })
         };

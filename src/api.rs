@@ -11,6 +11,7 @@ use crate::{
 
 pub type BacktestEvent = backtest::BacktestEvent;
 pub type BacktestOptions = backtest::BacktestOptions;
+pub type BacktestResult = backtest::BacktestResult;
 pub type BacktestStream = backtest::BacktestStream;
 
 pub async fn backtest(
@@ -45,7 +46,7 @@ pub async fn backtest(
         };
 
         let stream = backtest::backtest_fund(&fund_definition, options).await?;
-        streams.push((format!("# {benchmark_str} #"), stream));
+        streams.push((format!("*{benchmark_str}*"), stream));
     }
 
     for (fund_name, fund_definition) in funds {

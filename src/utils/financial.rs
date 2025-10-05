@@ -69,6 +69,25 @@ pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
     None
 }
 
+pub fn calc_profit_factor(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_return = stats::pct_change(daily_values);
+
+        let profit = daily_return.iter().filter(|&v| *v > 0.0).sum::<f64>();
+        let loss = daily_return
+            .iter()
+            .filter(|&v| *v < 0.0)
+            .map(|&v| v.abs())
+            .sum::<f64>();
+
+        if loss > 0.0 {
+            return Some(profit / loss);
+        }
+    }
+
+    None
+}
+
 pub fn calc_rsi(daily_values: &[f64], period: usize) -> Vec<f64> {
     let mut results: Vec<f64> = vec![];
 
@@ -110,7 +129,7 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
         if let Some(return_mean) = stats::mean(&daily_return) {
             let daily_return_downside: Vec<_> = daily_return
                 .iter()
-                .filter(|&value| *value < return_mean)
+                .filter(|&v| *v < return_mean)
                 .copied()
                 .collect();
             if daily_return_downside.len() > 1 {
@@ -126,6 +145,17 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
                 }
             }
         }
+    }
+
+    None
+}
+
+pub fn calc_win_rate(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_return = stats::pct_change(daily_values);
+        let wins = daily_return.iter().filter(|&v| *v > 0.0).count();
+
+        return Some(wins as f64 / daily_return.len() as f64);
     }
 
     None
