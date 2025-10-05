@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use log::debug;
+use serde::Serialize;
 use tokio::sync::{
     mpsc,
     mpsc::{Receiver, Sender},
@@ -21,8 +22,8 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annual_return_rate, calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio,
-            calc_sortino_ratio, calc_win_rate,
+            calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
+            calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
         },
     },
 };
@@ -59,16 +60,26 @@ pub struct BacktestStream {
     receiver: Receiver<BacktestEvent>,
 }
 
-pub struct BacktestResult {
-    pub trade_date_values: Vec<(NaiveDate, f64)>,
+#[derive(Serialize)]
+pub struct BacktestMetrics {
+    pub init_cash: f64,
+    pub start_date: String,
+    pub end_date: String,
+    pub trade_days: usize,
     pub profit: f64,
-    pub annual_return_rate: Option<f64>,
+    pub annualized_return_rate: Option<f64>,
+    pub annualized_volatility: Option<f64>,
     pub max_drawdown: Option<f64>,
     pub win_rate: Option<f64>,
     pub profit_factor: Option<f64>,
     pub sharpe_ratio: Option<f64>,
     pub calmar_ratio: Option<f64>,
     pub sortino_ratio: Option<f64>,
+}
+
+pub struct BacktestResult {
+    pub trade_date_values: Vec<(NaiveDate, f64)>,
+    pub metrics: BacktestMetrics,
 }
 
 pub fn calc_buy_fee(value: f64, options: &BacktestOptions) -> f64 {
@@ -159,29 +170,41 @@ pub async fn backtest_fund(
                 .map(|(_, v)| *v)
                 .unwrap_or(options.init_cash);
             let profit = final_cash - options.init_cash;
-            let annual_return_rate = calc_annual_return_rate(options.init_cash, final_cash, days);
+            let annualized_return_rate =
+                calc_annualized_return_rate(options.init_cash, final_cash, days);
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
+            let annualized_volatility = calc_annualized_volatility(&daily_values);
             let max_drawdown = calc_max_drawdown(&daily_values);
             let win_rate = calc_win_rate(&daily_values);
             let profit_factor = calc_profit_factor(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
-            let calmar_ratio = if let (Some(arr), Some(mdd)) = (annual_return_rate, max_drawdown) {
-                if mdd > 0.0 { Some(arr / mdd) } else { None }
-            } else {
-                None
-            };
+            let calmar_ratio =
+                if let (Some(arr), Some(mdd)) = (annualized_return_rate, max_drawdown) {
+                    if mdd > 0.0 { Some(arr / mdd) } else { None }
+                } else {
+                    None
+                };
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
-            Ok(BacktestResult {
-                trade_date_values,
+            let metrics = BacktestMetrics {
+                init_cash: options.init_cash,
+                start_date: date_to_str(&options.start_date),
+                end_date: date_to_str(&options.end_date),
+                trade_days: trade_date_values.len(),
                 profit,
-                annual_return_rate,
+                annualized_return_rate,
+                annualized_volatility,
                 max_drawdown,
                 win_rate,
                 profit_factor,
                 sharpe_ratio,
                 calmar_ratio,
                 sortino_ratio,
+            };
+
+            Ok(BacktestResult {
+                trade_date_values,
+                metrics,
             })
         };
 

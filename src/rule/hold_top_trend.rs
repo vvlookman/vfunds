@@ -18,7 +18,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annual_return_rate, stats::quantile},
+    utils::{datetime::date_to_str, financial::calc_annualized_return_rate, stats::quantile},
 };
 
 pub struct Executor {
@@ -111,7 +111,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if let Some(arr) = calc_annual_return_rate(
+                    if let Some(arr) = calc_annualized_return_rate(
                         prices[0],
                         prices[prices.len() - 1],
                         prices.len() as u64,

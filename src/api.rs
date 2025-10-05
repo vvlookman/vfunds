@@ -10,6 +10,7 @@ use crate::{
 };
 
 pub type BacktestEvent = backtest::BacktestEvent;
+pub type BacktestMetrics = backtest::BacktestMetrics;
 pub type BacktestOptions = backtest::BacktestOptions;
 pub type BacktestResult = backtest::BacktestResult;
 pub type BacktestStream = backtest::BacktestStream;

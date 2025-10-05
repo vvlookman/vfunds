@@ -15,7 +15,7 @@ use crate::{
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
-        financial::{calc_annual_volatility, calc_max_drawdown, calc_sharpe_ratio},
+        financial::{calc_annualized_volatility, calc_max_drawdown, calc_sharpe_ratio},
         math::normalize_min_max,
     },
 };
@@ -94,7 +94,7 @@ impl RuleExecutor for Executor {
 
                     if let (Some(sharpe), Some(volatility), Some(max_drawdown)) = (
                         calc_sharpe_ratio(&prices, 0.02),
-                        calc_annual_volatility(&prices),
+                        calc_annualized_volatility(&prices),
                         calc_max_drawdown(&prices),
                     ) {
                         let momentum = prices[prices.len() - 1] / prices[0] - 1.0;

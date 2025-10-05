@@ -3,7 +3,6 @@ use std::{collections::HashMap, fs::File, path::PathBuf};
 use chrono::{Local, NaiveDate};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use serde_json::json;
 use tabled::settings::{
     Alignment, Color, Width,
     measurement::Percent,
@@ -13,7 +12,7 @@ use tabled::settings::{
 use tokio::time::Duration;
 use vfunds::{
     api,
-    api::{BacktestEvent, BacktestOptions, BacktestResult},
+    api::{BacktestEvent, BacktestMetrics, BacktestOptions, BacktestResult},
     error::{VfError, VfResult},
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -150,11 +149,12 @@ impl BacktestCommand {
                     "Profit".to_string(),
                     "Annualized Return".to_string(),
                     "Max Drawdown".to_string(),
+                    "Volatility".to_string(),
                     "Win Rate".to_string(),
                     "Profit Factor".to_string(),
-                    "Sharpe Ratio".to_string(),
-                    "Calmar Ratio".to_string(),
-                    "Sortino Ratio".to_string(),
+                    "Sharpe".to_string(),
+                    "Calmar".to_string(),
+                    "Sortino".to_string(),
                 ]];
                 for (fund_name, mut stream) in streams {
                     while let Some(event) = stream.next().await {
@@ -173,53 +173,64 @@ impl BacktestCommand {
                                     .set_message(format!("[{fund_name}][i] {} ", s.bright_black()));
                             }
                             BacktestEvent::Result(fund_result) => {
+                                let BacktestResult {
+                                    trade_date_values,
+                                    metrics,
+                                } = fund_result;
                                 table_data.push(vec![
                                     fund_name.to_string(),
-                                    fund_result
-                                        .trade_date_values
+                                    trade_date_values
                                         .last()
                                         .map(|(d, _)| date_to_str(d))
                                         .unwrap_or("-".to_string()),
-                                    format!("{}", fund_result.trade_date_values.len()),
-                                    format!("{:.2}", fund_result.profit),
-                                    fund_result
-                                        .annual_return_rate
+                                    format!("{}", trade_date_values.len()),
+                                    format!("{:.2}", metrics.profit),
+                                    metrics
+                                        .annualized_return_rate
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
                                         .max_drawdown
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
+                                        .annualized_volatility
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    metrics
                                         .win_rate
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
                                         .profit_factor
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
                                         .sharpe_ratio
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
                                         .calmar_ratio
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
-                                    fund_result
+                                    metrics
                                         .sortino_ratio
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
                                 ]);
 
                                 if let Some(output_dir) = &self.output_dir {
+                                    if !output_dir.exists() {
+                                        let _ = std::fs::create_dir_all(output_dir);
+                                    }
+
                                     let output_daily_values =
-                                        |result: &BacktestResult| -> VfResult<()> {
+                                        |trade_date_values: &Vec<(NaiveDate, f64)>| -> VfResult<()> {
                                             let path =
-                                                output_dir.join(format!("{fund_name}_daily.csv"));
+                                                output_dir.join(format!("{fund_name}.values.csv"));
                                             let mut csv_writer = csv::Writer::from_path(&path)?;
                                             csv_writer.write_record(["date", "value"])?;
-                                            for (date, value) in &result.trade_date_values {
+                                            for (date, value) in trade_date_values {
                                                 csv_writer.write_record(&[
                                                     date_to_str(date),
                                                     format!("{value:.2}"),
@@ -228,32 +239,19 @@ impl BacktestCommand {
                                             csv_writer.flush()?;
                                             Ok(())
                                         };
-                                    if let Err(err) = output_daily_values(&fund_result) {
+                                    if let Err(err) = output_daily_values(&trade_date_values) {
                                         errors.insert(fund_name.to_string(), err);
                                     }
 
-                                    let output_metrics = |result: &BacktestResult| -> VfResult<()> {
-                                        let data = json!({
-                                            "init_cash": options.init_cash,
-                                            "start_date": date_to_str(&options.start_date),
-                                            "end_date": date_to_str(&options.end_date),
-                                            "trade_days": result.trade_date_values.len(),
-                                            "profit": result.profit,
-                                            "annual_return_rate": result.annual_return_rate,
-                                            "max_drawdown": result.max_drawdown,
-                                            "win_rate": result.win_rate,
-                                            "profit_factor": result.profit_factor,
-                                            "sharpe_ratio": result.sharpe_ratio,
-                                            "calmar_ratio": result.calmar_ratio,
-                                            "sortino_ratio": result.sortino_ratio,
-                                        });
-                                        let path =
-                                            output_dir.join(format!("{fund_name}_metrics.json"));
-                                        let file = File::create(path)?;
-                                        serde_json::to_writer_pretty(file, &data)?;
-                                        Ok(())
-                                    };
-                                    if let Err(err) = output_metrics(&fund_result) {
+                                    let output_metrics =
+                                        |metrics: &BacktestMetrics| -> VfResult<()> {
+                                            let path = output_dir
+                                                .join(format!("{fund_name}.metrics.json"));
+                                            let file = File::create(path)?;
+                                            serde_json::to_writer_pretty(file, &metrics)?;
+                                            Ok(())
+                                        };
+                                    if let Err(err) = output_metrics(&metrics) {
                                         errors.insert(fund_name.to_string(), err);
                                     }
                                 }
