@@ -108,12 +108,13 @@ impl RuleExecutor for Executor {
                 .collect();
 
             {
-                let mut tickers_str = String::from("");
+                let mut tickers_strs: Vec<String> = vec![];
                 for (ticker, weight) in &ticker_weights_adj {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
-                    tickers_str.push_str(&format!("{ticker}({ticker_title})={weight:.4} "));
+                    tickers_strs.push(format!("{ticker}({ticker_title})={weight:.4}"));
                 }
 
+                let tickers_str = tickers_strs.join(" ");
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
                         "[{date_str}] [{rule_name}] {tickers_str}"
@@ -128,17 +129,6 @@ impl RuleExecutor for Executor {
                 .into_iter()
                 .map(|(ticker, weight)| (ticker, position_value * weight))
                 .collect();
-
-            let target_str = target
-                .iter()
-                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
-                )))
-                .await;
 
             context.rebalance(&target, date, event_sender).await?;
         }

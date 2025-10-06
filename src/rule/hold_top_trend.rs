@@ -105,7 +105,7 @@ impl RuleExecutor for Executor {
                     if prices.len() < lookback_trade_days as usize {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(
-                                "[{date_str}] [{ticker}] [{rule_name}] No enough data!"
+                                "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
                             )))
                             .await;
                         continue;
@@ -207,12 +207,13 @@ impl RuleExecutor for Executor {
                 .collect::<Vec<_>>();
 
             if !filetered_indicators.is_empty() {
-                let mut top_tickers_str = String::from("");
+                let mut top_tickers_strs: Vec<String> = vec![];
                 for (ticker, indicator) in &filetered_indicators {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
-                    top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.4} "));
+                    top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4} "));
                 }
 
+                let top_tickers_str = top_tickers_strs.join(" ");
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
                         "[{date_str}] [{rule_name}] {top_tickers_str}"
@@ -231,17 +232,6 @@ impl RuleExecutor for Executor {
                 .into_iter()
                 .map(|ticker| (ticker, ticker_value))
                 .collect();
-
-            let target_str = target
-                .iter()
-                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
-                )))
-                .await;
 
             context.rebalance(&target, date, event_sender).await?;
         }

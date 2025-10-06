@@ -109,7 +109,7 @@ impl RuleExecutor for Executor {
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{rule_name}] Sell Signal {ticker}({ticker_title})"
+                            "[{date_str}] [{rule_name}] [Sell Signal] {ticker}({ticker_title})"
                         )))
                         .await;
 
@@ -153,7 +153,7 @@ impl RuleExecutor for Executor {
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{rule_name}] Buy Signal {ticker}({ticker_title})"
+                            "[{date_str}] [{rule_name}] [Buy Signal] {ticker}({ticker_title})"
                         )))
                         .await;
 

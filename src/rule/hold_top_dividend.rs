@@ -80,8 +80,6 @@ impl RuleExecutor for Executor {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
                 for ticker in tickers.keys() {
-                    debug!("[{date_str}] {ticker}");
-
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                     if let Some(price) =
                         kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
@@ -143,10 +141,25 @@ impl RuleExecutor for Executor {
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             if !indicators.is_empty() {
-                let mut top_tickers_str = String::from("");
-                for (ticker, indicator) in indicators.iter().take(2 * limit as usize) {
+                let mut selected_strs: Vec<String> = vec![];
+                let mut candidate_strs: Vec<String> = vec![];
+                for (i, (ticker, indicator)) in
+                    indicators.iter().take(2 * limit as usize).enumerate()
+                {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
-                    top_tickers_str.push_str(&format!("{ticker}({ticker_title})={indicator:.4} "));
+                    if i < limit as usize {
+                        selected_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
+                    } else {
+                        candidate_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
+                    }
+                }
+
+                let mut top_tickers_str = String::new();
+                top_tickers_str.push_str(&selected_strs.join(" "));
+                if !candidate_strs.is_empty() {
+                    top_tickers_str.push_str(" (");
+                    top_tickers_str.push_str(&candidate_strs.join(" "));
+                    top_tickers_str.push_str(")");
                 }
 
                 let _ = event_sender
@@ -168,17 +181,6 @@ impl RuleExecutor for Executor {
                 .into_iter()
                 .map(|ticker| (ticker, ticker_value))
                 .collect();
-
-            let target_str = target
-                .iter()
-                .map(|(ticker, ticker_value)| format!("{ticker}->{ticker_value:.2}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [{rule_name}] Rebalance ({target_str})"
-                )))
-                .await;
 
             context.rebalance(&target, date, event_sender).await?;
         }

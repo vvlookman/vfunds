@@ -251,14 +251,15 @@ impl BacktestContext<'_> {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = date_to_str(date);
+        let holding_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
+        if holding_units > 0 {
+            let date_str = date_to_str(date);
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
 
-        let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-        if let Some(price) =
-            kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-        {
-            let holding_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-            if holding_units > 0 {
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
                 let sell_units = holding_units as f64;
                 let value = sell_units * price;
                 let fee = calc_sell_fee(value, self.options);
@@ -266,14 +267,23 @@ impl BacktestContext<'_> {
 
                 self.portfolio.cash += cash;
                 self.portfolio.positions.remove(ticker);
-                self.portfolio.sideline_cash.insert(ticker.clone(), cash);
+                self.portfolio
+                    .sideline_cash
+                    .entry(ticker.clone())
+                    .and_modify(|v| *v += cash)
+                    .or_insert(cash);
 
-                let ticker_title = fetch_stock_detail(ticker).await?.title;
                 let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
                                 )))
                                 .await;
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Info(format!(
+                        "[{date_str}] [No Price Data] {ticker}({ticker_title})"
+                    )))
+                    .await;
             }
         }
 
@@ -288,30 +298,41 @@ impl BacktestContext<'_> {
     ) -> VfResult<()> {
         let date_str = date_to_str(date);
 
-        let holding_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
-        for ticker in &holding_tickers {
-            if !targets.iter().any(|(t, _)| t == ticker) {
-                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                if let Some(price) =
-                    kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                {
-                    let sell_units = *(self.portfolio.positions.get(ticker).unwrap_or(&0)) as f64;
-                    if sell_units > 0.0 {
-                        let value = sell_units * price;
-                        let fee = calc_sell_fee(value, self.options);
-                        let cash = value - fee;
+        // Remove unneeded positions and sideline cash
+        {
+            let holding_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
+            for ticker in &holding_tickers {
+                if !targets.iter().any(|(t, _)| t == ticker) {
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    if let Some(price) =
+                        kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+                    {
+                        let sell_units =
+                            *(self.portfolio.positions.get(ticker).unwrap_or(&0)) as f64;
+                        if sell_units > 0.0 {
+                            let value = sell_units * price;
+                            let fee = calc_sell_fee(value, self.options);
+                            let cash = value - fee;
 
-                        self.portfolio.cash += cash;
-                        self.portfolio.positions.remove(ticker);
-                        self.portfolio.sideline_cash.remove(ticker);
+                            self.portfolio.cash += cash;
+                            self.portfolio.positions.remove(ticker);
+                            self.portfolio.sideline_cash.remove(ticker);
 
-                        let ticker_title = fetch_stock_detail(ticker).await?.title;
-                        let _ = event_sender
+                            let ticker_title = fetch_stock_detail(ticker).await?.title;
+                            let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
                                 )))
                                 .await;
+                        }
                     }
+                }
+            }
+
+            let sideline_tickers: Vec<_> = self.portfolio.sideline_cash.keys().cloned().collect();
+            for ticker in &sideline_tickers {
+                if !targets.iter().any(|(t, _)| t == ticker) {
+                    self.portfolio.sideline_cash.remove(ticker);
                 }
             }
         }
@@ -328,6 +349,39 @@ impl BacktestContext<'_> {
             }
         }
 
+        let mut position_strs: Vec<String> = vec![];
+        let mut sideline_strs: Vec<String> = vec![];
+        for (ticker, holding_units) in self.portfolio.positions.iter() {
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let value = *holding_units as f64 * price;
+                position_strs.push(format!("{ticker}({ticker_title})=${value:.2}"));
+            } else {
+                position_strs.push(format!("{ticker}({ticker_title})=$?x{holding_units}"));
+            }
+        }
+        for (ticker, cash) in self.portfolio.sideline_cash.iter() {
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            sideline_strs.push(format!("{ticker}({ticker_title})=(${cash:.2})"));
+        }
+
+        let mut holding_str = String::new();
+        holding_str.push_str(&position_strs.join(" "));
+        if !sideline_strs.is_empty() {
+            holding_str.push_str(" (");
+            holding_str.push_str(&sideline_strs.join(" "));
+            holding_str.push_str(")");
+        }
+
+        let _ = event_sender
+            .send(BacktestEvent::Info(format!(
+                "[{date_str}] [·] {holding_str}"
+            )))
+            .await;
+
         Ok(())
     }
 
@@ -339,6 +393,7 @@ impl BacktestContext<'_> {
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let date_str = date_to_str(date);
+        let ticker_title = fetch_stock_detail(ticker).await?.title;
 
         let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
         if let Some(price) =
@@ -368,14 +423,19 @@ impl BacktestContext<'_> {
                         .entry(ticker.clone())
                         .and_modify(|v| *v -= cost);
 
-                    let ticker_title = fetch_stock_detail(ticker).await?.title;
                     let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
                                     "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
                                 )))
                                 .await;
+                } else {
+                    let _ = event_sender
+                        .send(BacktestEvent::Buy(format!(
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{holding_value})"
+                        )))
+                        .await;
                 }
-            } else if delta_value < 0.0 {
+            } else {
                 let sell_value = delta_value.abs();
 
                 let sell_units = (sell_value / price).floor().min(holding_units as f64);
@@ -392,17 +452,27 @@ impl BacktestContext<'_> {
                     self.portfolio
                         .sideline_cash
                         .entry(ticker.clone())
-                        .and_modify(|v| *v += cash)
-                        .or_insert(cash);
+                        .and_modify(|v| *v += cash);
 
-                    let ticker_title = fetch_stock_detail(ticker).await?.title;
                     let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
                                 )))
                                 .await;
+                } else {
+                    let _ = event_sender
+                        .send(BacktestEvent::Sell(format!(
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{holding_value})"
+                        )))
+                        .await;
                 }
             }
+        } else {
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [No Price Data] {ticker}({ticker_title})"
+                )))
+                .await;
         }
 
         Ok(())
