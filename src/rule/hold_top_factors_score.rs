@@ -15,7 +15,7 @@ use crate::{
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
-        financial::{calc_annualized_volatility, calc_max_drawdown, calc_sharpe_ratio},
+        financial::{calc_max_drawdown, calc_momentum, calc_sharpe_ratio, calc_volatility},
         math::normalize_min_max,
     },
 };
@@ -53,6 +53,26 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
+        let weight_sharpe = self
+            .options
+            .get("weight_sharpe")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let weight_max_drawdown = self
+            .options
+            .get("weight_max_drawdown")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let weight_volatility = self
+            .options
+            .get("weight_volatility")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let weight_momentum = self
+            .options
+            .get("weight_momentum")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -92,15 +112,14 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if let (Some(sharpe), Some(volatility), Some(max_drawdown)) = (
-                        calc_sharpe_ratio(&prices, 0.02),
-                        calc_annualized_volatility(&prices),
+                    if let (Some(sharpe), Some(max_drawdown), Some(volatility), Some(momentum)) = (
+                        calc_sharpe_ratio(&prices, context.options.risk_free_rate),
                         calc_max_drawdown(&prices),
+                        calc_volatility(&prices),
+                        calc_momentum(&prices),
                     ) {
-                        let momentum = prices[prices.len() - 1] / prices[0] - 1.0;
-
                         factors
-                            .push((ticker.clone(), [sharpe, volatility, max_drawdown, momentum]));
+                            .push((ticker.clone(), [sharpe, max_drawdown, volatility, momentum]));
                     }
 
                     calc_count += 1;
@@ -137,14 +156,14 @@ impl RuleExecutor for Executor {
                     let ticker = &x.0;
 
                     let sharpe = normalized_factor_values[0][i];
-                    let volatility = normalized_factor_values[1][i];
-                    let max_drawdown = normalized_factor_values[2][i];
+                    let max_drawdown = normalized_factor_values[1][i];
+                    let volatility = normalized_factor_values[2][i];
                     let momentum = normalized_factor_values[3][i];
 
-                    let indicator = 1.0 * sharpe
-                        + 4.0 * (1.0 - volatility)
-                        + 1.0 * (1.0 - max_drawdown)
-                        + 1.0 * momentum;
+                    let indicator = weight_sharpe * sharpe
+                        + weight_max_drawdown * (1.0 - max_drawdown)
+                        + weight_volatility * (1.0 - volatility)
+                        + weight_momentum * momentum;
                     debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Mom={momentum:.4})");
 
                     (ticker.clone(), indicator)

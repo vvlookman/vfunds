@@ -194,7 +194,7 @@ impl BacktestCommand {
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
-                                        .annualized_volatility
+                                        .volatility
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics

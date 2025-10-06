@@ -22,8 +22,8 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
-            calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
+            calc_annualized_return_rate, calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio,
+            calc_sortino_ratio, calc_volatility, calc_win_rate,
         },
     },
 };
@@ -68,8 +68,8 @@ pub struct BacktestMetrics {
     pub trade_days: usize,
     pub profit: f64,
     pub annualized_return_rate: Option<f64>,
-    pub annualized_volatility: Option<f64>,
     pub max_drawdown: Option<f64>,
+    pub volatility: Option<f64>,
     pub win_rate: Option<f64>,
     pub profit_factor: Option<f64>,
     pub sharpe_ratio: Option<f64>,
@@ -173,8 +173,8 @@ pub async fn backtest_fund(
             let annualized_return_rate =
                 calc_annualized_return_rate(options.init_cash, final_cash, days);
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
-            let annualized_volatility = calc_annualized_volatility(&daily_values);
             let max_drawdown = calc_max_drawdown(&daily_values);
+            let volatility = calc_volatility(&daily_values);
             let win_rate = calc_win_rate(&daily_values);
             let profit_factor = calc_profit_factor(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
@@ -193,8 +193,8 @@ pub async fn backtest_fund(
                 trade_days: trade_date_values.len(),
                 profit,
                 annualized_return_rate,
-                annualized_volatility,
                 max_drawdown,
+                volatility,
                 win_rate,
                 profit_factor,
                 sharpe_ratio,
@@ -373,7 +373,7 @@ impl BacktestContext<'_> {
         if !sideline_strs.is_empty() {
             holding_str.push_str(" (");
             holding_str.push_str(&sideline_strs.join(" "));
-            holding_str.push_str(")");
+            holding_str.push(')');
         }
 
         let _ = event_sender

@@ -159,7 +159,7 @@ impl RuleExecutor for Executor {
                 if !candidate_strs.is_empty() {
                     top_tickers_str.push_str(" (");
                     top_tickers_str.push_str(&candidate_strs.join(" "));
-                    top_tickers_str.push_str(")");
+                    top_tickers_str.push(')');
                 }
 
                 let _ = event_sender

@@ -16,20 +16,6 @@ pub fn calc_annualized_return_rate(start_value: f64, end_value: f64, days: u64) 
     None
 }
 
-pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
-    if daily_values.len() > 1 {
-        let daily_return = stats::pct_change(daily_values);
-
-        if let Some(return_std) = stats::std(&daily_return) {
-            let annualized_volatility = return_std * (TRADE_DAYS_PER_YEAR).sqrt();
-
-            return Some(annualized_volatility);
-        }
-    }
-
-    None
-}
-
 pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f64, f64, f64)> {
     let mut results: Vec<(f64, f64, f64)> = vec![];
 
@@ -64,6 +50,18 @@ pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
         }
 
         return Some(max_dd);
+    }
+
+    None
+}
+
+pub fn calc_momentum(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_return = stats::pct_change(daily_values);
+
+        if let Some(slope) = stats::slope(&daily_return) {
+            return Some(slope);
+        }
     }
 
     None
@@ -144,6 +142,18 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
                     }
                 }
             }
+        }
+    }
+
+    None
+}
+
+pub fn calc_volatility(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_return = stats::pct_change(daily_values);
+
+        if let Some(return_std) = stats::std(&daily_return) {
+            return Some(return_std);
         }
     }
 

@@ -16,4 +16,8 @@ frequency = "2w"
 
 [rules.options]
 limit = 3
-lookback_trade_days = 20
+lookback_trade_days = 21
+weight_sharpe = 2.0
+weight_max_drawdown = 1.0
+weight_volatility = 2.0
+weight_momentum = 1.0
