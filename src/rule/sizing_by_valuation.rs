@@ -221,7 +221,9 @@ impl RuleExecutor for Executor {
                                     )))
                                     .await;
 
-                                    context.exit(ticker, date, event_sender.clone()).await?;
+                                    context
+                                        .ticker_exit(ticker, date, event_sender.clone())
+                                        .await?;
                                 } else {
                                     let _ = event_sender
                                     .send(BacktestEvent::Info(format!(
@@ -260,12 +262,16 @@ impl RuleExecutor for Executor {
                                     )))
                                     .await;
 
-                                    if let Some(&cash) = context.portfolio.sideline_cash.get(ticker)
-                                    {
+                                    if let Some(&cash) = context.portfolio.sidelines.get(ticker) {
                                         let ticker_value =
                                             cash - calc_buy_fee(cash, context.options);
                                         context
-                                            .scale(ticker, ticker_value, date, event_sender.clone())
+                                            .ticker_scale(
+                                                ticker,
+                                                ticker_value,
+                                                date,
+                                                event_sender.clone(),
+                                            )
                                             .await?;
                                     }
                                 } else {

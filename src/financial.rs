@@ -10,7 +10,7 @@ pub mod tool;
 pub struct Portfolio {
     pub cash: f64,
     pub positions: HashMap<Ticker, u64>,
-    pub sideline_cash: HashMap<Ticker, f64>,
+    pub sidelines: HashMap<Ticker, f64>,
 }
 
 #[derive(Debug, PartialEq, strum::Display, strum::EnumIter, strum::EnumString)]
@@ -26,7 +26,7 @@ impl Portfolio {
         Self {
             cash,
             positions: HashMap::new(),
-            sideline_cash: HashMap::new(),
+            sidelines: HashMap::new(),
         }
     }
 }

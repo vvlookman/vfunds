@@ -91,7 +91,7 @@ impl RuleExecutor for Executor {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
                 for ticker in tickers.keys() {
-                    if context.portfolio.sideline_cash.contains_key(ticker) {
+                    if context.portfolio.sidelines.contains_key(ticker) {
                         continue;
                     }
 
@@ -119,17 +119,17 @@ impl RuleExecutor for Executor {
                         let total_len = prices.len();
                         let train_len = (total_len as f64 * (1.0 - regression_test)) as usize;
 
-                        let generate_featue = |i: usize| {
+                        let generate_feature = |i: usize| {
                             let x = i as f64;
                             vec![x, x.powi(2)]
                         };
                         let features_train: Vec<Vec<f64>> = Vec::from_iter(0..train_len)
                             .iter()
-                            .map(|&i| generate_featue(i))
+                            .map(|&i| generate_feature(i))
                             .collect();
                         let features_test: Vec<Vec<f64>> = Vec::from_iter(train_len..total_len)
                             .iter()
-                            .map(|&i| generate_featue(i))
+                            .map(|&i| generate_feature(i))
                             .collect();
 
                         if let (Ok(x_train), Ok(x_test)) = (

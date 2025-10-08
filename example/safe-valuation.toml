@@ -16,7 +16,7 @@ frequency = "1y"
 
 [[rules]]
 name = "sizing_by_valuation"
-frequency = "1m"
+frequency = "4w"
 
 [rules.options]
 lookback_years = 6
@@ -26,3 +26,8 @@ ps_quantile_ceil = 0.8
 ps_quantile_floor = 0.2
 ticker_watch_index = { "510300" = "000300.csi", "159949" = "399673.cni" }
 watch_period_days = 28
+
+[rules.search]
+lookback_years = [5, 6]
+ps_quantile_ceil = [0.7, 0.8]
+ps_quantile_floor = [0.2, 0.3]

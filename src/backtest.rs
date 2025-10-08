@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::{cmp::Ordering, collections::HashMap};
 
 use chrono::NaiveDate;
+use itertools::Itertools;
 use log::debug;
 use serde::Serialize;
 use tokio::sync::{
@@ -54,13 +55,16 @@ pub struct BacktestOptions {
     pub stamp_duty_min_fee: f64,
     pub broker_commission_rate: f64,
     pub broker_commission_min_fee: f64,
+    pub cv_search: bool,
+    pub cv_window: bool,
+    pub cv_score_arr_cap: f64,
 }
 
 pub struct BacktestStream {
     receiver: Receiver<BacktestEvent>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct BacktestMetrics {
     pub init_cash: f64,
     pub start_date: String,
@@ -77,6 +81,7 @@ pub struct BacktestMetrics {
     pub sortino_ratio: Option<f64>,
 }
 
+#[derive(Clone)]
 pub struct BacktestResult {
     pub trade_date_values: Vec<(NaiveDate, f64)>,
     pub metrics: BacktestMetrics,
@@ -119,22 +124,21 @@ pub async fn backtest_fund(
     let options = options.clone();
 
     tokio::spawn(async move {
-        let process = async || {
+        let single_run = async |fund_definition: &FundDefinition| -> VfResult<BacktestResult> {
             let mut context = BacktestContext {
-                fund_definition: &fund_definition,
+                fund_definition,
                 options: &options,
                 portfolio: &mut Portfolio::new(options.init_cash),
             };
-
-            let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
 
             let mut rules = fund_definition
                 .rules
                 .iter()
                 .map(Rule::from_definition)
                 .collect::<Vec<_>>();
-            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
 
+            let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
+            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             let days = (options.end_date - options.start_date).num_days() as u64 + 1;
             let trade_dates = fetch_trade_dates().await?;
             for date in options.start_date.iter_days().take(days as usize) {
@@ -164,6 +168,10 @@ pub async fn backtest_fund(
                     debug!("[{}] ○", date_to_str(&date));
                 }
             }
+
+            let _ = context
+                .notify_portfolio(&options.end_date, sender.clone())
+                .await;
 
             let final_cash = trade_date_values
                 .last()
@@ -208,6 +216,131 @@ pub async fn backtest_fund(
             })
         };
 
+        let process = async || -> VfResult<BacktestResult> {
+            if options.cv_search {
+                type RuleOptionValue = (String, String, serde_json::Value);
+
+                let mut all_search: Vec<(String, String, serde_json::Value)> = vec![];
+                for rule_definition in fund_definition.rules.iter() {
+                    for (k, v) in &rule_definition.search {
+                        all_search.push((
+                            rule_definition.name.to_string(),
+                            k.to_string(),
+                            v.clone(),
+                        ));
+                    }
+                }
+
+                let mut cv_results: Vec<(Vec<RuleOptionValue>, BacktestResult)> = vec![];
+                let cv_count = all_search
+                    .iter()
+                    .map(|(_, _, v)| v.as_array().map(|array| array.len()).unwrap_or(0))
+                    .product::<usize>();
+                for (i, rule_option_values) in all_search
+                    .iter()
+                    .filter_map(|(rule_name, option_name, value)| {
+                        value.as_array().map(|array| {
+                            array
+                                .iter()
+                                .map(|option_value| {
+                                    (
+                                        rule_name.to_string(),
+                                        option_name.to_string(),
+                                        option_value.clone(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .multi_cartesian_product()
+                    .enumerate()
+                {
+                    let mut fund_definition = fund_definition.clone();
+
+                    for (rule_name, option_name, option_value) in &rule_option_values {
+                        if let Some(rule_definition) = fund_definition
+                            .rules
+                            .iter_mut()
+                            .find(|r| r.name == *rule_name)
+                        {
+                            rule_definition
+                                .options
+                                .insert(option_name.to_string(), option_value.clone());
+                        }
+                    }
+
+                    let result = single_run(&fund_definition).await?;
+
+                    let _ = sender
+                        .send(BacktestEvent::Info(format!(
+                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({})",
+                            i + 1,
+                            result
+                                .metrics
+                                .annualized_return_rate
+                                .map(|v| format!("{:.2}%", v * 100.0))
+                                .unwrap_or("-".to_string()),
+                            result
+                                .metrics
+                                .sharpe_ratio
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or("-".to_string()),
+                            rule_option_values
+                                .iter()
+                                .map(|(_, option_name, option_value)| {
+                                    format!("{option_name}={option_value}")
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )))
+                        .await;
+
+                    cv_results.push((rule_option_values.clone(), result));
+                }
+
+                if !cv_results.is_empty() {
+                    cv_results.sort_by(|(_, a), (_, b)| {
+                        let a_score = if let (Some(arr), Some(sharpe)) =
+                            (a.metrics.annualized_return_rate, a.metrics.sharpe_ratio)
+                        {
+                            sharpe * arr.min(options.cv_score_arr_cap).abs()
+                        } else {
+                            f64::NEG_INFINITY
+                        };
+
+                        let b_score = if let (Some(arr), Some(sharpe)) =
+                            (b.metrics.annualized_return_rate, b.metrics.sharpe_ratio)
+                        {
+                            sharpe * arr.min(options.cv_score_arr_cap).abs()
+                        } else {
+                            f64::NEG_INFINITY
+                        };
+
+                        b_score.partial_cmp(&a_score).unwrap_or(Ordering::Equal)
+                    });
+
+                    if let Some((rule_option_values, result)) = cv_results.first() {
+                        let _ = sender
+                            .send(BacktestEvent::Info(format!(
+                                "[CV] [Best] {}",
+                                rule_option_values
+                                    .iter()
+                                    .map(|(_, option_name, option_value)| {
+                                        format!("{option_name}={option_value}")
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            )))
+                            .await;
+
+                        return Ok(result.clone());
+                    }
+                }
+            }
+
+            single_run(&fund_definition).await
+        };
+
         match process().await {
             Ok(result) => {
                 let _ = sender.send(BacktestEvent::Result(result)).await;
@@ -245,51 +378,6 @@ impl BacktestContext<'_> {
         Ok(total_value)
     }
 
-    pub async fn exit(
-        &mut self,
-        ticker: &Ticker,
-        date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        let holding_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-        if holding_units > 0 {
-            let date_str = date_to_str(date);
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some(price) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
-                let sell_units = holding_units as f64;
-                let value = sell_units * price;
-                let fee = calc_sell_fee(value, self.options);
-                let cash = value - fee;
-
-                self.portfolio.cash += cash;
-                self.portfolio.positions.remove(ticker);
-                self.portfolio
-                    .sideline_cash
-                    .entry(ticker.clone())
-                    .and_modify(|v| *v += cash)
-                    .or_insert(cash);
-
-                let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
-                                )))
-                                .await;
-            } else {
-                let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [No Price Data] {ticker}({ticker_title})"
-                    )))
-                    .await;
-            }
-        }
-
-        Ok(())
-    }
-
     pub async fn rebalance(
         &mut self,
         targets: &Vec<(Ticker, f64)>,
@@ -298,11 +386,13 @@ impl BacktestContext<'_> {
     ) -> VfResult<()> {
         let date_str = date_to_str(date);
 
-        // Remove unneeded positions and sideline cash
+        // Remove unneeded positions and sidelines
         {
-            let holding_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
-            for ticker in &holding_tickers {
+            let position_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
+            for ticker in &position_tickers {
                 if !targets.iter().any(|(t, _)| t == ticker) {
+                    self.portfolio.sidelines.remove(ticker);
+
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
                     if let Some(price) =
                         kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
@@ -316,7 +406,6 @@ impl BacktestContext<'_> {
 
                             self.portfolio.cash += cash;
                             self.portfolio.positions.remove(ticker);
-                            self.portfolio.sideline_cash.remove(ticker);
 
                             let ticker_title = fetch_stock_detail(ticker).await?.title;
                             let _ = event_sender
@@ -325,67 +414,86 @@ impl BacktestContext<'_> {
                                 )))
                                 .await;
                         }
+                    } else {
+                        return Err(VfError::NoData(
+                            "NO_TICKER_PRICE",
+                            format!("Price of '{ticker}' not exists"),
+                        ));
                     }
                 }
             }
 
-            let sideline_tickers: Vec<_> = self.portfolio.sideline_cash.keys().cloned().collect();
+            let sideline_tickers: Vec<_> = self.portfolio.sidelines.keys().cloned().collect();
             for ticker in &sideline_tickers {
                 if !targets.iter().any(|(t, _)| t == ticker) {
-                    self.portfolio.sideline_cash.remove(ticker);
+                    self.portfolio.sidelines.remove(ticker);
                 }
             }
         }
 
         for &(ref ticker, ticker_value) in targets {
-            if self.portfolio.sideline_cash.contains_key(ticker) {
+            if self.portfolio.sidelines.contains_key(ticker) {
                 self.portfolio
-                    .sideline_cash
+                    .sidelines
                     .entry(ticker.clone())
                     .and_modify(|v| *v = ticker_value);
             } else {
-                self.scale(ticker, ticker_value, date, event_sender.clone())
+                self.ticker_scale(ticker, ticker_value, date, event_sender.clone())
                     .await?;
             }
         }
 
-        let mut position_strs: Vec<String> = vec![];
-        let mut sideline_strs: Vec<String> = vec![];
-        for (ticker, holding_units) in self.portfolio.positions.iter() {
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some(price) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
-                let value = *holding_units as f64 * price;
-                position_strs.push(format!("{ticker}({ticker_title})=${value:.2}"));
-            } else {
-                position_strs.push(format!("{ticker}({ticker_title})=$?x{holding_units}"));
-            }
-        }
-        for (ticker, cash) in self.portfolio.sideline_cash.iter() {
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-            sideline_strs.push(format!("{ticker}({ticker_title})=(${cash:.2})"));
-        }
-
-        let mut holding_str = String::new();
-        holding_str.push_str(&position_strs.join(" "));
-        if !sideline_strs.is_empty() {
-            holding_str.push_str(" (");
-            holding_str.push_str(&sideline_strs.join(" "));
-            holding_str.push(')');
-        }
-
-        let _ = event_sender
-            .send(BacktestEvent::Info(format!(
-                "[{date_str}] [·] {holding_str}"
-            )))
-            .await;
+        let _ = self.notify_portfolio(date, event_sender.clone()).await;
 
         Ok(())
     }
 
-    pub async fn scale(
+    pub async fn ticker_exit(
+        &mut self,
+        ticker: &Ticker,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
+        if position_units > 0 {
+            let date_str = date_to_str(date);
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let sell_units = position_units as f64;
+                let value = sell_units * price;
+                let fee = calc_sell_fee(value, self.options);
+                let cash = value - fee;
+
+                self.portfolio.cash += cash;
+                self.portfolio.positions.remove(ticker);
+
+                self.portfolio
+                    .sidelines
+                    .entry(ticker.clone())
+                    .and_modify(|v| *v += cash)
+                    .or_insert(cash);
+
+                let _ = event_sender
+                                .send(BacktestEvent::Sell(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
+                                )))
+                                .await;
+            } else {
+                return Err(VfError::NoData(
+                    "NO_TICKER_PRICE",
+                    format!("Price of '{ticker}' not exists"),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn ticker_scale(
         &mut self,
         ticker: &Ticker,
         ticker_value: f64,
@@ -399,9 +507,9 @@ impl BacktestContext<'_> {
         if let Some(price) =
             kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
         {
-            let holding_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-            let holding_value = holding_units as f64 * price;
-            let delta_value = ticker_value - holding_value;
+            let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
+            let position_value = position_units as f64 * price;
+            let delta_value = ticker_value - position_value;
 
             if delta_value > 0.0 {
                 let buy_value = delta_value - calc_buy_fee(delta_value, self.options);
@@ -418,10 +526,8 @@ impl BacktestContext<'_> {
                         .entry(ticker.clone())
                         .and_modify(|v| *v += buy_units as u64)
                         .or_insert(buy_units as u64);
-                    self.portfolio
-                        .sideline_cash
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v -= cost);
+
+                    self.portfolio.sidelines.remove(ticker);
 
                     let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
@@ -431,14 +537,14 @@ impl BacktestContext<'_> {
                 } else {
                     let _ = event_sender
                         .send(BacktestEvent::Buy(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{holding_value})"
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
                         )))
                         .await;
                 }
             } else {
                 let sell_value = delta_value.abs();
 
-                let sell_units = (sell_value / price).floor().min(holding_units as f64);
+                let sell_units = (sell_value / price).floor().min(position_units as f64);
                 if sell_units > 0.0 {
                     let value = sell_units * price;
                     let fee = calc_sell_fee(value, self.options);
@@ -449,10 +555,16 @@ impl BacktestContext<'_> {
                         .positions
                         .entry(ticker.clone())
                         .and_modify(|v| *v -= sell_units as u64);
-                    self.portfolio
-                        .sideline_cash
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v += cash);
+
+                    if *self.portfolio.positions.get(ticker).unwrap_or(&0) == 0 {
+                        self.portfolio.positions.remove(ticker);
+
+                        self.portfolio
+                            .sidelines
+                            .entry(ticker.clone())
+                            .and_modify(|v| *v += cash)
+                            .or_insert(cash);
+                    }
 
                     let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
@@ -462,17 +574,16 @@ impl BacktestContext<'_> {
                 } else {
                     let _ = event_sender
                         .send(BacktestEvent::Sell(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{holding_value})"
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
                         )))
                         .await;
                 }
             }
         } else {
-            let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [No Price Data] {ticker}({ticker_title})"
-                )))
-                .await;
+            return Err(VfError::NoData(
+                "NO_TICKER_PRICE",
+                format!("Price of '{ticker}' not exists"),
+            ));
         }
 
         Ok(())
@@ -480,9 +591,60 @@ impl BacktestContext<'_> {
 
     pub fn watching_tickers(&self) -> Vec<Ticker> {
         let hold_tickers: Vec<Ticker> = self.portfolio.positions.keys().cloned().collect();
-        let sideline_tickers: Vec<Ticker> = self.portfolio.sideline_cash.keys().cloned().collect();
+        let sideline_tickers: Vec<Ticker> = self.portfolio.sidelines.keys().cloned().collect();
 
         hold_tickers.into_iter().chain(sideline_tickers).collect()
+    }
+
+    async fn notify_portfolio(
+        &self,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let mut position_strs: Vec<String> = vec![];
+        for (ticker, position_units) in self.portfolio.positions.iter() {
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let value = *position_units as f64 * price;
+                position_strs.push(format!(
+                    "{ticker}({ticker_title})=${value:.2}(${price:.2}x{position_units})"
+                ));
+            } else {
+                position_strs.push(format!("{ticker}({ticker_title})=$?({position_units})"));
+            }
+        }
+
+        let mut sideline_strs: Vec<String> = vec![];
+        for (ticker, cash) in self.portfolio.sidelines.iter() {
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            sideline_strs.push(format!("{ticker}({ticker_title})~(${cash:.2})"));
+        }
+
+        let mut portfolio_str = String::new();
+        {
+            portfolio_str.push_str(&format!("${:.2}", self.portfolio.cash));
+        }
+        if !position_strs.is_empty() {
+            portfolio_str.push(' ');
+            portfolio_str.push_str(&position_strs.join(" "));
+        }
+        if !sideline_strs.is_empty() {
+            portfolio_str.push_str(" (");
+            portfolio_str.push_str(&sideline_strs.join(" "));
+            portfolio_str.push(')');
+        }
+
+        let date_str = date_to_str(date);
+        let _ = event_sender
+            .send(BacktestEvent::Info(format!(
+                "[{date_str}] [·] {portfolio_str}"
+            )))
+            .await;
+
+        Ok(())
     }
 }
 

@@ -37,6 +37,9 @@ pub struct RuleDefinition {
 
     #[serde(default)]
     pub options: HashMap<String, serde_json::Value>,
+
+    #[serde(default)]
+    pub search: HashMap<String, serde_json::Value>,
 }
 
 impl FundDefinition {

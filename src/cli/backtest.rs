@@ -18,6 +18,7 @@ use vfunds::{
 };
 
 #[derive(clap::Args)]
+#[command(group = clap::ArgGroup::new("cv").required(false).args(&["cv_search", "cv_window"]))]
 pub struct BacktestCommand {
     #[arg(
         short = 'i',
@@ -99,6 +100,29 @@ pub struct BacktestCommand {
         help = "Output backtest results to the specified directory"
     )]
     output_dir: Option<PathBuf>,
+
+    #[arg(
+        short = 'S',
+        long = "cv-search",
+        group = "cv",
+        help = "Search options for cross-validation"
+    )]
+    cv_search: bool,
+
+    #[arg(
+        short = 'W',
+        long = "cv-window",
+        group = "cv",
+        help = "Perform rolling time window partitioning on the entire dataset for cross-validation"
+    )]
+    cv_window: bool,
+
+    #[arg(
+        long = "cv-score-arr-cap",
+        default_value_t = 0.15,
+        help = "The annualized return rate cap value for cross-validation"
+    )]
+    cv_score_arr_cap: f64,
 }
 
 impl BacktestCommand {
@@ -113,6 +137,9 @@ impl BacktestCommand {
             stamp_duty_min_fee: self.stamp_duty_min_fee,
             broker_commission_rate: self.broker_commission_rate,
             broker_commission_min_fee: self.broker_commission_min_fee,
+            cv_search: self.cv_search,
+            cv_window: self.cv_window,
+            cv_score_arr_cap: self.cv_score_arr_cap,
         };
 
         if options.end_date <= options.start_date {
@@ -195,7 +222,7 @@ impl BacktestCommand {
                                         .unwrap_or("-".to_string()),
                                     metrics
                                         .volatility
-                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .map(|v| format!("{v:.4}"))
                                         .unwrap_or("-".to_string()),
                                     metrics
                                         .win_rate

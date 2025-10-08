@@ -4577,6 +4577,7 @@ dependencies = [
  "flate2",
  "futures",
  "indicatif",
+ "itertools 0.14.0",
  "libsql",
  "log",
  "natord",

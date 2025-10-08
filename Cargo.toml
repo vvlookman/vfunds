@@ -17,6 +17,7 @@ fake_user_agent = "0.2.2"
 flate2 = "1.1.2"
 futures = "0.3.31"
 indicatif = { version = "0.17.11", features = ["improved_unicode", "tokio"] }
+itertools = "0.14.0"
 libsql = "0.9.19"
 log = "0.4.27"
 natord = "1.0.9"

@@ -113,14 +113,16 @@ impl RuleExecutor for Executor {
                         )))
                         .await;
 
-                    context.exit(&ticker, date, event_sender.clone()).await?;
+                    context
+                        .ticker_exit(&ticker, date, event_sender.clone())
+                        .await?;
                 }
             }
         }
 
-        for (ticker, cash) in context.portfolio.sideline_cash.clone() {
+        for (ticker, cash) in context.portfolio.sidelines.clone() {
             if context.portfolio.positions.contains_key(&ticker) {
-                context.portfolio.sideline_cash.remove(&ticker);
+                context.portfolio.sidelines.remove(&ticker);
                 continue;
             }
 
@@ -159,7 +161,7 @@ impl RuleExecutor for Executor {
 
                     let ticker_value = cash - calc_buy_fee(cash, context.options);
                     context
-                        .scale(&ticker, ticker_value, date, event_sender.clone())
+                        .ticker_scale(&ticker, ticker_value, date, event_sender.clone())
                         .await?;
                 }
             }

@@ -72,7 +72,7 @@ impl RuleExecutor for Executor {
 
             let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();
             for ticker in tickers.keys() {
-                if context.portfolio.sideline_cash.contains_key(ticker) {
+                if context.portfolio.sidelines.contains_key(ticker) {
                     continue;
                 }
 
@@ -123,8 +123,7 @@ impl RuleExecutor for Executor {
             }
 
             let total_value = context.calc_total_value(date).await?;
-            let position_value =
-                total_value - context.portfolio.sideline_cash.values().sum::<f64>();
+            let position_value = total_value - context.portfolio.sidelines.values().sum::<f64>();
             let target: Vec<(Ticker, f64)> = ticker_weights_adj
                 .into_iter()
                 .map(|(ticker, weight)| (ticker, position_value * weight))
