@@ -18,7 +18,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annualized_return_rate, stats::quantile},
+    utils::{datetime::date_to_str, financial::calc_annualized_return_rate},
 };
 
 pub struct Executor {
@@ -44,11 +44,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let filter_quantile = self
+        let limit = self
             .options
-            .get("filter_quantile")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.8);
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10);
         let lookback_trade_days = self
             .options
             .get("lookback_trade_days")
@@ -65,8 +65,8 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_f64())
             .unwrap_or(0.3);
         {
-            if filter_quantile <= 0.0 || filter_quantile >= 1.0 {
-                panic!("filter_quantile must > 0 and < 1");
+            if limit == 0 {
+                panic!("limit must > 0");
             }
 
             if lookback_trade_days == 0 {
@@ -191,20 +191,9 @@ impl RuleExecutor for Executor {
 
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            let threshold = quantile(
-                &indicators.iter().map(|x| x.1).collect::<Vec<f64>>(),
-                filter_quantile,
-            )
-            .unwrap_or(f64::MAX);
-
-            let filetered_indicators = indicators
-                .iter()
-                .filter(|x| x.1 >= threshold)
-                .collect::<Vec<_>>();
-
-            if !filetered_indicators.is_empty() {
+            if !indicators.is_empty() {
                 let mut top_tickers_strs: Vec<String> = vec![];
-                for (ticker, indicator) in &filetered_indicators {
+                for (ticker, indicator) in &indicators {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
                     top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4} "));
                 }
@@ -217,8 +206,9 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let selected_tickers: Vec<Ticker> = filetered_indicators
+            let selected_tickers: Vec<Ticker> = indicators
                 .iter()
+                .take(limit as usize)
                 .map(|(ticker, _)| ticker.clone())
                 .collect();
 

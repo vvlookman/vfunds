@@ -15,7 +15,9 @@ use crate::{
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
-        financial::{calc_max_drawdown, calc_momentum, calc_sharpe_ratio, calc_volatility},
+        financial::{
+            calc_annualized_volatility, calc_max_drawdown, calc_momentum, calc_sharpe_ratio,
+        },
         math::normalize_min_max,
     },
 };
@@ -115,7 +117,7 @@ impl RuleExecutor for Executor {
                     if let (Some(sharpe), Some(max_drawdown), Some(volatility), Some(momentum)) = (
                         calc_sharpe_ratio(&prices, context.options.risk_free_rate),
                         calc_max_drawdown(&prices),
-                        calc_volatility(&prices),
+                        calc_annualized_volatility(&prices),
                         calc_momentum(&prices),
                     ) {
                         factors

@@ -11,7 +11,7 @@ use crate::{
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_volatility, math::constraint_array},
+    utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::constraint_array},
 };
 
 pub struct Executor {
@@ -82,7 +82,7 @@ impl RuleExecutor for Executor {
                     &StockKlineField::Close.to_string(),
                     lookback_trade_days as u32,
                 );
-                if let Some(vol) = calc_volatility(&prices) {
+                if let Some(vol) = calc_annualized_volatility(&prices) {
                     ticker_inverse_vols
                         .insert(ticker.clone(), if vol > 0.0 { 1.0 / vol } else { 0.0 });
                 }

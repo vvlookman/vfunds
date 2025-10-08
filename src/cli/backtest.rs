@@ -113,14 +113,14 @@ pub struct BacktestCommand {
         short = 'W',
         long = "cv-window",
         group = "cv",
-        help = "Perform rolling time window partitioning on the entire dataset for cross-validation"
+        help = "Perform rolling time window partitioning for cross-validation"
     )]
     cv_window: bool,
 
     #[arg(
         long = "cv-score-arr-cap",
         default_value_t = 0.15,
-        help = "The annualized return rate cap value for cross-validation"
+        help = "The annualized return rate cap value for cross-validation, cross-validation uses annualized return rate and sharpe ratio as score, the default value is 0.15"
     )]
     cv_score_arr_cap: f64,
 }
@@ -174,9 +174,9 @@ impl BacktestCommand {
                     "Final Date".to_string(),
                     "T Days".to_string(),
                     "Profit".to_string(),
-                    "Annualized Return".to_string(),
+                    "Ann Return".to_string(),
+                    "Ann Volatility".to_string(),
                     "Max Drawdown".to_string(),
-                    "Volatility".to_string(),
                     "Win Rate".to_string(),
                     "Profit Factor".to_string(),
                     "Sharpe".to_string(),
@@ -217,12 +217,12 @@ impl BacktestCommand {
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
-                                        .max_drawdown
+                                        .annualized_volatility
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
-                                        .volatility
-                                        .map(|v| format!("{v:.4}"))
+                                        .max_drawdown
+                                        .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
                                         .win_rate

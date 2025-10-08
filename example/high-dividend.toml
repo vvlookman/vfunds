@@ -9,3 +9,7 @@ frequency = "1y"
 [rules.options]
 limit = 5
 lookback_years = 3
+
+[rules.search]
+limit = [3, 5, 10]
+lookback_years = [2, 3, 4]

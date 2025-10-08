@@ -23,8 +23,8 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annualized_return_rate, calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio,
-            calc_sortino_ratio, calc_volatility, calc_win_rate,
+            calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
+            calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
         },
     },
 };
@@ -72,8 +72,8 @@ pub struct BacktestMetrics {
     pub trade_days: usize,
     pub profit: f64,
     pub annualized_return_rate: Option<f64>,
+    pub annualized_volatility: Option<f64>,
     pub max_drawdown: Option<f64>,
-    pub volatility: Option<f64>,
     pub win_rate: Option<f64>,
     pub profit_factor: Option<f64>,
     pub sharpe_ratio: Option<f64>,
@@ -184,7 +184,7 @@ pub async fn backtest_fund(
                 calc_annualized_return_rate(options.init_cash, final_cash, days);
             let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
             let max_drawdown = calc_max_drawdown(&daily_values);
-            let volatility = calc_volatility(&daily_values);
+            let annualized_volatility = calc_annualized_volatility(&daily_values);
             let win_rate = calc_win_rate(&daily_values);
             let profit_factor = calc_profit_factor(&daily_values);
             let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
@@ -203,8 +203,8 @@ pub async fn backtest_fund(
                 trade_days: trade_date_values.len(),
                 profit,
                 annualized_return_rate,
+                annualized_volatility,
                 max_drawdown,
-                volatility,
                 win_rate,
                 profit_factor,
                 sharpe_ratio,
@@ -419,6 +419,38 @@ pub async fn backtest_fund(
                     }
 
                     if let Some((_, result)) = cv_results.first() {
+                        if let (Some(arr), Some(min_arr)) = (
+                            result.metrics.annualized_return_rate,
+                            cv_results
+                                .iter()
+                                .map(|(_, result)| result.metrics.annualized_return_rate)
+                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                .unwrap_or(None),
+                        ) {
+                            let _ = sender
+                                .send(BacktestEvent::Info(format!(
+                                    "[CV] [ARR Max Drop]={:.2}%",
+                                    (arr - min_arr) / arr * 100.0
+                                )))
+                                .await;
+                        }
+
+                        if let (Some(sharpe), Some(min_sharpe)) = (
+                            result.metrics.sharpe_ratio,
+                            cv_results
+                                .iter()
+                                .map(|(_, result)| result.metrics.sharpe_ratio)
+                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                .unwrap_or(None),
+                        ) {
+                            let _ = sender
+                                .send(BacktestEvent::Info(format!(
+                                    "[CV] [Sharpe Max Drop]={:.2}%",
+                                    (sharpe - min_sharpe) / sharpe * 100.0
+                                )))
+                                .await;
+                        }
+
                         return Ok(result.clone());
                     }
                 }

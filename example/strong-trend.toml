@@ -41,7 +41,13 @@ name = "hold_top_trend"
 frequency = "2w"
 
 [rules.options]
-filter_quantile = 0.8
-lookback_trade_days = 80
-regression_alpha = 0.1
+limit = 4
+lookback_trade_days = 60
+regression_alpha = 0.5
 regression_test = 0.6
+
+[rules.search]
+limit = [3, 4, 5]
+lookback_trade_days = [50, 60, 70]
+regression_alpha = [0.1, 0.3, 0.5, 0.7, 1.0]
+regression_test = [0.5, 0.6, 0.7]

@@ -15,10 +15,19 @@ name = "sizing_by_macd_crossover"
 frequency = "1d"
 
 [rules.options]
-macd_period_fast = 30
-macd_period_slow = 60
-macd_period_signal = 14
+macd_period_fast = 24
+macd_period_slow = 52
+macd_period_signal = 18
 macd_slope_window = 5
-rsi_period = 14
-rsi_low = 35
-rsi_high = 65
+rsi_period = 21
+rsi_low = 40
+rsi_high = 60
+
+[rules.search]
+macd_period_fast = [12, 24, 30]
+macd_period_slow = [26, 52, 60]
+macd_period_signal = [9, 18, 20]
+macd_slope_window = [3, 5, 7]
+# rsi_period = [14, 21, 28]
+# rsi_low = [35, 40, 45]
+# rsi_high = [55, 60, 65]
