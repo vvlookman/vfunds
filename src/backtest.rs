@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap};
 
-use chrono::NaiveDate;
+use chrono::{Duration, NaiveDate};
 use itertools::Itertools;
 use log::debug;
 use serde::Serialize;
@@ -124,10 +124,12 @@ pub async fn backtest_fund(
     let options = options.clone();
 
     tokio::spawn(async move {
-        let single_run = async |fund_definition: &FundDefinition| -> VfResult<BacktestResult> {
+        let single_run = async |fund_definition: &FundDefinition,
+                                options: &BacktestOptions|
+               -> VfResult<BacktestResult> {
             let mut context = BacktestContext {
                 fund_definition,
-                options: &options,
+                options,
                 portfolio: &mut Portfolio::new(options.init_cash),
             };
 
@@ -269,7 +271,7 @@ pub async fn backtest_fund(
                         }
                     }
 
-                    let result = single_run(&fund_definition).await?;
+                    let result = single_run(&fund_definition, &options).await?;
 
                     let _ = sender
                         .send(BacktestEvent::Info(format!(
@@ -336,9 +338,93 @@ pub async fn backtest_fund(
                         return Ok(result.clone());
                     }
                 }
+            } else if options.cv_window {
+                type DateRange = (NaiveDate, NaiveDate);
+
+                let mut windows: Vec<DateRange> = vec![(options.start_date, options.end_date)];
+
+                let total_days = (options.end_date - options.start_date).num_days();
+                let i_max = (total_days / 365).ilog2() + 1;
+                if i_max >= 1 {
+                    for i in 1..=i_max {
+                        let n = 2_i64.pow(i);
+                        let half_window_days = total_days / (n + 1);
+                        let window_days = half_window_days * 2;
+
+                        for j in 0..n {
+                            let window_end =
+                                options.end_date - Duration::days(j * half_window_days);
+                            let window_start = window_end - Duration::days(window_days);
+                            windows.push((window_start, window_end));
+                        }
+                    }
+                }
+
+                let mut cv_results: Vec<(DateRange, BacktestResult)> = vec![];
+                let cv_count = windows.len();
+                for (i, (window_start, window_end)) in windows.iter().enumerate() {
+                    let mut options = options.clone();
+                    options.start_date = *window_start;
+                    options.end_date = *window_end;
+
+                    let result = single_run(&fund_definition, &options).await?;
+
+                    let _ = sender
+                        .send(BacktestEvent::Info(format!(
+                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({}-{})",
+                            i + 1,
+                            result
+                                .metrics
+                                .annualized_return_rate
+                                .map(|v| format!("{:.2}%", v * 100.0))
+                                .unwrap_or("-".to_string()),
+                            result
+                                .metrics
+                                .sharpe_ratio
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or("-".to_string()),
+                            date_to_str(window_start),
+                            date_to_str(window_end),
+                        )))
+                        .await;
+
+                    cv_results.push(((*window_start, *window_end), result));
+                }
+
+                if !cv_results.is_empty() {
+                    for ((window_start, window_end), result) in cv_results.iter() {
+                        let _ = sender
+                            .send(BacktestEvent::Info(format!(
+                                "[CV] [{}~{}] ARR={} Sharpe={} MDD={} ({}d)",
+                                date_to_str(window_start),
+                                date_to_str(window_end),
+                                result
+                                    .metrics
+                                    .annualized_return_rate
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .sharpe_ratio
+                                    .map(|v| format!("{v:.3}"))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .max_drawdown
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                (*window_end - *window_start).num_days() + 1
+                            )))
+                            .await;
+                    }
+
+                    if let Some((_, result)) = cv_results.first() {
+                        return Ok(result.clone());
+                    }
+                }
             }
 
-            single_run(&fund_definition).await
+            single_run(&fund_definition, &options).await
         };
 
         match process().await {

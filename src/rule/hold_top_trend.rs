@@ -157,10 +157,6 @@ impl RuleExecutor for Executor {
                             {
                                 if let Ok(y_pred) = model.predict(&x_test) {
                                     let r2_score = r2(&y_test, &y_pred);
-                                    debug!(
-                                        "[{date_str}] [{rule_name}] {ticker} Better R2={r2_score:.4}"
-                                    );
-
                                     let indicator = arr * (1.0 + r2_score);
                                     debug!(
                                         "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_score:.4})"
