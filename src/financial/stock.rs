@@ -10,6 +10,7 @@ use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker, utils::datetime::
 #[allow(dead_code)]
 pub struct StockDetail {
     pub title: String,
+    pub sector: Option<String>,
     pub trading_date: Option<NaiveDate>,
     pub pre_close_price: Option<f64>,
     pub float_volume: Option<u64>,
@@ -86,20 +87,23 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     )
     .await?;
 
-    let title = json["InstrumentName"].as_str().unwrap_or_default();
-    let trading_date = json["TradingDay"]
-        .as_str()
-        .and_then(|s| date_from_str(s).ok());
-    let pre_close_price = json["PreClose"].as_f64();
-    let float_volume = json["FloatVolume"].as_u64();
-    let total_volume = json["TotalVolume"].as_u64();
+    let stocks_sector_json =
+        qmt::call_api("/stocks_sector", &json!({"sector_prefix": "SW1"}), Some(30)).await?;
 
     let result = StockDetail {
-        title: title.to_string(),
-        trading_date,
-        pre_close_price,
-        float_volume,
-        total_volume,
+        title: json["InstrumentName"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        sector: stocks_sector_json[ticker.to_qmt_code()]
+            .as_str()
+            .map(|s| s.to_string()),
+        trading_date: json["TradingDay"]
+            .as_str()
+            .and_then(|s| date_from_str(s).ok()),
+        pre_close_price: json["PreClose"].as_f64(),
+        float_volume: json["FloatVolume"].as_u64(),
+        total_volume: json["TotalVolume"].as_u64(),
     };
     STOCK_DETAIL_CACHE.insert(cache_key, result.clone());
 
@@ -327,6 +331,7 @@ mod tests {
         let detail = fetch_stock_detail(&ticker).await.unwrap();
 
         assert_eq!(detail.title, "平安银行");
+        assert_eq!(&detail.sector.unwrap(), "银行");
     }
 
     #[tokio::test]

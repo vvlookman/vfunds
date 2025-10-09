@@ -483,13 +483,7 @@ impl BacktestContext<'_> {
             {
                 let value = *units as f64 * price;
                 let fee = calc_sell_fee(value, self.options);
-
                 total_value += value - fee;
-            } else {
-                return Err(VfError::NoData(
-                    "NO_TICKER_PRICE",
-                    format!("Price of '{ticker}' not exists"),
-                ));
             }
         }
 
@@ -533,10 +527,11 @@ impl BacktestContext<'_> {
                                 .await;
                         }
                     } else {
-                        return Err(VfError::NoData(
-                            "NO_TICKER_PRICE",
-                            format!("Price of '{ticker}' not exists"),
-                        ));
+                        let _ = event_sender
+                            .send(BacktestEvent::Info(format!(
+                                "[{date_str}] [!] Price of '{ticker}' not exists"
+                            )))
+                            .await;
                     }
                 }
             }
@@ -601,10 +596,11 @@ impl BacktestContext<'_> {
                                 )))
                                 .await;
             } else {
-                return Err(VfError::NoData(
-                    "NO_TICKER_PRICE",
-                    format!("Price of '{ticker}' not exists"),
-                ));
+                let _ = event_sender
+                    .send(BacktestEvent::Info(format!(
+                        "[{date_str}] [!] Price of '{ticker}' not exists"
+                    )))
+                    .await;
             }
         }
 
@@ -698,10 +694,11 @@ impl BacktestContext<'_> {
                 }
             }
         } else {
-            return Err(VfError::NoData(
-                "NO_TICKER_PRICE",
-                format!("Price of '{ticker}' not exists"),
-            ));
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [!] Price of '{ticker}' not exists"
+                )))
+                .await;
         }
 
         Ok(())
@@ -719,6 +716,8 @@ impl BacktestContext<'_> {
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        let mut total_value = self.portfolio.cash;
+
         let mut position_strs: Vec<String> = vec![];
         for (ticker, position_units) in self.portfolio.positions.iter() {
             let ticker_title = fetch_stock_detail(ticker).await?.title;
@@ -727,8 +726,12 @@ impl BacktestContext<'_> {
                 kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
             {
                 let value = *position_units as f64 * price;
+                let fee = calc_sell_fee(value, self.options);
+                let net_value = value - fee;
+                total_value += net_value;
+
                 position_strs.push(format!(
-                    "{ticker}({ticker_title})=${value:.2}(${price:.2}x{position_units})"
+                    "{ticker}({ticker_title})=${net_value:.2}(${price:.2}x{position_units})"
                 ));
             } else {
                 position_strs.push(format!("{ticker}({ticker_title})=$?({position_units})"));
@@ -758,7 +761,7 @@ impl BacktestContext<'_> {
         let date_str = date_to_str(date);
         let _ = event_sender
             .send(BacktestEvent::Info(format!(
-                "[{date_str}] [·] {portfolio_str}"
+                "[{date_str}] [${total_value:.2}] {portfolio_str}"
             )))
             .await;
 

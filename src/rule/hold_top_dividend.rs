@@ -9,8 +9,9 @@ use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::stock::{
-        StockDividendAdjust, StockDividendField, StockKlineField, StockReportPershareField,
-        fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline, fetch_stock_report_pershare,
+        StockDetail, StockDividendAdjust, StockDividendField, StockKlineField,
+        StockReportPershareField, fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline,
+        fetch_stock_report_pershare,
     },
     rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -55,6 +56,11 @@ impl RuleExecutor for Executor {
             .get("lookback_years")
             .and_then(|v| v.as_u64())
             .unwrap_or(3);
+        let skip_same_sector = self
+            .options
+            .get("skip_same_sector")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         {
             if filter_roe_floor < 0.0 {
                 panic!("filter_roe_floor must >= 0");
@@ -85,17 +91,22 @@ impl RuleExecutor for Executor {
                         kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
                     {
                         if price > 0.0 {
-                            let report_pershare = fetch_stock_report_pershare(ticker).await?;
+                            let filter_roe = if filter_roe_floor > 0.0 {
+                                let report_pershare = fetch_stock_report_pershare(ticker).await?;
+                                let roe = report_pershare
+                                    .get_latest_value::<f64>(
+                                        date,
+                                        &StockReportPershareField::RoeRate.to_string(),
+                                    )
+                                    .unwrap_or(0.0)
+                                    / 100.0;
 
-                            let roe = report_pershare
-                                .get_latest_value::<f64>(
-                                    date,
-                                    &StockReportPershareField::RoeRate.to_string(),
-                                )
-                                .unwrap_or(0.0)
-                                / 100.0;
+                                roe > filter_roe_floor
+                            } else {
+                                true
+                            };
 
-                            if roe > filter_roe_floor {
+                            if filter_roe {
                                 let dividends = fetch_stock_dividends(ticker).await?;
 
                                 let interests = dividends.get_values::<f64>(
@@ -107,9 +118,7 @@ impl RuleExecutor for Executor {
 
                                 if interest_sum > 0.0 && interests.len() as u64 >= lookback_years {
                                     let indicator = interest_sum / price;
-                                    debug!(
-                                        "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ROE={roe:.4})"
-                                    );
+                                    debug!("[{date_str}] [{rule_name}] {ticker}={indicator:.4}");
 
                                     indicators.push((ticker.clone(), indicator));
                                 }
@@ -140,19 +149,61 @@ impl RuleExecutor for Executor {
 
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            if !indicators.is_empty() {
-                let mut selected_strs: Vec<String> = vec![];
-                let mut candidate_strs: Vec<String> = vec![];
-                for (i, (ticker, indicator)) in
-                    indicators.iter().take(2 * limit as usize).enumerate()
-                {
-                    let ticker_title = fetch_stock_detail(ticker).await?.title;
-                    if i < limit as usize {
-                        selected_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
+            let top_indicators = indicators
+                .iter()
+                .take(2 * limit as usize)
+                .collect::<Vec<_>>();
+
+            let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
+            for (ticker, _) in &top_indicators {
+                let detail = fetch_stock_detail(ticker).await?;
+                tickers_detail.insert(ticker.clone(), detail);
+            }
+
+            let mut selected_tickers: Vec<(Ticker, f64)> = vec![];
+            let mut candidate_tickers: Vec<(Ticker, f64)> = vec![];
+            for (ticker, indicator) in &top_indicators {
+                if selected_tickers.len() < limit as usize {
+                    if skip_same_sector
+                        && selected_tickers.iter().any(|(a, _)| {
+                            let sector_a = tickers_detail.get(a).map(|v| v.sector.as_ref());
+                            let sector_b = tickers_detail.get(ticker).map(|v| v.sector.as_ref());
+
+                            sector_a == sector_b && sector_a.is_some()
+                        })
+                    {
+                        candidate_tickers.push((ticker.clone(), *indicator));
                     } else {
-                        candidate_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
+                        selected_tickers.push((ticker.clone(), *indicator));
                     }
+                } else {
+                    candidate_tickers.push((ticker.clone(), *indicator));
                 }
+            }
+
+            if !selected_tickers.is_empty() {
+                let format_ticker = |(ticker, indicator): &(Ticker, f64)| {
+                    if let Some(detail) = tickers_detail.get(ticker) {
+                        let ticker_title = &detail.title;
+                        let ticker_sector = detail
+                            .sector
+                            .as_ref()
+                            .map(|v| format!("|{v}"))
+                            .unwrap_or_default();
+                        format!("{ticker}({ticker_title}{ticker_sector})={indicator:.4}")
+                    } else {
+                        format!("{ticker}={indicator:.4}")
+                    }
+                };
+
+                let selected_strs = selected_tickers
+                    .iter()
+                    .map(format_ticker)
+                    .collect::<Vec<_>>();
+                let candidate_strs = candidate_tickers
+                    .iter()
+                    .map(format_ticker)
+                    .collect::<Vec<_>>();
 
                 let mut top_tickers_str = String::new();
                 top_tickers_str.push_str(&selected_strs.join(" "));
@@ -169,17 +220,11 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let selected_tickers: Vec<Ticker> = indicators
-                .iter()
-                .take(limit as usize)
-                .map(|(ticker, _)| ticker.clone())
-                .collect();
-
             let total_value = context.calc_total_value(date).await?;
             let ticker_value = total_value / selected_tickers.len() as f64;
             let target: Vec<(Ticker, f64)> = selected_tickers
                 .into_iter()
-                .map(|ticker| (ticker, ticker_value))
+                .map(|(ticker, _)| (ticker, ticker_value))
                 .collect();
 
             context.rebalance(&target, date, event_sender).await?;

@@ -7,9 +7,12 @@ name = "hold_top_dividend"
 frequency = "1y"
 
 [rules.options]
+filter_roe_floor = 0.0
 limit = 5
 lookback_years = 3
+skip_same_sector = false
 
 [rules.search]
+filter_roe_floor = [0.0, 0.01, 0.1]
 limit = [3, 5, 10]
 lookback_years = [2, 3, 4]

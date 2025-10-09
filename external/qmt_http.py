@@ -84,6 +84,19 @@ def report(stock: str, table: str = 'PershareIndex'):
         raise HTTPException(status_code=404)
 
 
+@app.get("/stocks_sector")
+def stocks_sector(sector_prefix: str = 'SW1'):
+    sector_list = [s for s in xtdata.get_sector_list() if s.startswith(
+        sector_prefix) and not s.endswith('加权')]
+
+    data = {}
+    for sector in sector_list:
+        for stock in xtdata.get_stock_list_in_sector(sector):
+            data[stock] = sector[len(sector_prefix):]
+
+    return data
+
+
 @app.get("/")
 def root():
     return {"python": sys.version, "xtquant": getattr(xtquant, "__version__", "unknown")}
