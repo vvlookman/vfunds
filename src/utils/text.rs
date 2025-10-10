@@ -6,6 +6,10 @@ pub fn compare_phonetic(a: &str, b: &str) -> Ordering {
     natord::compare(&to_phonetic(a), &to_phonetic(b))
 }
 
+pub fn is_ascii_digits(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
+}
+
 fn to_phonetic(text: &str) -> String {
     let mut s = String::new();
 
@@ -44,5 +48,13 @@ mod tests {
             texts,
             ["Hello", "你好", "世界", "world", "こんにち", "저는"]
         );
+    }
+
+    #[test]
+    fn test_is_ascii_digits() {
+        assert!(is_ascii_digits("1234567890"));
+        assert!(!is_ascii_digits(""));
+        assert!(!is_ascii_digits("xyz"));
+        assert!(!is_ascii_digits("123.xyz"));
     }
 }

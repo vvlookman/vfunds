@@ -5,6 +5,7 @@ use chrono::NaiveDate;
 use crate::{
     error::{VfError, VfResult},
     financial::index::{fetch_cnindex_tickers, fetch_csindex_tickers},
+    utils::text::is_ascii_digits,
 };
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -24,28 +25,26 @@ impl FromStr for Ticker {
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
         let s = s.trim();
 
-        if let Some((symbol, exchange)) = s.rsplit_once('.') {
-            Ok(Self {
-                exchange: exchange.trim().to_uppercase().to_string(),
-                symbol: symbol.trim().to_uppercase().to_string(),
-            })
-        } else {
+        let ticker = if is_ascii_digits(s) {
             let exchange = if s.len() == 6 {
-                if s.starts_with("600")
-                    || s.starts_with("601")
-                    || s.starts_with("603")
-                    || s.starts_with("688")
+                if s.starts_with("60")
+                    || s.starts_with("68")
                     || s.starts_with("51")
-                    || s.starts_with("588")
+                    || s.starts_with("58")
                 {
                     Some("SH")
-                } else if s.starts_with("000")
-                    || s.starts_with("002")
-                    || s.starts_with("300")
+                } else if s.starts_with("00")
+                    || s.starts_with("30")
                     || s.starts_with("15")
                     || s.starts_with("16")
                 {
                     Some("SZ")
+                } else if s.starts_with("92")
+                    || s.starts_with("83")
+                    || s.starts_with("43")
+                    || s.starts_with("87")
+                {
+                    Some("BJ")
                 } else {
                     None
                 }
@@ -56,16 +55,31 @@ impl FromStr for Ticker {
             };
 
             if let Some(exchange) = exchange {
-                Ok(Self {
+                Some(Self {
                     exchange: exchange.to_string(),
                     symbol: s.to_uppercase().to_string(),
                 })
             } else {
-                Err(VfError::Invalid(
-                    "INVALID_TICKER",
-                    format!("Invalid ticker '{s}'"),
-                ))
+                None
             }
+        } else {
+            if let Some((symbol, exchange)) = s.rsplit_once('.') {
+                Some(Self {
+                    exchange: exchange.trim().to_uppercase().to_string(),
+                    symbol: symbol.trim().to_uppercase().to_string(),
+                })
+            } else {
+                None
+            }
+        };
+
+        if let Some(ticker) = ticker {
+            Ok(ticker)
+        } else {
+            Err(VfError::Invalid(
+                "INVALID_TICKER",
+                format!("Invalid ticker '{s}'"),
+            ))
         }
     }
 }
