@@ -28,7 +28,7 @@ pub async fn fetch_trade_dates() -> VfResult<HashSet<NaiveDate>> {
             }
         }
     } else {
-        let bench_ticker = Ticker::from_str("SSE:000001")?;
+        let bench_ticker = Ticker::from_str("000001.SH")?;
         let bench_kline = fetch_stock_kline(&bench_ticker, StockDividendAdjust::No).await?;
         let bench_dates = bench_kline.get_dates();
         dates.extend(bench_dates);

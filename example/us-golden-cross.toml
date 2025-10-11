@@ -7,14 +7,15 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_equal"
+name = "hold"
 frequency = "1y"
 
 [[rules]]
-name = "sizing_by_macd_crossover"
+name = "size_by_macd_crossover"
 frequency = "1d"
 
 [rules.options]
+allow_short = false
 macd_period_fast = 24
 macd_period_slow = 52
 macd_period_signal = 18
@@ -24,6 +25,7 @@ rsi_low = 40
 rsi_high = 60
 
 [rules.search]
+allow_short = [true, false]
 macd_period_fast = [12, 24, 30]
 macd_period_slow = [26, 52, 60]
 macd_period_signal = [9, 18, 20]

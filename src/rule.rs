@@ -8,13 +8,13 @@ use crate::{
     spec::RuleDefinition,
 };
 
-pub mod hold_equal;
+pub mod hold;
 pub mod hold_risk_parity;
 pub mod hold_top_dividend;
 pub mod hold_top_factors_score;
 pub mod hold_top_trend;
-pub mod sizing_by_macd_crossover;
-pub mod sizing_by_valuation;
+pub mod size_by_macd_crossover;
+pub mod size_by_valuation;
 
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
@@ -38,15 +38,13 @@ impl Rule {
 
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
-            "hold_equal" => Box::new(hold_equal::Executor::new(definition)),
+            "hold" => Box::new(hold::Executor::new(definition)),
             "hold_risk_parity" => Box::new(hold_risk_parity::Executor::new(definition)),
             "hold_top_dividend" => Box::new(hold_top_dividend::Executor::new(definition)),
             "hold_top_factors_score" => Box::new(hold_top_factors_score::Executor::new(definition)),
             "hold_top_trend" => Box::new(hold_top_trend::Executor::new(definition)),
-            "sizing_by_macd_crossover" => {
-                Box::new(sizing_by_macd_crossover::Executor::new(definition))
-            }
-            "sizing_by_valuation" => Box::new(sizing_by_valuation::Executor::new(definition)),
+            "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
+            "size_by_valuation" => Box::new(size_by_valuation::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
         };
 

@@ -13,7 +13,7 @@ pub struct FundDefinition {
     pub title: String,
 
     #[serde(default)]
-    pub tickers: Vec<String>,
+    pub tickers: TickersDefinition,
 
     #[serde(default)]
     pub ticker_sources: Vec<String>,
@@ -42,31 +42,56 @@ pub struct RuleDefinition {
     pub search: HashMap<String, serde_json::Value>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum TickersDefinition {
+    Array(Vec<String>),
+    Map(HashMap<String, f64>),
+}
+
 impl FundDefinition {
     pub fn from_file(path: &Path) -> VfResult<Self> {
         confy::load_path(path).map_err(Into::into)
     }
 
-    pub async fn all_tickers(
+    pub async fn all_tickers_map(
         &self,
         date: &NaiveDate,
-    ) -> VfResult<HashMap<Ticker, Option<TickersIndex>>> {
-        let mut all_tickers: HashMap<Ticker, Option<TickersIndex>> = HashMap::new();
+    ) -> VfResult<HashMap<Ticker, (f64, Option<TickersIndex>)>> {
+        let mut all_tickers_map: HashMap<Ticker, (f64, Option<TickersIndex>)> = HashMap::new();
 
-        for ticker_str in &self.tickers {
-            let ticker = Ticker::from_str(ticker_str)?;
-            all_tickers.insert(ticker, None);
-        }
+        match &self.tickers {
+            TickersDefinition::Array(array) => {
+                for ticker_str in array {
+                    let ticker = Ticker::from_str(ticker_str)?;
+                    all_tickers_map.insert(ticker, (1.0, None));
+                }
+            }
+            TickersDefinition::Map(map) => {
+                for (ticker_str, weight) in map {
+                    if *weight > 0.0 {
+                        let ticker = Ticker::from_str(ticker_str)?;
+                        all_tickers_map.insert(ticker, (*weight, None));
+                    }
+                }
+            }
+        };
 
         for ticker_source_str in &self.ticker_sources {
             let ticker_source = TickersIndex::from_str(ticker_source_str)?;
             let index_tickers = ticker_source.all_tickers(date).await?;
             for ticker in index_tickers {
-                all_tickers.insert(ticker, Some(ticker_source.clone()));
+                all_tickers_map.insert(ticker, (1.0, Some(ticker_source.clone())));
             }
         }
 
-        Ok(all_tickers)
+        Ok(all_tickers_map)
+    }
+}
+
+impl Default for TickersDefinition {
+    fn default() -> Self {
+        TickersDefinition::Array(Vec::new())
     }
 }
 

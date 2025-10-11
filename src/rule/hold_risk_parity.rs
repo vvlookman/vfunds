@@ -66,13 +66,13 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let tickers = context.fund_definition.all_tickers(date).await?;
-        if !tickers.is_empty() {
+        let tickers_map = context.fund_definition.all_tickers_map(date).await?;
+        if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
 
             let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();
-            for ticker in tickers.keys() {
-                if context.portfolio.sidelines.contains_key(ticker) {
+            for ticker in tickers_map.keys() {
+                if context.portfolio.reserved_cash.contains_key(ticker) {
                     continue;
                 }
 
@@ -89,19 +89,19 @@ impl RuleExecutor for Executor {
             }
 
             let ticker_inverse_vols_sum = ticker_inverse_vols.values().sum::<f64>();
-            let ticker_weights: HashMap<Ticker, f64> = ticker_inverse_vols
+            let tickers_weight: HashMap<Ticker, f64> = ticker_inverse_vols
                 .iter()
                 .map(|(k, v)| (k.clone(), *v / ticker_inverse_vols_sum))
                 .collect();
 
-            let ticker_weight_baseline = 1.0 / ticker_weights.len() as f64;
+            let ticker_weight_baseline = 1.0 / tickers_weight.len() as f64;
             let ticker_weight_min = ticker_weight_baseline * weight_scale_min;
             let ticker_weight_max = ticker_weight_baseline * weight_scale_max;
 
             let (tickers, weights): (Vec<Ticker>, Vec<f64>) =
-                ticker_weights.iter().map(|(k, v)| (k.clone(), *v)).unzip();
+                tickers_weight.iter().map(|(k, v)| (k.clone(), *v)).unzip();
             let weights_adj = constraint_array(&weights, ticker_weight_min, ticker_weight_max);
-            let ticker_weights_adj: HashMap<Ticker, f64> = tickers
+            let tickers_weight_adj: HashMap<Ticker, f64> = tickers
                 .iter()
                 .zip(weights_adj.iter())
                 .map(|(k, v)| (k.clone(), *v))
@@ -109,7 +109,7 @@ impl RuleExecutor for Executor {
 
             {
                 let mut tickers_strs: Vec<String> = vec![];
-                for (ticker, weight) in &ticker_weights_adj {
+                for (ticker, weight) in &tickers_weight_adj {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
                     tickers_strs.push(format!("{ticker}({ticker_title})={weight:.4}"));
                 }
@@ -122,14 +122,11 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let total_value = context.calc_total_value(date).await?;
-            let position_value = total_value - context.portfolio.sidelines.values().sum::<f64>();
-            let target: Vec<(Ticker, f64)> = ticker_weights_adj
-                .into_iter()
-                .map(|(ticker, weight)| (ticker, position_value * weight))
-                .collect();
+            let targets_weight: Vec<(Ticker, f64)> = tickers_weight_adj.into_iter().collect();
 
-            context.rebalance(&target, date, event_sender).await?;
+            context
+                .rebalance(&targets_weight, date, event_sender)
+                .await?;
         }
 
         Ok(())

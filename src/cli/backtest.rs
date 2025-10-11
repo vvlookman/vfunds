@@ -142,7 +142,7 @@ impl BacktestCommand {
             cv_score_arr_cap: self.cv_score_arr_cap,
         };
 
-        if options.end_date <= options.start_date {
+        if options.end_date < options.start_date {
             panic!(
                 "The end date {} cannot be earlier than the start date {}",
                 date_to_str(&options.end_date),
@@ -175,8 +175,8 @@ impl BacktestCommand {
                     "T Days".to_string(),
                     "Profit".to_string(),
                     "Ann Return".to_string(),
-                    "Ann Volatility".to_string(),
                     "Max Drawdown".to_string(),
+                    "Ann Volatility".to_string(),
                     "Win Rate".to_string(),
                     "Profit Factor".to_string(),
                     "Sharpe".to_string(),
@@ -217,11 +217,11 @@ impl BacktestCommand {
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
-                                        .annualized_volatility
+                                        .max_drawdown
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics
-                                        .max_drawdown
+                                        .annualized_volatility
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
                                     metrics

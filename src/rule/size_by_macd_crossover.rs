@@ -41,6 +41,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let allow_short = self
+            .options
+            .get("allow_short")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let macd_period_fast = self
             .options
             .get("macd_period_fast")
@@ -114,18 +119,19 @@ impl RuleExecutor for Executor {
                         .await;
 
                     context
-                        .ticker_exit(&ticker, date, event_sender.clone())
+                        .position_exit(&ticker, !allow_short, date, event_sender.clone())
                         .await?;
+
+                    if !allow_short {
+                        context
+                            .cash_deploy(false, date, event_sender.clone())
+                            .await?;
+                    }
                 }
             }
         }
 
-        for (ticker, cash) in context.portfolio.sidelines.clone() {
-            if context.portfolio.positions.contains_key(&ticker) {
-                context.portfolio.sidelines.remove(&ticker);
-                continue;
-            }
-
+        for (ticker, cash) in context.portfolio.reserved_cash.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices = kline.get_latest_values::<f64>(
                 date,
@@ -161,7 +167,7 @@ impl RuleExecutor for Executor {
 
                     let ticker_value = cash - calc_buy_fee(cash, context.options);
                     context
-                        .ticker_scale(&ticker, ticker_value, date, event_sender.clone())
+                        .position_scale(&ticker, ticker_value, date, event_sender.clone())
                         .await?;
                 }
             }

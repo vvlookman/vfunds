@@ -8,9 +8,9 @@ pub mod tool;
 
 #[derive(Debug)]
 pub struct Portfolio {
-    pub cash: f64,
+    pub free_cash: f64,
+    pub reserved_cash: HashMap<Ticker, f64>,
     pub positions: HashMap<Ticker, u64>,
-    pub sidelines: HashMap<Ticker, f64>,
 }
 
 #[derive(Debug, PartialEq, strum::Display, strum::EnumIter, strum::EnumString)]
@@ -24,9 +24,9 @@ pub enum Prospect {
 impl Portfolio {
     pub fn new(cash: f64) -> Self {
         Self {
-            cash,
+            free_cash: cash,
+            reserved_cash: HashMap::new(),
             positions: HashMap::new(),
-            sidelines: HashMap::new(),
         }
     }
 }

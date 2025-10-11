@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use crate::{
     WORKSPACE, backtest,
     error::*,
-    spec::{FundDefinition, RuleDefinition},
+    spec::{FundDefinition, RuleDefinition, TickersDefinition},
     utils,
 };
 
@@ -38,9 +38,9 @@ pub async fn backtest(
     if let Some(benchmark_str) = &options.benchmark {
         let fund_definition = FundDefinition {
             title: format!("Benchmark: {benchmark_str}"),
-            tickers: vec![benchmark_str.to_string()],
+            tickers: TickersDefinition::Array(vec![benchmark_str.to_string()]),
             rules: vec![RuleDefinition {
-                name: "hold_equal".to_string(),
+                name: "hold".to_string(),
                 ..Default::default()
             }],
             ..Default::default()

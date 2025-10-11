@@ -49,11 +49,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let limit = self
+        let allow_short = self
             .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
+            .get("allow_short")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let lookback_years = self
             .options
             .get("lookback_years")
@@ -93,10 +93,6 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_u64())
             .unwrap_or(28);
         {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-
             if lookback_years == 0 {
                 panic!("lookback_years must > 0");
             }
@@ -156,7 +152,8 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let all_tickers = context.fund_definition.all_tickers(date).await?;
+        let tickers_map = context.fund_definition.all_tickers_map(date).await?;
+
         let watching_tickers = context.watching_tickers();
         if !watching_tickers.is_empty() {
             let date_str = date_to_str(date);
@@ -170,7 +167,7 @@ impl RuleExecutor for Executor {
                     if let Some(index) = ticker_watch_index_map.get(ticker) {
                         Some(index.clone())
                     } else {
-                        if let Some(Some(ticker_source)) = all_tickers.get(ticker) {
+                        if let Some((_, Some(ticker_source))) = tickers_map.get(ticker) {
                             ticker_source_watch_index_map.get(ticker_source).cloned()
                         } else {
                             None
@@ -222,8 +219,14 @@ impl RuleExecutor for Executor {
                                     .await;
 
                                     context
-                                        .ticker_exit(ticker, date, event_sender.clone())
+                                        .position_exit(ticker, true, date, event_sender.clone())
                                         .await?;
+
+                                    if !allow_short {
+                                        context
+                                            .cash_deploy(false, date, event_sender.clone())
+                                            .await?;
+                                    }
                                 } else {
                                     let _ = event_sender
                                     .send(BacktestEvent::Info(format!(
@@ -262,13 +265,12 @@ impl RuleExecutor for Executor {
                                     )))
                                     .await;
 
-                                    if let Some(&cash) = context.portfolio.sidelines.get(ticker) {
-                                        let ticker_value =
-                                            cash - calc_buy_fee(cash, context.options);
+                                    if let Some(&cash) = context.portfolio.reserved_cash.get(ticker)
+                                    {
                                         context
-                                            .ticker_scale(
+                                            .position_scale(
                                                 ticker,
-                                                ticker_value,
+                                                cash - calc_buy_fee(cash, context.options),
                                                 date,
                                                 event_sender.clone(),
                                             )

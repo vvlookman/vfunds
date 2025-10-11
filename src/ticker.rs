@@ -54,14 +54,10 @@ impl FromStr for Ticker {
                 None
             };
 
-            if let Some(exchange) = exchange {
-                Some(Self {
-                    exchange: exchange.to_string(),
-                    symbol: s.to_uppercase().to_string(),
-                })
-            } else {
-                None
-            }
+            exchange.map(|exchange| Self {
+                exchange: exchange.to_string(),
+                symbol: s.to_uppercase().to_string(),
+            })
         } else {
             if let Some((symbol, exchange)) = s.rsplit_once('.') {
                 Some(Self {

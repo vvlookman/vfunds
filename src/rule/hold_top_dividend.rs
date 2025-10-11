@@ -75,8 +75,8 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let tickers = context.fund_definition.all_tickers(date).await?;
-        if !tickers.is_empty() {
+        let tickers_map = context.fund_definition.all_tickers_map(date).await?;
+        if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
             let date_from =
                 date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
@@ -85,7 +85,7 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
-                for ticker in tickers.keys() {
+                for ticker in tickers_map.keys() {
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                     if let Some(price) =
                         kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
@@ -129,7 +129,8 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
+                        let calc_progress_pct =
+                            calc_count as f64 / tickers_map.len() as f64 * 100.0;
                         let _ = event_sender
                             .send(BacktestEvent::Toast(format!(
                                 "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
@@ -220,14 +221,16 @@ impl RuleExecutor for Executor {
                     .await;
             }
 
-            let total_value = context.calc_total_value(date).await?;
-            let ticker_value = total_value / selected_tickers.len() as f64;
-            let target: Vec<(Ticker, f64)> = selected_tickers
-                .into_iter()
-                .map(|(ticker, _)| (ticker, ticker_value))
-                .collect();
+            let mut targets_weight: Vec<(Ticker, f64)> = vec![];
+            for (ticker, _) in &selected_tickers {
+                if let Some((weight, _)) = tickers_map.get(ticker) {
+                    targets_weight.push((ticker.clone(), *weight));
+                }
+            }
 
-            context.rebalance(&target, date, event_sender).await?;
+            context
+                .rebalance(&targets_weight, date, event_sender)
+                .await?;
         }
 
         Ok(())
