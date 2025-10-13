@@ -3,7 +3,7 @@ use std::{cmp::Ordering, collections::HashMap};
 use chrono::{Duration, NaiveDate};
 use itertools::Itertools;
 use log::debug;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::{
     mpsc,
     mpsc::{Receiver, Sender},
@@ -44,7 +44,7 @@ pub enum BacktestEvent {
     Error(VfError),
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BacktestOptions {
     pub init_cash: f64,
     #[serde(serialize_with = "serialize_date")]
@@ -72,8 +72,10 @@ pub struct BacktestStream {
     receiver: Receiver<BacktestEvent>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BacktestMetrics {
+    #[serde(serialize_with = "serialize_option_date")]
+    pub last_trade_date: Option<NaiveDate>,
     pub trade_days: usize,
     pub profit: f64,
     pub annualized_return_rate: Option<f64>,
@@ -257,6 +259,7 @@ pub async fn backtest_fund(
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
             let metrics = BacktestMetrics {
+                last_trade_date: trade_dates_value.last().map(|(d, _)| *d),
                 trade_days: trade_dates_value.len(),
                 profit,
                 annualized_return_rate,
@@ -998,4 +1001,15 @@ where
     S: serde::Serializer,
 {
     ser.serialize_str(&date_to_str(date))
+}
+
+fn serialize_option_date<S>(date: &Option<NaiveDate>, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    if let Some(date) = date {
+        ser.serialize_str(&date_to_str(date))
+    } else {
+        ser.serialize_none()
+    }
 }

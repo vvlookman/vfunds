@@ -7,9 +7,9 @@ pub struct ListCommand;
 
 impl ListCommand {
     pub async fn exec(&self) {
-        match api::funds().await {
-            Ok(funds) => {
-                if funds.is_empty() {
+        match api::fund_definitions().await {
+            Ok(fund_definitions) => {
+                if fund_definitions.is_empty() {
                     match api::get_workspace() {
                         Ok(workspace) => {
                             println!(
@@ -23,8 +23,7 @@ impl ListCommand {
                     }
                 } else {
                     let mut table_data: Vec<Vec<String>> = vec![];
-                    for fund in funds {
-                        let (fund_name, fund_definition) = fund;
+                    for (fund_name, fund_definition) in fund_definitions {
                         table_data.push(vec![fund_name, fund_definition.title]);
                     }
 

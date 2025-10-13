@@ -56,5 +56,8 @@ async fn main() {
         Commands::List(cmd) => {
             cmd.exec().await;
         }
+        Commands::Show(cmd) => {
+            cmd.exec().await;
+        }
     }
 }

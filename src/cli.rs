@@ -2,6 +2,7 @@ use clap::Subcommand;
 
 mod backtest;
 mod list;
+mod show;
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -12,4 +13,7 @@ pub enum Commands {
     #[command(about = "List all virtual funds")]
     #[clap(visible_aliases = &["ls"])]
     List(Box<list::ListCommand>),
+
+    #[command(about = "Show backtest results of virtual funds")]
+    Show(Box<show::ShowCommand>),
 }

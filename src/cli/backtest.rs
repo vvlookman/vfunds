@@ -12,7 +12,10 @@ use tabled::settings::{
 use tokio::time::Duration;
 use vfunds::{
     api,
-    api::{BacktestEvent, BacktestOptions, BacktestResult},
+    api::{
+        BacktestEvent, BacktestOptions, BacktestOutputPortfolio, BacktestOutputResult,
+        BacktestResult,
+    },
     error::{VfError, VfResult},
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -153,8 +156,10 @@ impl BacktestCommand {
         };
 
         println!(
-            "[Initial cash] {} \t [Days] {} \n",
+            "[Initial Cash] {} \t [{} ~ {}] \t [{} Days] \n",
             options.init_cash,
+            date_to_str(&options.start_date),
+            date_to_str(&options.end_date),
             (options.end_date - options.start_date).num_days() + 1
         );
 
@@ -172,8 +177,8 @@ impl BacktestCommand {
             Ok(streams) => {
                 let mut errors: HashMap<String, VfError> = HashMap::new();
                 let mut table_data: Vec<Vec<String>> = vec![vec![
-                    date_to_str(&self.start_date),
-                    "Final Date".to_string(),
+                    "".to_string(),
+                    "Final T".to_string(),
                     "T Days".to_string(),
                     "Profit".to_string(),
                     "Ann Return".to_string(),
@@ -207,57 +212,59 @@ impl BacktestCommand {
                                         let _ = fs::create_dir_all(output_dir);
                                     }
 
-                                    let output_daily_values = || -> VfResult<()> {
-                                        let path =
-                                            output_dir.join(format!("{fund_name}.values.csv"));
-                                        let mut csv_writer = csv::Writer::from_path(&path)?;
-                                        csv_writer.write_record(["date", "value"])?;
-                                        for (date, value) in &fund_result.trade_dates_value {
-                                            csv_writer.write_record(&[
-                                                date_to_str(date),
-                                                format!("{value:.2}"),
-                                            ])?;
-                                        }
-                                        csv_writer.flush()?;
-                                        Ok(())
-                                    };
-                                    if let Err(err) = output_daily_values() {
+                                    let output_daily_values =
+                                        |fund_result: &BacktestResult| -> VfResult<()> {
+                                            let path =
+                                                output_dir.join(format!("{fund_name}.values.csv"));
+                                            let mut csv_writer = csv::Writer::from_path(&path)?;
+                                            csv_writer.write_record(["date", "value"])?;
+                                            for (date, value) in &fund_result.trade_dates_value {
+                                                csv_writer.write_record(&[
+                                                    date_to_str(date),
+                                                    format!("{value:.2}"),
+                                                ])?;
+                                            }
+                                            csv_writer.flush()?;
+                                            Ok(())
+                                        };
+                                    if let Err(err) = output_daily_values(&fund_result) {
                                         errors.insert(fund_name.to_string(), err);
                                     }
 
-                                    let output_result = || -> VfResult<()> {
-                                        let result = serde_json::json!({
-                                            "options": fund_result.options,
-                                            "portfolio": {
-                                                "cash": fund_result.final_cash,
-                                                "positions_value": fund_result.final_positions_value.iter().map(|(k, v)| (k.to_string(), v)).collect::<HashMap<String, _>>(),
-                                            },
-                                            "metrics": fund_result.metrics,
-                                        });
+                                    let output_result =
+                                        |fund_result: &BacktestResult| -> VfResult<()> {
+                                            let result = BacktestOutputResult {
+                                                options: fund_result.options.clone(),
+                                                portfolio: BacktestOutputPortfolio {
+                                                    cash: fund_result.final_cash,
+                                                    positions_value: fund_result
+                                                        .final_positions_value
+                                                        .iter()
+                                                        .map(|(k, v)| (k.to_string(), *v))
+                                                        .collect(),
+                                                },
+                                                metrics: fund_result.metrics.clone(),
+                                            };
 
-                                        let path = output_dir.join(format!("{fund_name}.json"));
-                                        let file = fs::File::create(path)?;
-                                        serde_json::to_writer_pretty(file, &result)?;
+                                            let path = output_dir.join(format!("{fund_name}.json"));
+                                            let file = fs::File::create(path)?;
+                                            serde_json::to_writer_pretty(file, &result)?;
 
-                                        Ok(())
-                                    };
-                                    if let Err(err) = output_result() {
+                                            Ok(())
+                                        };
+                                    if let Err(err) = output_result(&fund_result) {
                                         errors.insert(fund_name.to_string(), err);
                                     }
                                 }
 
-                                let BacktestResult {
-                                    trade_dates_value,
-                                    metrics,
-                                    ..
-                                } = *fund_result;
+                                let BacktestResult { metrics, .. } = *fund_result;
                                 table_data.push(vec![
                                     fund_name.to_string(),
-                                    trade_dates_value
-                                        .last()
-                                        .map(|(d, _)| date_to_str(d))
+                                    metrics
+                                        .last_trade_date
+                                        .map(|d| date_to_str(&d))
                                         .unwrap_or("-".to_string()),
-                                    format!("{}", trade_dates_value.len()),
+                                    format!("{}", metrics.trade_days),
                                     format!("{:.2}", metrics.profit),
                                     metrics
                                         .annualized_return_rate
