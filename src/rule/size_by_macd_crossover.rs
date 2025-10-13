@@ -5,7 +5,6 @@ use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    backtest::calc_buy_fee,
     error::VfResult,
     financial::stock::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
@@ -123,15 +122,13 @@ impl RuleExecutor for Executor {
                         .await?;
 
                     if !allow_short {
-                        context
-                            .cash_deploy(false, date, event_sender.clone())
-                            .await?;
+                        context.cash_deploy_free(date, event_sender.clone()).await?;
                     }
                 }
             }
         }
 
-        for (ticker, cash) in context.portfolio.reserved_cash.clone() {
+        for (ticker, _) in context.portfolio.reserved_cash.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices = kline.get_latest_values::<f64>(
                 date,
@@ -165,9 +162,8 @@ impl RuleExecutor for Executor {
                         )))
                         .await;
 
-                    let ticker_value = cash - calc_buy_fee(cash, context.options);
                     context
-                        .position_scale(&ticker, ticker_value, date, event_sender.clone())
+                        .position_init_reserved(&ticker, date, event_sender.clone())
                         .await?;
                 }
             }

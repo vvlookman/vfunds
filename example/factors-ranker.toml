@@ -18,14 +18,14 @@ frequency = "2w"
 limit = 3
 lookback_trade_days = 21
 weight_max_drawdown = 4.0
-weight_momentum = 1.0
-weight_sharpe = 4.0
-weight_volatility = 3.0
+weight_momentum = 0.0
+weight_sharpe = 1.0
+weight_volatility = 5.0
 
 [rules.search]
 limit = [3, 4]
 lookback_trade_days = [21, 28]
-weight_max_drawdown = [3.0, 4.0]
-weight_momentum = [1.0, 2.0]
-weight_sharpe = [3.0, 4.0]
-weight_volatility = [3.0, 4.0]
+weight_max_drawdown = [3.0, 4.0, 5.0]
+weight_momentum = [0.0, 1.0]
+weight_sharpe = [0.0, 1.0, 2.0]
+weight_volatility = [4.0, 5.0, 6.0]

@@ -52,11 +52,19 @@ pub struct BacktestCommand {
     funds: Vec<String>,
 
     #[arg(
-        short = 'b',
+        short = 'B',
         long = "benchmark",
-        help = "Benchmark ticker, e.g. -b 510300"
+        help = "Benchmark ticker, e.g. -B 510300"
     )]
     benchmark: Option<String>,
+
+    #[arg(
+        short = 'b',
+        long = "buffer",
+        default_value_t = 0.002,
+        help = "The buffer ratio, the default value is 0.002"
+    )]
+    buffer_ratio: f64,
 
     #[arg(
         short = 'r',
@@ -131,6 +139,7 @@ impl BacktestCommand {
             init_cash: self.init_cash,
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().date_naive()),
+            buffer_ratio: self.buffer_ratio,
             risk_free_rate: self.risk_free_rate,
             stamp_duty_rate: self.stamp_duty_rate,
             stamp_duty_min_fee: self.stamp_duty_min_fee,
@@ -142,14 +151,6 @@ impl BacktestCommand {
             cv_window: self.cv_window,
             cv_score_arr_cap: self.cv_score_arr_cap,
         };
-
-        if options.end_date < options.start_date {
-            panic!(
-                "The end date {} cannot be earlier than the start date {}",
-                date_to_str(&options.end_date),
-                date_to_str(&options.start_date)
-            );
-        }
 
         println!(
             "[Initial cash] {} \t [Days] {} \n",

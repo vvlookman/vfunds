@@ -7,7 +7,6 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
     PROGRESS_INTERVAL_SECS,
-    backtest::calc_buy_fee,
     error::VfResult,
     financial::stock::{
         StockDividendAdjust, StockKlineField, StockReportCapitalField, StockReportIncomeField,
@@ -224,7 +223,7 @@ impl RuleExecutor for Executor {
 
                                     if !allow_short {
                                         context
-                                            .cash_deploy(false, date, event_sender.clone())
+                                            .cash_deploy_free(date, event_sender.clone())
                                             .await?;
                                     }
                                 } else {
@@ -265,17 +264,9 @@ impl RuleExecutor for Executor {
                                     )))
                                     .await;
 
-                                    if let Some(&cash) = context.portfolio.reserved_cash.get(ticker)
-                                    {
-                                        context
-                                            .position_scale(
-                                                ticker,
-                                                cash - calc_buy_fee(cash, context.options),
-                                                date,
-                                                event_sender.clone(),
-                                            )
-                                            .await?;
-                                    }
+                                    context
+                                        .position_init_reserved(ticker, date, event_sender.clone())
+                                        .await?;
                                 } else {
                                     let _ = event_sender
                                     .send(BacktestEvent::Info(format!(

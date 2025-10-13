@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS "cache" (
     Ok(())
 }
 
-pub async fn get(key: &str) -> VfResult<Option<Vec<u8>>> {
+pub async fn get(key: &str, ignore_expire: bool) -> VfResult<Option<Vec<u8>>> {
     let conn = connect().await?;
 
     let mut rows = conn
@@ -41,10 +41,15 @@ LIMIT 1
         .await?;
     if let Some(row) = rows.next().await? {
         let data = row.get::<Vec<u8>>(0)?;
-        let expire_str = row.get::<String>(1)?;
-        let expire = NaiveDateTime::parse_from_str(&expire_str, "%Y-%m-%d %H:%M:%S")?;
-        if expire > Local::now().naive_local() {
+
+        if ignore_expire {
             return Ok(Some(data));
+        } else {
+            let expire_str = row.get::<String>(1)?;
+            let expire = NaiveDateTime::parse_from_str(&expire_str, "%Y-%m-%d %H:%M:%S")?;
+            if expire > Local::now().naive_local() {
+                return Ok(Some(data));
+            }
         }
     }
 

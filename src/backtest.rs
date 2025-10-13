@@ -51,6 +51,7 @@ pub struct BacktestOptions {
     pub start_date: NaiveDate,
     #[serde(serialize_with = "serialize_date")]
     pub end_date: NaiveDate,
+    pub buffer_ratio: f64,
     pub risk_free_rate: f64,
     pub stamp_duty_rate: f64,
     pub stamp_duty_min_fee: f64,
@@ -125,6 +126,42 @@ pub async fn backtest_fund(
     fund_definition: &FundDefinition,
     options: &BacktestOptions,
 ) -> VfResult<BacktestStream> {
+    if options.init_cash <= 0.0 {
+        panic!("init_cash must > 0");
+    }
+
+    if options.end_date < options.start_date {
+        panic!(
+            "The end date {} cannot be earlier than the start date {}",
+            date_to_str(&options.end_date),
+            date_to_str(&options.start_date)
+        );
+    }
+
+    if options.buffer_ratio < 0.0 || options.buffer_ratio >= 1.0 {
+        panic!("buffer_ratio must >= 0 and < 1");
+    }
+
+    if options.risk_free_rate < 0.0 {
+        panic!("risk_free_rate must >= 0");
+    }
+
+    if options.stamp_duty_rate < 0.0 || options.stamp_duty_rate >= 1.0 {
+        panic!("stamp_duty_rate must >= 0 and < 1");
+    }
+
+    if options.stamp_duty_min_fee < 0.0 {
+        panic!("stamp_duty_min_fee must >= 0");
+    }
+
+    if options.broker_commission_rate < 0.0 || options.broker_commission_rate >= 1.0 {
+        panic!("broker_commission_rate must >= 0 and < 1");
+    }
+
+    if options.broker_commission_min_fee < 0.0 {
+        panic!("broker_commission_min_fee must >= 0");
+    }
+
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
     let fund_definition = fund_definition.clone();
@@ -517,9 +554,8 @@ impl BacktestContext<'_> {
         Ok(total_value)
     }
 
-    pub async fn cash_deploy(
+    pub async fn cash_deploy_free(
         &mut self,
-        deploy_reversed: bool,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
@@ -530,33 +566,35 @@ impl BacktestContext<'_> {
                 .map(|(_, (weight, _))| *weight)
                 .sum::<f64>();
             if position_weight_sum > 0.0 {
-                let total_free_cash = self.portfolio.free_cash;
-                for (ticker, units) in &self.portfolio.positions.clone() {
-                    if let Some((weight, _)) = position_tickers_map.get(ticker) {
-                        let mut deploy_cash = total_free_cash * weight / position_weight_sum;
-                        if deploy_reversed
-                            && let Some(cash) = self.portfolio.reserved_cash.get(ticker)
-                        {
-                            deploy_cash += cash;
-                        }
+                let total_value = self.calc_total_value(date).await?;
+                let buffer_cash = total_value * self.options.buffer_ratio;
 
-                        let fee = calc_buy_fee(deploy_cash, self.options);
-                        let delta_value = deploy_cash - fee;
-                        if delta_value > 0.0 {
-                            let kline =
-                                fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                            if let Some(price) = kline
-                                .get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                            {
-                                let ticker_value = *units as f64 * price + delta_value;
+                let total_deploy_cash = self.portfolio.free_cash - buffer_cash;
+                if total_deploy_cash > 0.0 {
+                    for (ticker, units) in &self.portfolio.positions.clone() {
+                        if let Some((weight, _)) = position_tickers_map.get(ticker) {
+                            let deploy_cash = total_deploy_cash * weight / position_weight_sum;
 
-                                self.position_scale(
-                                    ticker,
-                                    ticker_value,
+                            let fee = calc_buy_fee(deploy_cash, self.options);
+                            let delta_value = deploy_cash - fee;
+                            if delta_value > 0.0 {
+                                let kline =
+                                    fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp)
+                                        .await?;
+                                if let Some(price) = kline.get_latest_value::<f64>(
                                     date,
-                                    event_sender.clone(),
-                                )
-                                .await?;
+                                    &StockKlineField::Close.to_string(),
+                                ) {
+                                    let ticker_value = *units as f64 * price + delta_value;
+
+                                    self.scale_position(
+                                        ticker,
+                                        ticker_value,
+                                        date,
+                                        event_sender.clone(),
+                                    )
+                                    .await?;
+                                }
                             }
                         }
                     }
@@ -595,7 +633,7 @@ impl BacktestContext<'_> {
                             let sell_units = (delta_value / price).ceil().min(*units as f64);
                             let ticker_value = (*units as f64 - sell_units) * price;
                             if ticker_value > 0.0 {
-                                self.position_scale(
+                                self.scale_position(
                                     ticker,
                                     ticker_value,
                                     date,
@@ -653,10 +691,10 @@ impl BacktestContext<'_> {
                 let total_value = self.calc_total_value(date).await?;
 
                 for &(ref ticker, weight) in targets_weight {
-                    let ticker_value = total_value * weight / targets_weight_sum;
+                    let ticker_value = total_value * (1.0 - self.options.buffer_ratio) * weight
+                        / targets_weight_sum;
                     if let Some(current_reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
-                        let delta_cash =
-                            (ticker_value - current_reserved_cash).max(self.portfolio.free_cash);
+                        let delta_cash = ticker_value - current_reserved_cash;
 
                         self.portfolio.free_cash -= delta_cash;
                         self.portfolio
@@ -664,7 +702,7 @@ impl BacktestContext<'_> {
                             .entry(ticker.clone())
                             .and_modify(|v| *v += delta_cash);
                     } else {
-                        self.position_scale(ticker, ticker_value, date, event_sender.clone())
+                        self.scale_position(ticker, ticker_value, date, event_sender.clone())
                             .await?;
                     }
                 }
@@ -672,6 +710,55 @@ impl BacktestContext<'_> {
         }
 
         let _ = self.notify_portfolio(date, event_sender.clone()).await;
+
+        Ok(())
+    }
+
+    pub async fn position_init_reserved(
+        &mut self,
+        ticker: &Ticker,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        if let Some(reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
+            let date_str = date_to_str(date);
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let delta_value = reserved_cash - calc_buy_fee(*reserved_cash, self.options);
+
+                let buy_units = (delta_value / price).floor();
+                if buy_units > 0.0 {
+                    let value = buy_units * price;
+                    let fee = calc_buy_fee(value, self.options);
+                    let cost = value + fee;
+
+                    self.portfolio.free_cash += *reserved_cash - cost;
+                    self.portfolio.reserved_cash.remove(ticker);
+
+                    self.portfolio
+                        .positions
+                        .entry(ticker.clone())
+                        .and_modify(|v| *v += buy_units as u64)
+                        .or_insert(buy_units as u64);
+
+                    let _ = event_sender
+                                .send(BacktestEvent::Buy(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
+                                )))
+                                .await;
+                }
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Info(format!(
+                        "[{date_str}] [!] Price of '{ticker}' not exists"
+                    )))
+                    .await;
+            }
+        }
 
         Ok(())
     }
@@ -720,107 +807,6 @@ impl BacktestContext<'_> {
                     )))
                     .await;
             }
-        }
-
-        Ok(())
-    }
-
-    pub async fn position_scale(
-        &mut self,
-        ticker: &Ticker,
-        ticker_value: f64,
-        date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        let date_str = date_to_str(date);
-        let ticker_title = fetch_stock_detail(ticker).await?.title;
-
-        let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-        if let Some(price) =
-            kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-        {
-            let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-            let position_value = position_units as f64 * price;
-            let delta_value = ticker_value - position_value;
-
-            if delta_value > 0.0 {
-                let buy_units = (delta_value / price).floor();
-                if buy_units > 0.0 {
-                    let value = buy_units * price;
-                    let fee = calc_buy_fee(value, self.options);
-                    let cost = value + fee;
-
-                    if let Some(current_reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
-                        if *current_reserved_cash > cost {
-                            self.portfolio
-                                .reserved_cash
-                                .entry(ticker.clone())
-                                .and_modify(|v| *v -= cost);
-                        } else {
-                            self.portfolio.free_cash -= cost - *current_reserved_cash;
-                            self.portfolio.reserved_cash.remove(ticker);
-                        }
-                    } else {
-                        self.portfolio.free_cash -= cost;
-                    }
-
-                    self.portfolio
-                        .positions
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v += buy_units as u64)
-                        .or_insert(buy_units as u64);
-
-                    let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
-                                )))
-                                .await;
-                } else {
-                    let _ = event_sender
-                        .send(BacktestEvent::Buy(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
-                        )))
-                        .await;
-                }
-            } else {
-                let sell_value = delta_value.abs();
-
-                let sell_units = (sell_value / price).floor().min(position_units as f64);
-                if sell_units > 0.0 {
-                    let value = sell_units * price;
-                    let fee = calc_sell_fee(value, self.options);
-                    let cash = value - fee;
-
-                    self.portfolio.free_cash += cash;
-
-                    if sell_units as u64 == position_units {
-                        self.portfolio.positions.remove(ticker);
-                    } else {
-                        self.portfolio
-                            .positions
-                            .entry(ticker.clone())
-                            .and_modify(|v| *v -= sell_units as u64);
-                    }
-
-                    let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
-                                )))
-                                .await;
-                } else {
-                    let _ = event_sender
-                        .send(BacktestEvent::Sell(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
-                        )))
-                        .await;
-                }
-            }
-        } else {
-            let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [!] Price of '{ticker}' not exists"
-                )))
-                .await;
         }
 
         Ok(())
@@ -901,6 +887,95 @@ impl BacktestContext<'_> {
             .into_iter()
             .filter(|(ticker, _)| self.portfolio.positions.contains_key(ticker))
             .collect::<HashMap<_, _>>())
+    }
+
+    async fn scale_position(
+        &mut self,
+        ticker: &Ticker,
+        ticker_value: f64,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let date_str = date_to_str(date);
+        let ticker_title = fetch_stock_detail(ticker).await?.title;
+
+        let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+        if let Some(price) =
+            kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+        {
+            let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
+            let position_value = position_units as f64 * price;
+            let delta_value = ticker_value - position_value;
+
+            if delta_value > 0.0 {
+                let buy_units = (delta_value / price).floor();
+                if buy_units > 0.0 {
+                    let value = buy_units * price;
+                    let fee = calc_buy_fee(value, self.options);
+                    let cost = value + fee;
+
+                    self.portfolio.free_cash -= cost;
+
+                    self.portfolio
+                        .positions
+                        .entry(ticker.clone())
+                        .and_modify(|v| *v += buy_units as u64)
+                        .or_insert(buy_units as u64);
+
+                    let _ = event_sender
+                                .send(BacktestEvent::Buy(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
+                                )))
+                                .await;
+                } else {
+                    let _ = event_sender
+                        .send(BacktestEvent::Buy(format!(
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
+                        )))
+                        .await;
+                }
+            } else {
+                let sell_value = delta_value.abs();
+
+                let sell_units = (sell_value / price).floor().min(position_units as f64);
+                if sell_units > 0.0 {
+                    let value = sell_units * price;
+                    let fee = calc_sell_fee(value, self.options);
+                    let cash = value - fee;
+
+                    self.portfolio.free_cash += cash;
+
+                    if sell_units as u64 == position_units {
+                        self.portfolio.positions.remove(ticker);
+                    } else {
+                        self.portfolio
+                            .positions
+                            .entry(ticker.clone())
+                            .and_modify(|v| *v -= sell_units as u64);
+                    }
+
+                    let _ = event_sender
+                                .send(BacktestEvent::Sell(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
+                                )))
+                                .await;
+                } else {
+                    let _ = event_sender
+                        .send(BacktestEvent::Sell(format!(
+                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
+                        )))
+                        .await;
+                }
+            }
+        } else {
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [!] Price of '{ticker}' not exists"
+                )))
+                .await;
+        }
+
+        Ok(())
     }
 }
 
