@@ -6,7 +6,7 @@ pub mod index;
 pub mod stock;
 pub mod tool;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Portfolio {
     pub free_cash: f64,
     pub reserved_cash: HashMap<Ticker, f64>,

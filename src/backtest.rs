@@ -40,23 +40,30 @@ pub enum BacktestEvent {
     Sell(String),
     Info(String),
     Toast(String),
-    Result(BacktestResult),
+    Result(Box<BacktestResult>),
     Error(VfError),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize)]
 pub struct BacktestOptions {
     pub init_cash: f64,
+    #[serde(serialize_with = "serialize_date")]
     pub start_date: NaiveDate,
+    #[serde(serialize_with = "serialize_date")]
     pub end_date: NaiveDate,
-    pub benchmark: Option<String>,
     pub risk_free_rate: f64,
     pub stamp_duty_rate: f64,
     pub stamp_duty_min_fee: f64,
     pub broker_commission_rate: f64,
     pub broker_commission_min_fee: f64,
+
+    #[serde(skip)]
+    pub benchmark: Option<String>,
+    #[serde(skip)]
     pub cv_search: bool,
+    #[serde(skip)]
     pub cv_window: bool,
+    #[serde(skip)]
     pub cv_score_arr_cap: f64,
 }
 
@@ -64,11 +71,8 @@ pub struct BacktestStream {
     receiver: Receiver<BacktestEvent>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct BacktestMetrics {
-    pub init_cash: f64,
-    pub start_date: String,
-    pub end_date: String,
     pub trade_days: usize,
     pub profit: f64,
     pub annualized_return_rate: Option<f64>,
@@ -81,10 +85,13 @@ pub struct BacktestMetrics {
     pub sortino_ratio: Option<f64>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BacktestResult {
-    pub trade_date_values: Vec<(NaiveDate, f64)>,
+    pub options: BacktestOptions,
+    pub final_cash: f64,
+    pub final_positions_value: HashMap<Ticker, f64>,
     pub metrics: BacktestMetrics,
+    pub trade_dates_value: Vec<(NaiveDate, f64)>,
 }
 
 pub fn calc_buy_fee(value: f64, options: &BacktestOptions) -> f64 {
@@ -139,7 +146,7 @@ pub async fn backtest_fund(
                 .map(Rule::from_definition)
                 .collect::<Vec<_>>();
 
-            let mut trade_date_values: Vec<(NaiveDate, f64)> = vec![];
+            let mut trade_dates_value: Vec<(NaiveDate, f64)> = vec![];
             let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             let days = (options.end_date - options.start_date).num_days() as u64 + 1;
             let trade_dates = fetch_trade_dates().await?;
@@ -163,7 +170,7 @@ pub async fn backtest_fund(
                     }
 
                     let total_value = context.calc_total_value(&date).await?;
-                    trade_date_values.push((date, total_value));
+                    trade_dates_value.push((date, total_value));
 
                     debug!("[{}] ✔", date_to_str(&date));
                 } else {
@@ -175,14 +182,30 @@ pub async fn backtest_fund(
                 .notify_portfolio(&options.end_date, sender.clone())
                 .await;
 
-            let final_cash = trade_date_values
+            let mut final_cash = context.portfolio.free_cash;
+            for cash in context.portfolio.reserved_cash.values() {
+                final_cash += *cash;
+            }
+
+            let mut final_positions_value: HashMap<Ticker, f64> = HashMap::new();
+            for (ticker, units) in &context.portfolio.positions {
+                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                if let Some(price) = kline
+                    .get_latest_value::<f64>(&options.end_date, &StockKlineField::Close.to_string())
+                {
+                    let value = *units as f64 * price;
+                    final_positions_value.insert(ticker.clone(), value);
+                }
+            }
+
+            let final_value = trade_dates_value
                 .last()
                 .map(|(_, v)| *v)
                 .unwrap_or(options.init_cash);
-            let profit = final_cash - options.init_cash;
+            let profit = final_value - options.init_cash;
             let annualized_return_rate =
-                calc_annualized_return_rate(options.init_cash, final_cash, days);
-            let daily_values: Vec<f64> = trade_date_values.iter().map(|(_, v)| *v).collect();
+                calc_annualized_return_rate(options.init_cash, final_value, days);
+            let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
             let max_drawdown = calc_max_drawdown(&daily_values);
             let annualized_volatility = calc_annualized_volatility(&daily_values);
             let win_rate = calc_win_rate(&daily_values);
@@ -197,10 +220,7 @@ pub async fn backtest_fund(
             let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
 
             let metrics = BacktestMetrics {
-                init_cash: options.init_cash,
-                start_date: date_to_str(&options.start_date),
-                end_date: date_to_str(&options.end_date),
-                trade_days: trade_date_values.len(),
+                trade_days: trade_dates_value.len(),
                 profit,
                 annualized_return_rate,
                 annualized_volatility,
@@ -213,8 +233,11 @@ pub async fn backtest_fund(
             };
 
             Ok(BacktestResult {
-                trade_date_values,
+                options: options.clone(),
+                final_cash,
+                final_positions_value,
                 metrics,
+                trade_dates_value,
             })
         };
 
@@ -461,7 +484,7 @@ pub async fn backtest_fund(
 
         match process().await {
             Ok(result) => {
-                let _ = sender.send(BacktestEvent::Result(result)).await;
+                let _ = sender.send(BacktestEvent::Result(Box::new(result))).await;
             }
             Err(err) => {
                 let _ = sender.send(BacktestEvent::Error(err)).await;
@@ -893,4 +916,11 @@ impl BacktestStream {
     pub async fn next(&mut self) -> Option<BacktestEvent> {
         self.receiver.recv().await
     }
+}
+
+fn serialize_date<S>(date: &NaiveDate, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    ser.serialize_str(&date_to_str(date))
 }

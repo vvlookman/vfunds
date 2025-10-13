@@ -1,6 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
 use chrono::NaiveDate;
+use serde::Serialize;
 
 use crate::{
     error::{VfError, VfResult},
@@ -8,13 +9,13 @@ use crate::{
     utils::text::is_ascii_digits,
 };
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct Ticker {
     pub exchange: String,
     pub symbol: String,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct TickersIndex {
     pub provider: String,
     pub symbol: String,

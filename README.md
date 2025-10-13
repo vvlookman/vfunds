@@ -2,6 +2,13 @@
 
 Virtual Funds Backtesting and Comparison
 
+## Service Dependencies
+
+```sh
+docker run --name aktools -p 8080:8080 -d lev1s/aktools:latest # AKTools (Open financial data)
+python proxy/qmt_http.py # Access QMT (China market data), MUST run on Windows server with QMT running
+```
+
 ## Develop
 
 ```sh
