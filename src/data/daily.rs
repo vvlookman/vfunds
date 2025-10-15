@@ -93,10 +93,10 @@ impl DailyDataset {
                 value_field_names: value_field_names.clone(),
             })
         } else {
-            Err(VfError::Invalid(
-                "JSON_IS_NOT_ARRAY",
-                "Json is not a valid array".to_string(),
-            ))
+            Err(VfError::Invalid {
+                code: "JSON_IS_NOT_ARRAY",
+                message: "Json is not a valid array".to_string(),
+            })
         }
     }
 

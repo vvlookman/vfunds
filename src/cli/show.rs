@@ -45,7 +45,9 @@ impl ShowCommand {
                     "Sortino".to_string(),
                 ]];
                 for (fund_name, fund_result) in results {
-                    let BacktestOutputResult { metrics, .. } = fund_result;
+                    let BacktestOutputResult {
+                        options, metrics, ..
+                    } = fund_result;
                     table_data.push(vec![
                         fund_name.to_string(),
                         metrics
@@ -53,7 +55,7 @@ impl ShowCommand {
                             .map(|d| date_to_str(&d))
                             .unwrap_or("-".to_string()),
                         format!("{}", metrics.trade_days),
-                        format!("{:.2}", metrics.profit),
+                        format!("{:.2}%", metrics.profit / options.init_cash * 100.0),
                         metrics
                             .annualized_return_rate
                             .map(|v| format!("{:.2}%", v * 100.0))

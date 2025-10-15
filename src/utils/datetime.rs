@@ -25,10 +25,10 @@ pub fn date_from_str(s: &str) -> VfResult<NaiveDate> {
         // RFC 3339
         Ok(datetime.date_naive())
     } else {
-        Err(VfError::Invalid(
-            "INVALID_DATE",
-            format!("Unable to parse date '{s}'"),
-        ))
+        Err(VfError::Invalid {
+            code: "INVALID_DATE",
+            message: format!("Unable to parse date '{s}'"),
+        })
     }
 }
 

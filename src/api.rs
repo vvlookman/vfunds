@@ -51,10 +51,10 @@ pub async fn backtest(
             .count()
             == 0
         {
-            return Err(VfError::NotExists(
-                "FUND_NOT_EXISTS",
-                format!("Fund '{fund_name}' not exists"),
-            ));
+            return Err(VfError::NotExists {
+                code: "FUND_NOT_EXISTS",
+                message: format!("Fund '{fund_name}' not exists"),
+            });
         }
     }
 

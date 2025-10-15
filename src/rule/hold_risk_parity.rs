@@ -70,8 +70,8 @@ impl RuleExecutor for Executor {
         if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
 
-            let mut ticker_inverse_vols: HashMap<Ticker, f64> = HashMap::new();
-            for ticker in tickers_map.keys() {
+            let mut tickers_weight_and_inverse_vols: HashMap<Ticker, (f64, f64)> = HashMap::new();
+            for (ticker, (weight, _)) in &tickers_map {
                 if context.portfolio.reserved_cash.contains_key(ticker) {
                     continue;
                 }
@@ -83,33 +83,52 @@ impl RuleExecutor for Executor {
                     lookback_trade_days as u32,
                 );
                 if let Some(vol) = calc_annualized_volatility(&prices) {
-                    ticker_inverse_vols
-                        .insert(ticker.clone(), if vol > 0.0 { 1.0 / vol } else { 0.0 });
+                    tickers_weight_and_inverse_vols.insert(
+                        ticker.clone(),
+                        (*weight, if vol > 0.0 { 1.0 / vol } else { 0.0 }),
+                    );
                 }
             }
 
-            let ticker_inverse_vols_sum = ticker_inverse_vols.values().sum::<f64>();
-            let tickers_weight: HashMap<Ticker, f64> = ticker_inverse_vols
+            let tickers_inverse_vols_sum = tickers_weight_and_inverse_vols
                 .iter()
-                .map(|(k, v)| (k.clone(), *v / ticker_inverse_vols_sum))
+                .map(|(_, (_, v))| *v)
+                .sum::<f64>();
+            let tickers_inverse_vol_weight: HashMap<Ticker, f64> = tickers_weight_and_inverse_vols
+                .iter()
+                .map(|(k, (_, v))| (k.clone(), *v / tickers_inverse_vols_sum))
                 .collect();
 
-            let ticker_weight_baseline = 1.0 / tickers_weight.len() as f64;
-            let ticker_weight_min = ticker_weight_baseline * weight_scale_min;
-            let ticker_weight_max = ticker_weight_baseline * weight_scale_max;
+            let inverse_vol_weight_baseline = 1.0 / tickers_inverse_vol_weight.len() as f64;
+            let inverse_vol_weight_min = inverse_vol_weight_baseline * weight_scale_min;
+            let inverse_vol_weight_max = inverse_vol_weight_baseline * weight_scale_max;
 
-            let (tickers, weights): (Vec<Ticker>, Vec<f64>) =
-                tickers_weight.iter().map(|(k, v)| (k.clone(), *v)).unzip();
-            let weights_adj = constraint_array(&weights, ticker_weight_min, ticker_weight_max);
-            let tickers_weight_adj: HashMap<Ticker, f64> = tickers
+            let (tickers, inverse_vol_weights): (Vec<Ticker>, Vec<f64>) =
+                tickers_inverse_vol_weight
+                    .iter()
+                    .map(|(k, v)| (k.clone(), *v))
+                    .unzip();
+            let inverse_vol_weights_scaled = constraint_array(
+                &inverse_vol_weights,
+                inverse_vol_weight_min,
+                inverse_vol_weight_max,
+            );
+            let tickers_inverse_vol_weight_adj: HashMap<Ticker, f64> = tickers
                 .iter()
-                .zip(weights_adj.iter())
+                .zip(inverse_vol_weights_scaled.iter())
                 .map(|(k, v)| (k.clone(), *v))
                 .collect();
 
+            let mut targets_weight: Vec<(Ticker, f64)> = vec![];
+            for (ticker, inverse_vol_weight) in &tickers_inverse_vol_weight_adj {
+                if let Some((origin_weight, _)) = tickers_weight_and_inverse_vols.get(ticker) {
+                    targets_weight.push((ticker.clone(), (*origin_weight) * (*inverse_vol_weight)));
+                }
+            }
+
             {
                 let mut tickers_strs: Vec<String> = vec![];
-                for (ticker, weight) in &tickers_weight_adj {
+                for (ticker, weight) in &targets_weight {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
                     tickers_strs.push(format!("{ticker}({ticker_title})={weight:.4}"));
                 }
@@ -121,8 +140,6 @@ impl RuleExecutor for Executor {
                     )))
                     .await;
             }
-
-            let targets_weight: Vec<(Ticker, f64)> = tickers_weight_adj.into_iter().collect();
 
             context
                 .rebalance(&targets_weight, date, event_sender)

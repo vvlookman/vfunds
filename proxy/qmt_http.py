@@ -54,7 +54,10 @@ def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
             df['date'] = pd.to_datetime(df['time'], unit='ms').dt.tz_localize(
                 'UTC').dt.tz_convert('Asia/Shanghai').dt.strftime('%Y-%m-%d')
 
-        return df_to_json(df)
+        if df.empty:
+            raise HTTPException(status_code=500)
+        else:
+            return df_to_json(df)
     else:
         raise HTTPException(status_code=404)
 
@@ -79,7 +82,10 @@ def report(stock: str, table: str = 'PershareIndex'):
             df['date'] = df['m_anntime'].str.replace(
                 r'(\d{4})(\d{2})(\d{2})', r'\1-\2-\3', regex=True)
 
-        return df_to_json(df)
+        if df.empty:
+            raise HTTPException(status_code=500)
+        else:
+            return df_to_json(df)
     else:
         raise HTTPException(status_code=404)
 

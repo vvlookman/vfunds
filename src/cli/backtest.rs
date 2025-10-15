@@ -156,7 +156,7 @@ impl BacktestCommand {
         };
 
         println!(
-            "[Initial Cash] {} \t [{} ~ {}] \t [{} Days] \n",
+            "[Initial Cash ${}] [{}~{}] [{} Days]\n",
             options.init_cash,
             date_to_str(&options.start_date),
             date_to_str(&options.end_date),
@@ -257,7 +257,9 @@ impl BacktestCommand {
                                     }
                                 }
 
-                                let BacktestResult { metrics, .. } = *fund_result;
+                                let BacktestResult {
+                                    options, metrics, ..
+                                } = *fund_result;
                                 table_data.push(vec![
                                     fund_name.to_string(),
                                     metrics
@@ -265,7 +267,7 @@ impl BacktestCommand {
                                         .map(|d| date_to_str(&d))
                                         .unwrap_or("-".to_string()),
                                     format!("{}", metrics.trade_days),
-                                    format!("{:.2}", metrics.profit),
+                                    format!("{:.2}%", metrics.profit / options.init_cash * 100.0),
                                     metrics
                                         .annualized_return_rate
                                         .map(|v| format!("{:.2}%", v * 100.0))

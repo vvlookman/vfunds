@@ -72,7 +72,7 @@ static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     .join("cache.db")
 });
 
-static PROGRESS_INTERVAL_SECS: u64 = 3;
+static PROGRESS_INTERVAL_SECS: u64 = 1;
 
 static WORKSPACE: LazyLock<RwLock<PathBuf>> =
     LazyLock::new(|| RwLock::new(env::current_dir().expect("Unable to get current directory!")));

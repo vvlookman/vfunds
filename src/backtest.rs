@@ -381,13 +381,22 @@ pub async fn backtest_fund(
                             f64::NEG_INFINITY
                         };
 
-                        b_score.partial_cmp(&a_score).unwrap_or(Ordering::Equal)
+                        a_score.partial_cmp(&b_score).unwrap_or(Ordering::Equal)
                     });
 
-                    if let Some((rule_option_values, result)) = cv_results.first() {
+                    let result_count = cv_results.len();
+                    for (i, (rule_option_values, result)) in cv_results.iter().enumerate() {
+                        let top = result_count - i - 1;
+
+                        let top_str = if top == 0 {
+                            "Best"
+                        } else {
+                            &format!("Top {top}")
+                        };
+
                         let _ = sender
                             .send(BacktestEvent::Info(format!(
-                                "[CV] [Best] {}",
+                                "[CV] [{top_str}] {}",
                                 rule_option_values
                                     .iter()
                                     .map(|(_, option_name, option_value)| {
@@ -398,7 +407,9 @@ pub async fn backtest_fund(
                             )))
                             .await;
 
-                        return Ok(result.clone());
+                        if top == 0 {
+                            return Ok(result.clone());
+                        }
                     }
                 }
             } else if options.cv_window {
@@ -492,7 +503,7 @@ pub async fn backtest_fund(
                         ) {
                             let _ = sender
                                 .send(BacktestEvent::Info(format!(
-                                    "[CV] [ARR Max Drop]={:.2}%",
+                                    "[CV] [ARR Max Drop {:.2}%]",
                                     (arr - min_arr) / arr * 100.0
                                 )))
                                 .await;
@@ -508,7 +519,7 @@ pub async fn backtest_fund(
                         ) {
                             let _ = sender
                                 .send(BacktestEvent::Info(format!(
-                                    "[CV] [Sharpe Max Drop]={:.2}%",
+                                    "[CV] [Sharpe Max Drop {:.2}%]",
                                     (sharpe - min_sharpe) / sharpe * 100.0
                                 )))
                                 .await;
@@ -536,27 +547,6 @@ pub async fn backtest_fund(
 }
 
 impl BacktestContext<'_> {
-    pub async fn calc_total_value(&self, date: &NaiveDate) -> VfResult<f64> {
-        let mut total_value: f64 = self.portfolio.free_cash;
-
-        for cash in self.portfolio.reserved_cash.values() {
-            total_value += *cash;
-        }
-
-        for (ticker, units) in &self.portfolio.positions {
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some(price) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
-                let value = *units as f64 * price;
-                let fee = calc_sell_fee(value, self.options);
-                total_value += value - fee;
-            }
-        }
-
-        Ok(total_value)
-    }
-
     pub async fn cash_deploy_free(
         &mut self,
         date: &NaiveDate,
@@ -822,12 +812,37 @@ impl BacktestContext<'_> {
         hold_tickers.into_iter().chain(reserved_tickers).collect()
     }
 
+    async fn calc_total_cash(&self) -> VfResult<f64> {
+        let mut total_cash: f64 = self.portfolio.free_cash;
+
+        for cash in self.portfolio.reserved_cash.values() {
+            total_cash += *cash;
+        }
+
+        Ok(total_cash)
+    }
+
+    async fn calc_total_value(&self, date: &NaiveDate) -> VfResult<f64> {
+        let mut total_value: f64 = self.calc_total_cash().await?;
+
+        for (ticker, units) in &self.portfolio.positions {
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                total_value += *units as f64 * price;
+            }
+        }
+
+        Ok(total_value)
+    }
+
     async fn notify_portfolio(
         &self,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let mut total_value = self.portfolio.free_cash;
+        let total_value = self.calc_total_value(date).await?;
 
         let mut position_strs: Vec<String> = vec![];
         for (ticker, position_units) in self.portfolio.positions.iter() {
@@ -837,38 +852,26 @@ impl BacktestContext<'_> {
                 kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
             {
                 let value = *position_units as f64 * price;
-                let fee = calc_sell_fee(value, self.options);
-                let net_value = value - fee;
-                total_value += net_value;
+                let value_pct = value / total_value * 100.0;
 
                 position_strs.push(format!(
-                    "{ticker}({ticker_title})=${net_value:.2}(${price:.2}x{position_units})"
+                    "{ticker}({ticker_title})=${value:.2}({value_pct:.2}%)"
                 ));
             } else {
-                position_strs.push(format!("{ticker}({ticker_title})=$?({position_units})"));
+                position_strs.push(format!("{ticker}({ticker_title})=$?"));
             }
-        }
-
-        let mut reserved_strs: Vec<String> = vec![];
-        for (ticker, cash) in self.portfolio.reserved_cash.iter() {
-            total_value += cash;
-
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-            reserved_strs.push(format!("{ticker}({ticker_title})~(${cash:.2})"));
         }
 
         let mut portfolio_str = String::new();
         {
-            portfolio_str.push_str(&format!("${:.2}", self.portfolio.free_cash));
+            let total_cash = self.calc_total_cash().await?;
+            let total_cash_pct = total_cash / total_value * 100.0;
+
+            portfolio_str.push_str(&format!("${total_cash:.2}({total_cash_pct:.2}%)"));
         }
         if !position_strs.is_empty() {
             portfolio_str.push(' ');
             portfolio_str.push_str(&position_strs.join(" "));
-        }
-        if !reserved_strs.is_empty() {
-            portfolio_str.push_str(" (");
-            portfolio_str.push_str(&reserved_strs.join(" "));
-            portfolio_str.push(')');
         }
 
         let date_str = date_to_str(date);

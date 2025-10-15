@@ -19,11 +19,11 @@ pub enum VfError {
     #[error("[HTTP Middleware Error] {0}")]
     HttpMiddlewareError(#[from] ::reqwest_middleware::Error),
 
-    #[error("[HTTP Status Error] {0}")]
-    HttpStatusError(String),
+    #[error("[HTTP Status Error] [{request}] {status}")]
+    HttpStatusError { status: String, request: String },
 
-    #[error("[Invalid] {1}")]
-    Invalid(&'static str, String),
+    #[error("[Invalid] {message}")]
+    Invalid { code: &'static str, message: String },
 
     #[error("[IO Error] {0}")]
     IoError(#[from] std::io::Error),
@@ -34,11 +34,11 @@ pub enum VfError {
     #[error("[Machine Learning Error] {0}")]
     MachineLearningError(String),
 
-    #[error("[No Data] {1}")]
-    NoData(&'static str, String),
+    #[error("[No Data] {message}")]
+    NoData { code: &'static str, message: String },
 
-    #[error("[Not Exists] {1}")]
-    NotExists(&'static str, String),
+    #[error("[Not Exists] {message}")]
+    NotExists { code: &'static str, message: String },
 
     #[error("[Parse Config Error] {0}")]
     ParseConfigError(#[from] ::confy::ConfyError),
@@ -51,9 +51,6 @@ pub enum VfError {
 
     #[error("[Parse URL Error] {0}")]
     ParseUrlError(#[from] url::ParseError),
-
-    #[error("[Required] {1}")]
-    Required(&'static str, String),
 
     #[error("[Serde JSON Error] {0}")]
     SerdeJsonError(#[from] ::serde_json::Error),

@@ -198,10 +198,10 @@ impl RuleExecutor for Executor {
                             Some(ps_sell),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, pe_quantile_ceil - 0.1),
+                            quantile(&pe_values, (pe_quantile_ceil - 0.1).max(0.0)),
                             quantile(&pe_values, pe_quantile_ceil),
                             ps_values.last(),
-                            quantile(&ps_values, ps_quantile_ceil - 0.1),
+                            quantile(&ps_values, (ps_quantile_ceil - 0.1).max(0.0)),
                             quantile(&ps_values, ps_quantile_ceil),
                         ) {
                             debug!(
@@ -245,10 +245,10 @@ impl RuleExecutor for Executor {
                             Some(ps_buy),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, pe_quantile_floor + 0.1),
+                            quantile(&pe_values, (pe_quantile_floor + 0.1).min(1.0)),
                             quantile(&pe_values, pe_quantile_floor),
                             ps_values.last(),
-                            quantile(&ps_values, ps_quantile_floor + 0.1),
+                            quantile(&ps_values, (ps_quantile_floor + 0.1).min(1.0)),
                             quantile(&ps_values, ps_quantile_floor),
                         ) {
                             debug!(

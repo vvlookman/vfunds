@@ -33,24 +33,24 @@ impl FromStr for Ticker {
                     || s.starts_with("51")
                     || s.starts_with("58")
                 {
-                    Some("SH")
+                    Some("XSHG")
                 } else if s.starts_with("00")
                     || s.starts_with("30")
                     || s.starts_with("15")
                     || s.starts_with("16")
                 {
-                    Some("SZ")
+                    Some("XSHE")
                 } else if s.starts_with("92")
                     || s.starts_with("83")
                     || s.starts_with("43")
                     || s.starts_with("87")
                 {
-                    Some("BJ")
+                    Some("BSE")
                 } else {
                     None
                 }
             } else if s.len() == 5 {
-                Some("HK")
+                Some("XHKG")
             } else {
                 None
             };
@@ -73,10 +73,10 @@ impl FromStr for Ticker {
         if let Some(ticker) = ticker {
             Ok(ticker)
         } else {
-            Err(VfError::Invalid(
-                "INVALID_TICKER",
-                format!("Invalid ticker '{s}'"),
-            ))
+            Err(VfError::Invalid {
+                code: "INVALID_TICKER",
+                message: format!("Invalid ticker '{s}'"),
+            })
         }
     }
 }
@@ -89,7 +89,15 @@ impl Display for Ticker {
 
 impl Ticker {
     pub fn to_qmt_code(&self) -> String {
-        format!("{}.{}", self.symbol, self.exchange)
+        let suffix = match self.exchange.as_str() {
+            "XSHG" => "SH",
+            "XSHE" => "SZ",
+            "BSE" => "BJ",
+            "XHKG" => "HK",
+            _ => &self.exchange,
+        };
+
+        format!("{}.{}", self.symbol, suffix)
     }
 }
 
@@ -104,10 +112,10 @@ impl FromStr for TickersIndex {
                 symbol: symbol.trim().to_uppercase().to_string(),
             })
         } else {
-            Err(VfError::Invalid(
-                "INVALID_TICKERS_INDEX",
-                format!("Invalid tickers index '{s}'"),
-            ))
+            Err(VfError::Invalid {
+                code: "INVALID_TICKERS_INDEX",
+                message: format!("Invalid tickers index '{s}'"),
+            })
         }
     }
 }
@@ -124,10 +132,10 @@ impl TickersIndex {
             "CNI" | "CNINDEX" => fetch_cnindex_tickers(&self.symbol, date).await?,
             "CSI" | "CSINDEX" => fetch_csindex_tickers(&self.symbol).await?,
             _ => {
-                return Err(VfError::Invalid(
-                    "UNSUPPORTED_TICKERS_INDEX",
-                    format!("Unsupported tickers index '{self}'"),
-                ));
+                return Err(VfError::Invalid {
+                    code: "UNSUPPORTED_TICKERS_INDEX",
+                    message: format!("Unsupported tickers index '{self}'"),
+                });
             }
         };
 

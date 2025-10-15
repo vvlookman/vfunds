@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
 use fake_user_agent::get_rua;
-use log::debug;
 use rand::Rng;
 use serde_json::Value;
 use tokio::time::sleep;
@@ -35,10 +34,10 @@ pub async fn call_api(
         if let Some(data) = cache::get(&cache_key, true).await? {
             Ok(compress::decode(&data)?)
         } else {
-            Err(VfError::NoData(
-                "NO_CACHE_DATA",
-                format!("Cache with key '{cache_key}' not exists"),
-            ))
+            Err(VfError::NoData {
+                code: "NO_CACHE_DATA",
+                message: format!("Cache with key '{cache_key}' not exists"),
+            })
         }
     } else {
         if let Some(data) = cache::get(&cache_key, false).await? {
@@ -83,40 +82,34 @@ pub async fn call_api(
             }
 
             let bytes = http_get(&api_url, Some(path), &query, &headers, 30, 3).await?;
-            debug!(
-                "[HTTP OK] {api_url}/{path}?{}",
-                query
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join("&")
-            );
 
-            let now = Local::now();
-            let expire = if let Some(expire_days) = expire_days {
-                (now + Duration::days(expire_days)).naive_local()
-            } else {
-                if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
-                    let today = now.naive_local().date();
-                    let today_close = today.and_time(market_close_time);
-
-                    if now.time() < today_close.time() {
-                        today_close
-                    } else {
-                        let mut next_day = today + Duration::days(1);
-                        while matches!(next_day.weekday(), Weekday::Sat | Weekday::Sun) {
-                            next_day += Duration::days(1);
-                        }
-
-                        next_day.and_time(market_close_time)
-                    }
+            {
+                let now = Local::now();
+                let expire = if let Some(expire_days) = expire_days {
+                    (now + Duration::days(expire_days)).naive_local()
                 } else {
-                    (now + Duration::days(1)).naive_local()
-                }
-            };
+                    if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
+                        let today = now.naive_local().date();
+                        let today_close = today.and_time(market_close_time);
 
-            let data = compress::encode(&bytes)?;
-            let _ = cache::upsert(&cache_key, &data, &expire).await;
+                        if now.time() < today_close.time() {
+                            today_close
+                        } else {
+                            let mut next_day = today + Duration::days(1);
+                            while matches!(next_day.weekday(), Weekday::Sat | Weekday::Sun) {
+                                next_day += Duration::days(1);
+                            }
+
+                            next_day.and_time(market_close_time)
+                        }
+                    } else {
+                        (now + Duration::days(1)).naive_local()
+                    }
+                };
+
+                let data = compress::encode(&bytes)?;
+                let _ = cache::upsert(&cache_key, &data, &expire).await;
+            }
 
             Ok(bytes)
         }

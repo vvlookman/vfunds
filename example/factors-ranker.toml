@@ -2,12 +2,15 @@ title = "持有多因子评分最高的ETF"
 
 tickers = [
   "510300", # 沪深300ETF
+  "510500", # 中证500ETF
   "159949", # 创业板50ETF
+  "510900", # 恒生H股ETF
   "513100", # 纳斯达克100ETF
   "513500", # 标普500ETF
   "518880", # 黄金ETF
   "511260", # 十年国债ETF
   "161715", # 大宗商品LOF
+  "162411", # 华宝油气LOF
 ]
 
 [[rules]]
@@ -16,16 +19,16 @@ frequency = "2w"
 
 [rules.options]
 limit = 3
-lookback_trade_days = 21
-weight_max_drawdown = 4.0
+lookback_trade_days = 28
+weight_max_drawdown = 2.0
 weight_momentum = 0.0
 weight_sharpe = 1.0
-weight_volatility = 5.0
+weight_volatility = 3.0
 
 [rules.search]
-limit = [3, 4]
-lookback_trade_days = [21, 28]
-weight_max_drawdown = [3.0, 4.0, 5.0]
+limit = [3, 4, 5]
+lookback_trade_days = [21, 28, 35]
+weight_max_drawdown = [1.0, 2.0, 3.0]
 weight_momentum = [0.0, 1.0]
 weight_sharpe = [0.0, 1.0, 2.0]
-weight_volatility = [4.0, 5.0, 6.0]
+weight_volatility = [2.0, 3.0, 4.0]
