@@ -82,10 +82,7 @@ def report(stock: str, table: str = 'PershareIndex'):
             df['date'] = df['m_anntime'].str.replace(
                 r'(\d{4})(\d{2})(\d{2})', r'\1-\2-\3', regex=True)
 
-        if df.empty:
-            raise HTTPException(status_code=500)
-        else:
-            return df_to_json(df)
+        return df_to_json(df)
     else:
         raise HTTPException(status_code=404)
 

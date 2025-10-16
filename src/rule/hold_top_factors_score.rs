@@ -65,14 +65,14 @@ impl RuleExecutor for Executor {
             .get("weight_max_drawdown")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let weight_volatility = self
-            .options
-            .get("weight_volatility")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let weight_momentum = self
             .options
             .get("weight_momentum")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let weight_volatility = self
+            .options
+            .get("weight_volatility")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
         {
@@ -89,7 +89,7 @@ impl RuleExecutor for Executor {
         if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
 
-            let mut factors: Vec<(Ticker, [f64; 4])> = vec![];
+            let mut factors: Vec<(Ticker, [f64; FACTORS_NUM])> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -99,6 +99,7 @@ impl RuleExecutor for Executor {
                     }
 
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+
                     let prices = kline.get_latest_values::<f64>(
                         date,
                         &StockKlineField::Close.to_string(),
@@ -147,7 +148,7 @@ impl RuleExecutor for Executor {
             }
 
             let mut normalized_factor_values: Vec<Vec<f64>> = vec![];
-            for j in 0..4 {
+            for j in 0..FACTORS_NUM {
                 let factor_values: Vec<f64> = factors.iter().map(|x| x.1[j]).collect();
                 normalized_factor_values.push(normalize_min_max(&factor_values));
             }
@@ -167,7 +168,7 @@ impl RuleExecutor for Executor {
                         + weight_max_drawdown * (1.0 - max_drawdown)
                         + weight_volatility * (1.0 - volatility)
                         + weight_momentum * momentum;
-                    debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Mom={momentum:.4})");
+                    debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Momentum={momentum:.4}");
 
                     (ticker.clone(), indicator)
                 })
@@ -192,9 +193,9 @@ impl RuleExecutor for Executor {
             }
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, _) in &filetered_indicators {
+            for (ticker, indicator) in &filetered_indicators {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((ticker.clone(), *weight));
+                    targets_weight.push((ticker.clone(), (*weight) * (*indicator)));
                 }
             }
 
@@ -206,3 +207,5 @@ impl RuleExecutor for Executor {
         Ok(())
     }
 }
+
+static FACTORS_NUM: usize = 4;

@@ -180,10 +180,11 @@ impl BacktestCommand {
                     "".to_string(),
                     "Final T".to_string(),
                     "T Days".to_string(),
-                    "Profit".to_string(),
+                    "Return".to_string(),
                     "Ann Return".to_string(),
                     "Max Drawdown".to_string(),
                     "Ann Volatility".to_string(),
+                    "+Years".to_string(),
                     "Win Rate".to_string(),
                     "Profit Factor".to_string(),
                     "Sharpe".to_string(),
@@ -267,7 +268,10 @@ impl BacktestCommand {
                                         .map(|d| date_to_str(&d))
                                         .unwrap_or("-".to_string()),
                                     format!("{}", metrics.trade_days),
-                                    format!("{:.2}%", metrics.profit / options.init_cash * 100.0),
+                                    format!(
+                                        "{:.2}%",
+                                        metrics.total_return / options.init_cash * 100.0
+                                    ),
                                     metrics
                                         .annualized_return_rate
                                         .map(|v| format!("{:.2}%", v * 100.0))
@@ -280,6 +284,15 @@ impl BacktestCommand {
                                         .annualized_volatility
                                         .map(|v| format!("{:.2}%", v * 100.0))
                                         .unwrap_or("-".to_string()),
+                                    format!(
+                                        "{}/{}",
+                                        metrics
+                                            .calendar_year_returns
+                                            .iter()
+                                            .filter(|&(_, v)| *v > 0.0)
+                                            .count(),
+                                        metrics.calendar_year_returns.len()
+                                    ),
                                     metrics
                                         .win_rate
                                         .map(|v| format!("{:.2}%", v * 100.0))

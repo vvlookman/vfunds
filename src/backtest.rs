@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap};
 
-use chrono::{Duration, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate};
 use itertools::Itertools;
 use log::debug;
 use serde::{Deserialize, Serialize};
@@ -77,7 +77,9 @@ pub struct BacktestMetrics {
     #[serde(serialize_with = "serialize_option_date")]
     pub last_trade_date: Option<NaiveDate>,
     pub trade_days: usize,
-    pub profit: f64,
+    pub total_return: f64,
+    #[serde(default)]
+    pub calendar_year_returns: HashMap<i32, f64>,
     pub annualized_return_rate: Option<f64>,
     pub annualized_volatility: Option<f64>,
     pub max_drawdown: Option<f64>,
@@ -237,11 +239,25 @@ pub async fn backtest_fund(
                 }
             }
 
+            let mut calendar_year_returns: HashMap<i32, f64> = HashMap::new();
+            {
+                let mut prev_value = options.init_cash;
+                for (date, value) in &trade_dates_value {
+                    let daily_return = value - prev_value;
+                    prev_value = *value;
+
+                    calendar_year_returns
+                        .entry(date.year())
+                        .and_modify(|v| *v += daily_return)
+                        .or_insert(daily_return);
+                }
+            }
+
             let final_value = trade_dates_value
                 .last()
                 .map(|(_, v)| *v)
                 .unwrap_or(options.init_cash);
-            let profit = final_value - options.init_cash;
+            let total_return = final_value - options.init_cash;
             let annualized_return_rate =
                 calc_annualized_return_rate(options.init_cash, final_value, days);
             let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
@@ -261,7 +277,8 @@ pub async fn backtest_fund(
             let metrics = BacktestMetrics {
                 last_trade_date: trade_dates_value.last().map(|(d, _)| *d),
                 trade_days: trade_dates_value.len(),
-                profit,
+                total_return,
+                calendar_year_returns,
                 annualized_return_rate,
                 annualized_volatility,
                 max_drawdown,
