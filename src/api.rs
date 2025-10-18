@@ -92,8 +92,7 @@ pub async fn backtest_results(
             .filter_map(|entry| entry.ok())
             .filter(|entry| {
                 let entry_path = entry.path();
-                !entry_path.is_dir()
-                    && entry_path.extension().map(|s| s.to_ascii_lowercase()) == Some("json".into())
+                !entry_path.is_dir() && entry_path.to_string_lossy().ends_with(".backtest.json")
             })
             .collect();
         entries.par_sort_by(|a, b| {
@@ -105,8 +104,12 @@ pub async fn backtest_results(
 
         for entry in entries {
             let entry_path = entry.path();
-            if let Some(name) = entry_path.file_stem() {
-                let fund_name = name.to_string_lossy().to_string();
+            if let Some(file_stem) = entry_path.file_stem() {
+                let fund_name = file_stem
+                    .to_string_lossy()
+                    .strip_suffix(".backtest")
+                    .unwrap_or(&file_stem.to_string_lossy())
+                    .to_string();
 
                 if !fund_names.is_empty() && !fund_names.contains(&fund_name) {
                     continue;

@@ -6,6 +6,7 @@ tickers = [
   "159949", # 创业板50ETF
   "510900", # 恒生H股ETF
   "512090", # MSCI中国A股ETF
+  "515080", # 中证红利ETF
   "513100", # 纳斯达克100ETF
   "513500", # 标普500ETF
   "518880", # 黄金ETF
@@ -20,16 +21,16 @@ frequency = "1w"
 
 [rules.options]
 limit = 3
-lookback_trade_days = 35
-weight_max_drawdown = 0
+lookback_trade_days = 40
+weight_max_drawdown = 5
 weight_momentum = 0
-weight_sharpe = 15
-weight_volatility = 40
+weight_sharpe = 10
+weight_volatility = 35
 
 [rules.search]
 limit = [3, 5]
-lookback_trade_days = [30, 35, 40]
+lookback_trade_days = [35, 40, 45]
 weight_max_drawdown = [0, 5, 10]
 weight_momentum = [0, 5, 10]
-weight_sharpe = [10, 15, 20]
-weight_volatility = [35, 40, 45]
+weight_sharpe = [5, 10, 15]
+weight_volatility = [30, 35, 40]

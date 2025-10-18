@@ -247,7 +247,8 @@ impl BacktestCommand {
                                                 metrics: fund_result.metrics.clone(),
                                             };
 
-                                            let path = output_dir.join(format!("{fund_name}.json"));
+                                            let path = output_dir
+                                                .join(format!("{fund_name}.backtest.json"));
                                             let file = fs::File::create(path)?;
                                             serde_json::to_writer_pretty(file, &result)?;
 

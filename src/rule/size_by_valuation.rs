@@ -229,7 +229,7 @@ impl RuleExecutor for Executor {
                                 } else {
                                     let _ = event_sender
                                     .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Warn Overvalued] {ticker}({ticker_title}) PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"
+                                        "[{date_str}] [{rule_name}] [Overvalued Warn] {ticker}({ticker_title}) PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"
                                     )))
                                     .await;
                                 }
@@ -270,7 +270,7 @@ impl RuleExecutor for Executor {
                                 } else {
                                     let _ = event_sender
                                     .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Warn Undervalued] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"
+                                        "[{date_str}] [{rule_name}] [Undervalued Warn] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"
                                     )))
                                     .await;
                                 }

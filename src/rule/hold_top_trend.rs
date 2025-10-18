@@ -198,7 +198,7 @@ impl RuleExecutor for Executor {
                 let mut top_tickers_strs: Vec<String> = vec![];
                 for (ticker, indicator) in &filetered_indicators {
                     let ticker_title = fetch_stock_detail(ticker).await?.title;
-                    top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4} "));
+                    top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
                 }
 
                 let top_tickers_str = top_tickers_strs.join(" ");
@@ -210,9 +210,9 @@ impl RuleExecutor for Executor {
             }
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, _) in &filetered_indicators {
+            for (ticker, indicator) in &filetered_indicators {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((ticker.clone(), *weight));
+                    targets_weight.push((ticker.clone(), (*weight) * (*indicator)));
                 }
             }
 
