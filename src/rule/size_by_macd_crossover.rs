@@ -9,7 +9,7 @@ use crate::{
     financial::stock::{
         StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
     },
-    rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
+    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     utils::{
         datetime::date_to_str,
         financial::{calc_macd, calc_rsi},
@@ -34,7 +34,7 @@ impl Executor {
 impl RuleExecutor for Executor {
     async fn exec(
         &mut self,
-        context: &mut BacktestContext,
+        context: &mut FundBacktestContext,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {

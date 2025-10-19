@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     WORKSPACE, backtest,
     error::*,
-    spec::{FundDefinition, RuleDefinition, TickersDefinition},
+    spec::{FofDefinition, FundDefinition, RuleDefinition, TickersDefinition},
     utils,
 };
 
@@ -34,26 +34,25 @@ pub struct BacktestOutputPortfolio {
 }
 
 pub async fn backtest(
-    fund_names: &[String],
+    names: &[String],
     options: &BacktestOptions,
 ) -> VfResult<Vec<(String, BacktestStream)>> {
     let mut streams: Vec<(String, BacktestStream)> = vec![];
 
-    let mut fund_definitions = fund_definitions().await?;
-    if !fund_names.is_empty() {
-        fund_definitions.retain(|(name, _)| fund_names.contains(name));
+    let mut fof_definitions = load_fof_definitions().await?;
+    let mut fund_definitions = load_fund_definitions().await?;
+    if !names.is_empty() {
+        fof_definitions.retain(|(name, _)| names.contains(name));
+        fund_definitions.retain(|(name, _)| names.contains(name));
     }
 
-    for fund_name in fund_names {
-        if fund_definitions
-            .iter()
-            .filter(|(name, _)| name == fund_name)
-            .count()
-            == 0
+    for name in names {
+        if fof_definitions.iter().filter(|(v, _)| v == name).count() == 0
+            && fund_definitions.iter().filter(|(v, _)| v == name).count() == 0
         {
             return Err(VfError::NotExists {
-                code: "FUND_NOT_EXISTS",
-                message: format!("Fund '{fund_name}' not exists"),
+                code: "FOF_OR_FUND_NOT_EXISTS",
+                message: format!("FOF/Fund '{name}' not exists"),
             });
         }
     }
@@ -71,6 +70,11 @@ pub async fn backtest(
 
         let stream = backtest::backtest_fund(&fund_definition, options).await?;
         streams.push((format!("*{benchmark_str}*"), stream));
+    }
+
+    for (fof_name, fof_definition) in fof_definitions {
+        let stream = backtest::backtest_fof(&fof_definition, options).await?;
+        streams.push((fof_name, stream));
     }
 
     for (fund_name, fund_definition) in fund_definitions {
@@ -126,17 +130,21 @@ pub async fn backtest_results(
     Ok(results)
 }
 
-pub async fn fund_definitions() -> VfResult<Vec<(String, FundDefinition)>> {
-    let mut fund_definitions: Vec<(String, FundDefinition)> = vec![];
+pub async fn get_workspace() -> VfResult<PathBuf> {
+    let workspace = { WORKSPACE.read().await.clone() };
+    Ok(workspace)
+}
 
-    let workspace = { WORKSPACE.read()? };
+pub async fn load_fof_definitions() -> VfResult<Vec<(String, FofDefinition)>> {
+    let mut fof_definitions: Vec<(String, FofDefinition)> = vec![];
+
+    let workspace = { WORKSPACE.read().await.clone() };
     if let Ok(entries) = fs::read_dir(&*workspace) {
         let mut entries: Vec<_> = entries
             .filter_map(|entry| entry.ok())
             .filter(|entry| {
                 let entry_path = entry.path();
-                !entry_path.is_dir()
-                    && entry_path.extension().map(|s| s.to_ascii_lowercase()) == Some("toml".into())
+                !entry_path.is_dir() && entry_path.to_string_lossy().ends_with(".fof.toml")
             })
             .collect();
         entries.par_sort_by(|a, b| {
@@ -148,8 +156,50 @@ pub async fn fund_definitions() -> VfResult<Vec<(String, FundDefinition)>> {
 
         for entry in entries {
             let entry_path = entry.path();
-            if let Some(name) = entry_path.file_stem() {
-                let fund_name = name.to_string_lossy().to_string();
+            if let Some(file_stem) = entry_path.file_stem() {
+                let fund_name = file_stem
+                    .to_string_lossy()
+                    .strip_suffix(".fof")
+                    .unwrap_or(&file_stem.to_string_lossy())
+                    .to_string();
+
+                let fof_definition = FofDefinition::from_file(&entry_path)?;
+                fof_definitions.push((fund_name, fof_definition));
+            }
+        }
+    }
+
+    Ok(fof_definitions)
+}
+
+pub async fn load_fund_definitions() -> VfResult<Vec<(String, FundDefinition)>> {
+    let mut fund_definitions: Vec<(String, FundDefinition)> = vec![];
+
+    let workspace = { WORKSPACE.read().await.clone() };
+    if let Ok(entries) = fs::read_dir(&*workspace) {
+        let mut entries: Vec<_> = entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                let entry_path = entry.path();
+                !entry_path.is_dir() && entry_path.to_string_lossy().ends_with(".fund.toml")
+            })
+            .collect();
+        entries.par_sort_by(|a, b| {
+            utils::text::compare_phonetic(
+                &a.file_name().to_string_lossy(),
+                &b.file_name().to_string_lossy(),
+            )
+        });
+
+        for entry in entries {
+            let entry_path = entry.path();
+            if let Some(file_stem) = entry_path.file_stem() {
+                let fund_name = file_stem
+                    .to_string_lossy()
+                    .strip_suffix(".fund")
+                    .unwrap_or(&file_stem.to_string_lossy())
+                    .to_string();
+
                 let fund_definition = FundDefinition::from_file(&entry_path)?;
                 fund_definitions.push((fund_name, fund_definition));
             }
@@ -157,9 +207,4 @@ pub async fn fund_definitions() -> VfResult<Vec<(String, FundDefinition)>> {
     }
 
     Ok(fund_definitions)
-}
-
-pub fn get_workspace() -> VfResult<PathBuf> {
-    let workspace = { WORKSPACE.read()? };
-    Ok(workspace.clone())
 }

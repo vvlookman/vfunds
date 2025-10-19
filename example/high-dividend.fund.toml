@@ -1,0 +1,34 @@
+title = "持有中证A500中股息率最高的股票"
+
+ticker_sources = ["000510.CSI"]
+
+[[rules]]
+name = "hold_top_dividend"
+frequency = "1y"
+
+[rules.options]
+filter_roe_floor = 0.0
+limit = 5
+lookback_years = 3
+skip_same_sector = false
+
+[rules.search]
+filter_roe_floor = [0.0, 0.01, 0.1]
+limit = [3, 5, 10]
+lookback_years = [2, 3, 4]
+# skip_same_sector = [true, false]
+
+
+# [[rules]]
+# name = "size_by_valuation"
+# frequency = "4w"
+
+# [rules.options]
+# allow_short = false
+# lookback_years = 6
+# pe_quantile_ceil = 0.9
+# pe_quantile_floor = 0.5
+# ps_quantile_ceil = 0.8
+# ps_quantile_floor = 0.2
+# ticker_source_watch_index = { "000510.CSI" = "000300.CSI" }
+# watch_period_days = 28

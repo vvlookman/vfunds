@@ -1,8 +1,10 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, HashMap},
+};
 
 use chrono::{Datelike, Duration, NaiveDate};
 use itertools::Itertools;
-use log::debug;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{
     mpsc,
@@ -10,7 +12,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT,
+    CHANNEL_BUFFER_DEFAULT, WORKSPACE,
     error::*,
     financial::{
         Portfolio,
@@ -18,7 +20,7 @@ use crate::{
         tool::fetch_trade_dates,
     },
     rule::Rule,
-    spec::FundDefinition,
+    spec::{FofDefinition, FundDefinition},
     ticker::{Ticker, TickersIndex},
     utils::{
         datetime::date_to_str,
@@ -28,12 +30,6 @@ use crate::{
         },
     },
 };
-
-pub struct BacktestContext<'a> {
-    pub fund_definition: &'a FundDefinition,
-    pub options: &'a BacktestOptions,
-    pub portfolio: &'a mut Portfolio,
-}
 
 pub enum BacktestEvent {
     Buy(String),
@@ -65,14 +61,16 @@ pub struct BacktestOptions {
     #[serde(skip)]
     pub cv_window: bool,
     #[serde(skip)]
-    pub cv_score_arr_cap: f64,
+    pub cv_score_arr_max: f64,
+    #[serde(skip)]
+    pub cv_score_sharpe_weight: f64,
 }
 
 pub struct BacktestStream {
     receiver: Receiver<BacktestEvent>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct BacktestMetrics {
     #[serde(serialize_with = "serialize_option_date")]
     pub last_trade_date: Option<NaiveDate>,
@@ -99,72 +97,372 @@ pub struct BacktestResult {
     pub trade_dates_value: Vec<(NaiveDate, f64)>,
 }
 
-pub fn calc_buy_fee(value: f64, options: &BacktestOptions) -> f64 {
-    let broker_commission = value * options.broker_commission_rate;
-    if broker_commission > options.broker_commission_min_fee {
-        broker_commission
-    } else {
-        options.broker_commission_min_fee
-    }
+pub struct FundBacktestContext<'a> {
+    pub options: &'a BacktestOptions,
+    pub fund_definition: &'a FundDefinition,
+    pub portfolio: &'a mut Portfolio,
 }
 
-pub fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
-    let stamp_duty = value * options.stamp_duty_rate;
-    let stamp_duty_fee = if stamp_duty > options.stamp_duty_min_fee {
-        stamp_duty
-    } else {
-        options.stamp_duty_min_fee
-    };
+pub async fn backtest_fof(
+    fof_definition: &FofDefinition,
+    options: &BacktestOptions,
+) -> VfResult<BacktestStream> {
+    let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
-    let broker_commission = value * options.broker_commission_rate;
-    let broker_commission_fee = if broker_commission > options.broker_commission_min_fee {
-        broker_commission
-    } else {
-        options.broker_commission_min_fee
-    };
+    let fof_definition = fof_definition.clone();
+    let options = options.clone();
 
-    stamp_duty_fee + broker_commission_fee
+    tokio::spawn(async move {
+        let single_run = async |fof_definition: &FofDefinition,
+                                options: &BacktestOptions|
+               -> VfResult<BacktestResult> {
+            let weights_sum: f64 = fof_definition.funds.values().sum();
+            if weights_sum > 0.0 {
+                let workspace = { WORKSPACE.read().await.clone() };
+
+                let mut funds_result: Vec<(usize, BacktestResult)> = vec![];
+                for (fund_index, (fund_name, weight)) in fof_definition.funds.iter().enumerate() {
+                    if *weight <= 0.0 {
+                        continue;
+                    }
+
+                    let fund_path = workspace.join(format!("{fund_name}.fund.toml"));
+                    let fund_definition = FundDefinition::from_file(&fund_path)?;
+
+                    let mut fund_options = options.clone();
+                    fund_options.init_cash = options.init_cash * weight / weights_sum;
+                    fund_options.cv_search = false;
+                    fund_options.cv_window = false;
+
+                    let mut stream = backtest_fund(&fund_definition, &fund_options).await?;
+
+                    while let Some(event) = stream.next().await {
+                        match event {
+                            BacktestEvent::Buy(s) => {
+                                let _ = sender
+                                    .send(BacktestEvent::Buy(format!("[{fund_name}] {s}")))
+                                    .await;
+                            }
+                            BacktestEvent::Sell(s) => {
+                                let _ = sender
+                                    .send(BacktestEvent::Sell(format!("[{fund_name}] {s}")))
+                                    .await;
+                            }
+                            BacktestEvent::Info(s) => {
+                                let _ = sender
+                                    .send(BacktestEvent::Info(format!("[{fund_name}] {s}")))
+                                    .await;
+                            }
+                            BacktestEvent::Toast(s) => {
+                                let _ = sender
+                                    .send(BacktestEvent::Toast(format!("[{fund_name}] {s}")))
+                                    .await;
+                            }
+                            BacktestEvent::Result(fund_result) => {
+                                funds_result.push((fund_index, *fund_result));
+                            }
+                            BacktestEvent::Error(_) => {
+                                let _ = sender.send(event).await;
+                            }
+                        }
+                    }
+                }
+
+                let final_cash = funds_result
+                    .iter()
+                    .map(|(_, fund_result)| fund_result.final_cash)
+                    .sum();
+
+                let mut final_positions_value: HashMap<Ticker, f64> = HashMap::new();
+                for (_, fund_result) in &funds_result {
+                    for (ticker, value) in &fund_result.final_positions_value {
+                        final_positions_value
+                            .entry(ticker.clone())
+                            .and_modify(|v| *v += value)
+                            .or_insert(*value);
+                    }
+                }
+
+                let _ = notify_portfolio(
+                    sender.clone(),
+                    &options.end_date,
+                    final_cash,
+                    &final_positions_value,
+                )
+                .await;
+
+                let trade_dates_value: Vec<(NaiveDate, f64)> = {
+                    let mut trade_dates_value_map: BTreeMap<NaiveDate, f64> = BTreeMap::new();
+
+                    for (_, fund_result) in funds_result {
+                        for (date, value) in fund_result.trade_dates_value {
+                            trade_dates_value_map
+                                .entry(date)
+                                .and_modify(|v| *v += value)
+                                .or_insert(value);
+                        }
+                    }
+
+                    trade_dates_value_map.into_iter().collect::<_>()
+                };
+
+                Ok(BacktestResult {
+                    options: options.clone(),
+                    final_cash,
+                    final_positions_value,
+                    metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
+                    trade_dates_value,
+                })
+            } else {
+                Ok(BacktestResult {
+                    options: options.clone(),
+                    final_cash: options.init_cash,
+                    final_positions_value: HashMap::new(),
+                    metrics: BacktestMetrics::default(),
+                    trade_dates_value: vec![],
+                })
+            }
+        };
+
+        let process = async || -> VfResult<BacktestResult> {
+            if options.cv_search {
+                let all_search: Vec<(String, Vec<f64>)> = fof_definition
+                    .search
+                    .clone()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+
+                let mut cv_results: Vec<(Vec<(String, f64)>, BacktestResult)> = vec![];
+                let cv_count = all_search.iter().map(|(_, v)| v.len()).product::<usize>();
+                for (i, funds_weight) in all_search
+                    .iter()
+                    .map(|(fund_name, weights)| {
+                        weights
+                            .iter()
+                            .map(|weight| (fund_name.to_string(), *weight))
+                            .collect::<Vec<_>>()
+                    })
+                    .multi_cartesian_product()
+                    .enumerate()
+                {
+                    let mut fof_definition = fof_definition.clone();
+                    for (fund_name, weight) in &funds_weight {
+                        fof_definition.funds.insert(fund_name.clone(), *weight);
+                    }
+
+                    let result = single_run(&fof_definition, &options).await?;
+
+                    let _ = sender
+                        .send(BacktestEvent::Info(format!(
+                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({})",
+                            i + 1,
+                            result
+                                .metrics
+                                .annualized_return_rate
+                                .map(|v| format!("{:.2}%", v * 100.0))
+                                .unwrap_or("-".to_string()),
+                            result
+                                .metrics
+                                .sharpe_ratio
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or("-".to_string()),
+                            funds_weight
+                                .iter()
+                                .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )))
+                        .await;
+
+                    cv_results.push((funds_weight.clone(), result));
+                }
+
+                if !cv_results.is_empty() {
+                    cv_results.sort_by(|(_, a), (_, b)| {
+                        let a_score = if let (Some(arr), Some(sharpe)) =
+                            (a.metrics.annualized_return_rate, a.metrics.sharpe_ratio)
+                        {
+                            cv_score(sharpe, arr, &options)
+                        } else {
+                            f64::NEG_INFINITY
+                        };
+
+                        let b_score = if let (Some(arr), Some(sharpe)) =
+                            (b.metrics.annualized_return_rate, b.metrics.sharpe_ratio)
+                        {
+                            cv_score(sharpe, arr, &options)
+                        } else {
+                            f64::NEG_INFINITY
+                        };
+
+                        a_score.partial_cmp(&b_score).unwrap_or(Ordering::Equal)
+                    });
+
+                    let result_count = cv_results.len();
+                    for (i, (rule_option_values, result)) in cv_results.iter().enumerate() {
+                        let top = result_count - i - 1;
+
+                        let top_str = if top == 0 {
+                            "Best"
+                        } else {
+                            &format!("Top {top}")
+                        };
+
+                        let _ = sender
+                            .send(BacktestEvent::Info(format!(
+                                "[CV] [{top_str}] {}",
+                                rule_option_values
+                                    .iter()
+                                    .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            )))
+                            .await;
+
+                        if top == 0 {
+                            return Ok(result.clone());
+                        }
+                    }
+                }
+            } else if options.cv_window {
+                type DateRange = (NaiveDate, NaiveDate);
+
+                let mut windows: Vec<DateRange> = vec![(options.start_date, options.end_date)];
+
+                let total_days = (options.end_date - options.start_date).num_days();
+                let i_max = (total_days / 365).ilog2() + 1;
+                if i_max >= 1 {
+                    for i in 1..=i_max {
+                        let n = 2_i64.pow(i);
+                        let half_window_days = total_days / (n + 1);
+                        let window_days = half_window_days * 2;
+
+                        for j in 0..n {
+                            let window_end =
+                                options.end_date - Duration::days(j * half_window_days);
+                            let window_start = window_end - Duration::days(window_days);
+                            windows.push((window_start, window_end));
+                        }
+                    }
+                }
+
+                let mut cv_results: Vec<(DateRange, BacktestResult)> = vec![];
+                let cv_count = windows.len();
+                for (i, (window_start, window_end)) in windows.iter().enumerate() {
+                    let mut options = options.clone();
+                    options.start_date = *window_start;
+                    options.end_date = *window_end;
+
+                    let result = single_run(&fof_definition, &options).await?;
+
+                    let _ = sender
+                        .send(BacktestEvent::Info(format!(
+                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({}-{})",
+                            i + 1,
+                            result
+                                .metrics
+                                .annualized_return_rate
+                                .map(|v| format!("{:.2}%", v * 100.0))
+                                .unwrap_or("-".to_string()),
+                            result
+                                .metrics
+                                .sharpe_ratio
+                                .map(|v| format!("{v:.3}"))
+                                .unwrap_or("-".to_string()),
+                            date_to_str(window_start),
+                            date_to_str(window_end),
+                        )))
+                        .await;
+
+                    cv_results.push(((*window_start, *window_end), result));
+                }
+
+                if !cv_results.is_empty() {
+                    for ((window_start, window_end), result) in cv_results.iter() {
+                        let _ = sender
+                            .send(BacktestEvent::Info(format!(
+                                "[CV] [{}~{}] ARR={} Sharpe={} MDD={} ({}d)",
+                                date_to_str(window_start),
+                                date_to_str(window_end),
+                                result
+                                    .metrics
+                                    .annualized_return_rate
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .sharpe_ratio
+                                    .map(|v| format!("{v:.3}"))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .max_drawdown
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                (*window_end - *window_start).num_days() + 1
+                            )))
+                            .await;
+                    }
+
+                    if let Some((_, result)) = cv_results.first() {
+                        if let (Some(arr), Some(min_arr)) = (
+                            result.metrics.annualized_return_rate,
+                            cv_results
+                                .iter()
+                                .map(|(_, result)| result.metrics.annualized_return_rate)
+                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                .unwrap_or(None),
+                        ) {
+                            let _ = sender
+                                .send(BacktestEvent::Info(format!(
+                                    "[CV] [ARR Max Drop {:.2}%]",
+                                    (arr - min_arr) / arr * 100.0
+                                )))
+                                .await;
+                        }
+
+                        if let (Some(sharpe), Some(min_sharpe)) = (
+                            result.metrics.sharpe_ratio,
+                            cv_results
+                                .iter()
+                                .map(|(_, result)| result.metrics.sharpe_ratio)
+                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                .unwrap_or(None),
+                        ) {
+                            let _ = sender
+                                .send(BacktestEvent::Info(format!(
+                                    "[CV] [Sharpe Max Drop {:.2}%]",
+                                    (sharpe - min_sharpe) / sharpe * 100.0
+                                )))
+                                .await;
+                        }
+
+                        return Ok(result.clone());
+                    }
+                }
+            }
+
+            single_run(&fof_definition, &options).await
+        };
+
+        match process().await {
+            Ok(result) => {
+                let _ = sender.send(BacktestEvent::Result(Box::new(result))).await;
+            }
+            Err(err) => {
+                let _ = sender.send(BacktestEvent::Error(err)).await;
+            }
+        }
+    });
+
+    Ok(BacktestStream { receiver })
 }
 
 pub async fn backtest_fund(
     fund_definition: &FundDefinition,
     options: &BacktestOptions,
 ) -> VfResult<BacktestStream> {
-    if options.init_cash <= 0.0 {
-        panic!("init_cash must > 0");
-    }
-
-    if options.end_date < options.start_date {
-        panic!(
-            "The end date {} cannot be earlier than the start date {}",
-            date_to_str(&options.end_date),
-            date_to_str(&options.start_date)
-        );
-    }
-
-    if options.buffer_ratio < 0.0 || options.buffer_ratio >= 1.0 {
-        panic!("buffer_ratio must >= 0 and < 1");
-    }
-
-    if options.risk_free_rate < 0.0 {
-        panic!("risk_free_rate must >= 0");
-    }
-
-    if options.stamp_duty_rate < 0.0 || options.stamp_duty_rate >= 1.0 {
-        panic!("stamp_duty_rate must >= 0 and < 1");
-    }
-
-    if options.stamp_duty_min_fee < 0.0 {
-        panic!("stamp_duty_min_fee must >= 0");
-    }
-
-    if options.broker_commission_rate < 0.0 || options.broker_commission_rate >= 1.0 {
-        panic!("broker_commission_rate must >= 0 and < 1");
-    }
-
-    if options.broker_commission_min_fee < 0.0 {
-        panic!("broker_commission_min_fee must >= 0");
-    }
+    options.check();
 
     let (sender, receiver) = mpsc::channel(CHANNEL_BUFFER_DEFAULT);
 
@@ -175,7 +473,7 @@ pub async fn backtest_fund(
         let single_run = async |fund_definition: &FundDefinition,
                                 options: &BacktestOptions|
                -> VfResult<BacktestResult> {
-            let mut context = BacktestContext {
+            let mut context = FundBacktestContext {
                 fund_definition,
                 options,
                 portfolio: &mut Portfolio::new(options.init_cash),
@@ -187,9 +485,11 @@ pub async fn backtest_fund(
                 .map(Rule::from_definition)
                 .collect::<Vec<_>>();
 
-            let mut trade_dates_value: Vec<(NaiveDate, f64)> = vec![];
-            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             let days = (options.end_date - options.start_date).num_days() as u64 + 1;
+
+            let mut trade_dates_value: Vec<(NaiveDate, f64)> = vec![];
+
+            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
             let trade_dates = fetch_trade_dates().await?;
             for date in options.start_date.iter_days().take(days as usize) {
                 if trade_dates.contains(&date) {
@@ -212,16 +512,8 @@ pub async fn backtest_fund(
 
                     let total_value = context.calc_total_value(&date).await?;
                     trade_dates_value.push((date, total_value));
-
-                    debug!("[{}] ✔", date_to_str(&date));
-                } else {
-                    debug!("[{}] ○", date_to_str(&date));
                 }
             }
-
-            let _ = context
-                .notify_portfolio(&options.end_date, sender.clone())
-                .await;
 
             let mut final_cash = context.portfolio.free_cash;
             for cash in context.portfolio.reserved_cash.values() {
@@ -239,61 +531,19 @@ pub async fn backtest_fund(
                 }
             }
 
-            let mut calendar_year_returns: HashMap<i32, f64> = HashMap::new();
-            {
-                let mut prev_value = options.init_cash;
-                for (date, value) in &trade_dates_value {
-                    let daily_return = value - prev_value;
-                    prev_value = *value;
-
-                    calendar_year_returns
-                        .entry(date.year())
-                        .and_modify(|v| *v += daily_return)
-                        .or_insert(daily_return);
-                }
-            }
-
-            let final_value = trade_dates_value
-                .last()
-                .map(|(_, v)| *v)
-                .unwrap_or(options.init_cash);
-            let total_return = final_value - options.init_cash;
-            let annualized_return_rate =
-                calc_annualized_return_rate(options.init_cash, final_value, days);
-            let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
-            let max_drawdown = calc_max_drawdown(&daily_values);
-            let annualized_volatility = calc_annualized_volatility(&daily_values);
-            let win_rate = calc_win_rate(&daily_values);
-            let profit_factor = calc_profit_factor(&daily_values);
-            let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
-            let calmar_ratio =
-                if let (Some(arr), Some(mdd)) = (annualized_return_rate, max_drawdown) {
-                    if mdd > 0.0 { Some(arr / mdd) } else { None }
-                } else {
-                    None
-                };
-            let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
-
-            let metrics = BacktestMetrics {
-                last_trade_date: trade_dates_value.last().map(|(d, _)| *d),
-                trade_days: trade_dates_value.len(),
-                total_return,
-                calendar_year_returns,
-                annualized_return_rate,
-                annualized_volatility,
-                max_drawdown,
-                win_rate,
-                profit_factor,
-                sharpe_ratio,
-                calmar_ratio,
-                sortino_ratio,
-            };
+            let _ = notify_portfolio(
+                sender.clone(),
+                &options.end_date,
+                final_cash,
+                &final_positions_value,
+            )
+            .await;
 
             Ok(BacktestResult {
                 options: options.clone(),
                 final_cash,
                 final_positions_value,
-                metrics,
+                metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
                 trade_dates_value,
             })
         };
@@ -302,8 +552,8 @@ pub async fn backtest_fund(
             if options.cv_search {
                 type RuleOptionValue = (String, String, serde_json::Value);
 
-                let mut all_search: Vec<(String, String, serde_json::Value)> = vec![];
-                for rule_definition in fund_definition.rules.iter() {
+                let mut all_search: Vec<RuleOptionValue> = vec![];
+                for rule_definition in &fund_definition.rules {
                     for (k, v) in &rule_definition.search {
                         all_search.push((
                             rule_definition.name.to_string(),
@@ -385,7 +635,7 @@ pub async fn backtest_fund(
                         let a_score = if let (Some(arr), Some(sharpe)) =
                             (a.metrics.annualized_return_rate, a.metrics.sharpe_ratio)
                         {
-                            sharpe * arr.min(options.cv_score_arr_cap).abs()
+                            cv_score(sharpe, arr, &options)
                         } else {
                             f64::NEG_INFINITY
                         };
@@ -393,7 +643,7 @@ pub async fn backtest_fund(
                         let b_score = if let (Some(arr), Some(sharpe)) =
                             (b.metrics.annualized_return_rate, b.metrics.sharpe_ratio)
                         {
-                            sharpe * arr.min(options.cv_score_arr_cap).abs()
+                            cv_score(sharpe, arr, &options)
                         } else {
                             f64::NEG_INFINITY
                         };
@@ -563,7 +813,7 @@ pub async fn backtest_fund(
     Ok(BacktestStream { receiver })
 }
 
-impl BacktestContext<'_> {
+impl FundBacktestContext<'_> {
     pub async fn cash_deploy_free(
         &mut self,
         date: &NaiveDate,
@@ -719,7 +969,40 @@ impl BacktestContext<'_> {
             }
         }
 
-        let _ = self.notify_portfolio(date, event_sender.clone()).await;
+        let total_value = self.calc_total_value(date).await?;
+
+        let mut position_strs: Vec<String> = vec![];
+        for (ticker, position_units) in self.portfolio.positions.iter() {
+            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let value = *position_units as f64 * price;
+                let value_pct = value / total_value * 100.0;
+
+                position_strs.push(format!(
+                    "{ticker}({ticker_title})=${value:.2}({value_pct:.2}%)"
+                ));
+            } else {
+                position_strs.push(format!("{ticker}({ticker_title})=$?"));
+            }
+        }
+
+        let cash = self.portfolio.free_cash + self.portfolio.reserved_cash.values().sum::<f64>();
+
+        let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
+        for (ticker, position_units) in self.portfolio.positions.iter() {
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            if let Some(price) =
+                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+            {
+                let value = *position_units as f64 * price;
+                positions_value.insert(ticker.clone(), value);
+            }
+        }
+
+        let _ = notify_portfolio(event_sender.clone(), date, cash, &positions_value).await;
 
         Ok(())
     }
@@ -854,53 +1137,6 @@ impl BacktestContext<'_> {
         Ok(total_value)
     }
 
-    async fn notify_portfolio(
-        &self,
-        date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        let total_value = self.calc_total_value(date).await?;
-
-        let mut position_strs: Vec<String> = vec![];
-        for (ticker, position_units) in self.portfolio.positions.iter() {
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some(price) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
-                let value = *position_units as f64 * price;
-                let value_pct = value / total_value * 100.0;
-
-                position_strs.push(format!(
-                    "{ticker}({ticker_title})=${value:.2}({value_pct:.2}%)"
-                ));
-            } else {
-                position_strs.push(format!("{ticker}({ticker_title})=$?"));
-            }
-        }
-
-        let mut portfolio_str = String::new();
-        {
-            let total_cash = self.calc_total_cash().await?;
-            let total_cash_pct = total_cash / total_value * 100.0;
-
-            portfolio_str.push_str(&format!("${total_cash:.2}({total_cash_pct:.2}%)"));
-        }
-        if !position_strs.is_empty() {
-            portfolio_str.push(' ');
-            portfolio_str.push_str(&position_strs.join(" "));
-        }
-
-        let date_str = date_to_str(date);
-        let _ = event_sender
-            .send(BacktestEvent::Info(format!(
-                "[{date_str}] [${total_value:.2}] {portfolio_str}"
-            )))
-            .await;
-
-        Ok(())
-    }
-
     async fn position_tickers_map(
         &self,
         date: &NaiveDate,
@@ -1002,6 +1238,105 @@ impl BacktestContext<'_> {
     }
 }
 
+impl BacktestMetrics {
+    pub fn from_daily_data(
+        trade_dates_value: &Vec<(NaiveDate, f64)>,
+        options: &BacktestOptions,
+    ) -> Self {
+        let mut calendar_year_returns: HashMap<i32, f64> = HashMap::new();
+        {
+            let mut prev_value = options.init_cash;
+            for (date, value) in trade_dates_value {
+                let daily_return = value - prev_value;
+                prev_value = *value;
+
+                calendar_year_returns
+                    .entry(date.year())
+                    .and_modify(|v| *v += daily_return)
+                    .or_insert(daily_return);
+            }
+        }
+
+        let final_value = trade_dates_value
+            .last()
+            .map(|(_, v)| *v)
+            .unwrap_or(options.init_cash);
+        let total_return = final_value - options.init_cash;
+        let annualized_return_rate = calc_annualized_return_rate(
+            options.init_cash,
+            final_value,
+            (options.end_date - options.start_date).num_days() as u64 + 1,
+        );
+        let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
+        let max_drawdown = calc_max_drawdown(&daily_values);
+        let annualized_volatility = calc_annualized_volatility(&daily_values);
+        let win_rate = calc_win_rate(&daily_values);
+        let profit_factor = calc_profit_factor(&daily_values);
+        let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
+        let calmar_ratio = if let (Some(arr), Some(mdd)) = (annualized_return_rate, max_drawdown) {
+            if mdd > 0.0 { Some(arr / mdd) } else { None }
+        } else {
+            None
+        };
+        let sortino_ratio = calc_sortino_ratio(&daily_values, options.risk_free_rate);
+
+        Self {
+            last_trade_date: trade_dates_value.last().map(|(d, _)| *d),
+            trade_days: trade_dates_value.len(),
+            total_return,
+            calendar_year_returns,
+            annualized_return_rate,
+            annualized_volatility,
+            max_drawdown,
+            win_rate,
+            profit_factor,
+            sharpe_ratio,
+            calmar_ratio,
+            sortino_ratio,
+        }
+    }
+}
+
+impl BacktestOptions {
+    pub fn check(&self) {
+        if self.init_cash <= 0.0 {
+            panic!("init_cash must > 0");
+        }
+
+        if self.end_date < self.start_date {
+            panic!(
+                "The end date {} cannot be earlier than the start date {}",
+                date_to_str(&self.end_date),
+                date_to_str(&self.start_date)
+            );
+        }
+
+        if self.buffer_ratio < 0.0 || self.buffer_ratio >= 1.0 {
+            panic!("buffer_ratio must >= 0 and < 1");
+        }
+
+        if self.risk_free_rate < 0.0 {
+            panic!("risk_free_rate must >= 0");
+        }
+
+        if self.stamp_duty_rate < 0.0 || self.stamp_duty_rate >= 1.0 {
+            panic!("stamp_duty_rate must >= 0 and < 1");
+        }
+
+        if self.stamp_duty_min_fee < 0.0 {
+            panic!("stamp_duty_min_fee must >= 0");
+        }
+
+        if self.broker_commission_rate < 0.0 || self.broker_commission_rate >= 1.0 {
+            panic!("broker_commission_rate must >= 0 and < 1");
+        }
+
+        if self.broker_commission_min_fee < 0.0 {
+            panic!("broker_commission_min_fee must >= 0");
+        }
+    }
+}
+
 impl BacktestStream {
     pub fn new(receiver: Receiver<BacktestEvent>) -> Self {
         Self { receiver }
@@ -1014,6 +1349,80 @@ impl BacktestStream {
     pub async fn next(&mut self) -> Option<BacktestEvent> {
         self.receiver.recv().await
     }
+}
+
+fn calc_buy_fee(value: f64, options: &BacktestOptions) -> f64 {
+    let broker_commission = value * options.broker_commission_rate;
+    if broker_commission > options.broker_commission_min_fee {
+        broker_commission
+    } else {
+        options.broker_commission_min_fee
+    }
+}
+
+fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
+    let stamp_duty = value * options.stamp_duty_rate;
+    let stamp_duty_fee = if stamp_duty > options.stamp_duty_min_fee {
+        stamp_duty
+    } else {
+        options.stamp_duty_min_fee
+    };
+
+    let broker_commission = value * options.broker_commission_rate;
+    let broker_commission_fee = if broker_commission > options.broker_commission_min_fee {
+        broker_commission
+    } else {
+        options.broker_commission_min_fee
+    };
+
+    stamp_duty_fee + broker_commission_fee
+}
+
+fn cv_score(sharpe: f64, arr: f64, options: &BacktestOptions) -> f64 {
+    sharpe * options.cv_score_sharpe_weight
+        + (1.0 - options.cv_score_sharpe_weight) * arr / options.cv_score_arr_max
+}
+
+async fn notify_portfolio(
+    event_sender: Sender<BacktestEvent>,
+    date: &NaiveDate,
+    cash: f64,
+    positions_value: &HashMap<Ticker, f64>,
+) -> VfResult<()> {
+    let date_str = date_to_str(date);
+
+    let total_value = cash + positions_value.values().sum::<f64>();
+    if total_value > 0.0 {
+        let mut portfolio_str = String::new();
+
+        {
+            let cash_pct = cash / total_value * 100.0;
+            portfolio_str.push_str(&format!("${cash:.2}({cash_pct:.2}%)"));
+        }
+
+        for (ticker, value) in positions_value {
+            if *value > 0.0 {
+                let ticker_title = fetch_stock_detail(ticker).await?.title;
+                let value_pct = value / total_value * 100.0;
+
+                portfolio_str.push_str(
+                    format!(" {ticker}({ticker_title})=${value:.2}({value_pct:.2}%)").as_str(),
+                );
+            }
+        }
+
+        let _ = event_sender
+            .send(BacktestEvent::Info(format!(
+                "[{date_str}] [${total_value:.2}] {portfolio_str}"
+            )))
+            .await;
+    } else {
+        let _ = event_sender
+            .send(BacktestEvent::Info(format!("[{date_str}] [$0]")))
+            .await;
+    }
+
+    Ok(())
 }
 
 fn serialize_date<S>(date: &NaiveDate, ser: S) -> Result<S::Ok, S::Error>

@@ -7,10 +7,10 @@ pub struct ListCommand;
 
 impl ListCommand {
     pub async fn exec(&self) {
-        match api::fund_definitions().await {
+        match api::load_fund_definitions().await {
             Ok(fund_definitions) => {
                 if fund_definitions.is_empty() {
-                    match api::get_workspace() {
+                    match api::get_workspace().await {
                         Ok(workspace) => {
                             println!(
                                 "[!] No fund definition in '{}'",

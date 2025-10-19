@@ -1,0 +1,15 @@
+title = "基金组合FOF"
+
+[funds]
+factors-ranker = 1
+high-dividend = 16
+risk-parity = 1
+# safe-valuation = 0
+# strong-trend = 0
+
+[search]
+factors-ranker = [0, 1, 2, 4, 8, 16]
+high-dividend = [0, 1, 2, 4, 8, 16]
+risk-parity = [0, 1, 2, 4, 8, 16]
+# safe-valuation = [0, 1, 2, 4, 8]
+# strong-trend = [0, 1, 2, 4, 8]

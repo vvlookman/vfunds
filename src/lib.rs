@@ -1,14 +1,10 @@
 //! # vfunds lib
 
-use std::{
-    collections::HashMap,
-    env,
-    path::PathBuf,
-    sync::{LazyLock, RwLock},
-};
+use std::{collections::HashMap, env, path::PathBuf, sync::LazyLock};
 
 use directories::ProjectDirs;
 use rayon::iter::*;
+use tokio::sync::RwLock;
 
 #[macro_export]
 macro_rules! mod_name {
@@ -41,9 +37,8 @@ pub async fn init(workspace: Option<PathBuf>) {
 
     if let Some(workspace) = workspace {
         if workspace.is_dir() {
-            if let Ok(mut w) = WORKSPACE.write() {
-                *w = workspace;
-            }
+            let mut guard = WORKSPACE.write().await;
+            *guard = workspace;
         }
     }
 }

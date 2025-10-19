@@ -129,11 +129,18 @@ pub struct BacktestCommand {
     cv_window: bool,
 
     #[arg(
-        long = "cv-score-arr-cap",
+        long = "cv-score-arr-max",
         default_value_t = 0.15,
-        help = "The annualized return rate cap value for cross-validation, cross-validation uses annualized return rate and sharpe ratio as score, the default value is 0.15"
+        help = "score = sharpe_weight · sharpe + (1 - sharpe_weight) · arr / arr_max, the default value is 0.15"
     )]
-    cv_score_arr_cap: f64,
+    cv_score_arr_max: f64,
+
+    #[arg(
+        long = "cv-score-sharpe-weight",
+        default_value_t = 0.7,
+        help = "score = sharpe_weight · sharpe + (1 - sharpe_weight) · arr / arr_max, the default value is 0.7"
+    )]
+    cv_score_sharpe_weight: f64,
 }
 
 impl BacktestCommand {
@@ -152,7 +159,8 @@ impl BacktestCommand {
             benchmark: self.benchmark.clone(),
             cv_search: self.cv_search,
             cv_window: self.cv_window,
-            cv_score_arr_cap: self.cv_score_arr_cap,
+            cv_score_arr_max: self.cv_score_arr_max,
+            cv_score_sharpe_weight: self.cv_score_sharpe_weight,
         };
 
         println!(

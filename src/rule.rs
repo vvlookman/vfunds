@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    backtest::{BacktestContext, BacktestEvent},
+    backtest::{BacktestEvent, FundBacktestContext},
     error::VfResult,
     spec::RuleDefinition,
 };
@@ -25,7 +25,7 @@ pub struct Rule {
 pub trait RuleExecutor: Send {
     async fn exec(
         &mut self,
-        context: &mut BacktestContext,
+        context: &mut FundBacktestContext,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()>;
@@ -56,7 +56,7 @@ impl Rule {
 
     pub async fn exec(
         &mut self,
-        context: &mut BacktestContext<'_>,
+        context: &mut FundBacktestContext<'_>,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {

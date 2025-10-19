@@ -6,7 +6,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     error::VfResult,
-    rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
+    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
 };
 
@@ -27,7 +27,7 @@ impl Executor {
 impl RuleExecutor for Executor {
     async fn exec(
         &mut self,
-        context: &mut BacktestContext,
+        context: &mut FundBacktestContext,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {

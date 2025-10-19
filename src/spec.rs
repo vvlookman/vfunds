@@ -9,6 +9,17 @@ use crate::{
 };
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct FofDefinition {
+    pub title: String,
+
+    #[serde(default)]
+    pub funds: HashMap<String, f64>,
+
+    #[serde(default)]
+    pub search: HashMap<String, Vec<f64>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
 
@@ -47,6 +58,12 @@ pub struct RuleDefinition {
 pub enum TickersDefinition {
     Array(Vec<String>),
     Map(HashMap<String, f64>),
+}
+
+impl FofDefinition {
+    pub fn from_file(path: &Path) -> VfResult<Self> {
+        confy::load_path(path).map_err(Into::into)
+    }
 }
 
 impl FundDefinition {

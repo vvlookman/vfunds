@@ -13,7 +13,7 @@ use crate::{
         StockReportPershareField, fetch_stock_detail, fetch_stock_kline,
         fetch_stock_report_capital, fetch_stock_report_income, fetch_stock_report_pershare,
     },
-    rule::{BacktestContext, BacktestEvent, RuleDefinition, RuleExecutor},
+    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::{Ticker, TickersIndex},
     utils::{
         datetime::{FiscalQuarter, date_from_str, date_to_fiscal_quarter, date_to_str},
@@ -42,7 +42,7 @@ impl Executor {
 impl RuleExecutor for Executor {
     async fn exec(
         &mut self,
-        context: &mut BacktestContext,
+        context: &mut FundBacktestContext,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
