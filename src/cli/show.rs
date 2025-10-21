@@ -104,6 +104,8 @@ impl ShowCommand {
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();
                 table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
                 table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
+                table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
+                table.modify(Columns::new(10..11).not(Rows::first()), Color::FG_CYAN);
                 table.modify(Columns::new(1..), Alignment::right());
                 table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
                 println!("\n{table}");

@@ -28,6 +28,7 @@ use crate::{
             calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
             calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
         },
+        math::normalize_min_max,
     },
 };
 
@@ -60,8 +61,6 @@ pub struct BacktestOptions {
     pub cv_search: bool,
     #[serde(skip)]
     pub cv_window: bool,
-    #[serde(skip)]
-    pub cv_score_arr_max: f64,
     #[serde(skip)]
     pub cv_score_sharpe_weight: f64,
 }
@@ -278,29 +277,16 @@ pub async fn backtest_fof(
                 }
 
                 if !cv_results.is_empty() {
-                    cv_results.sort_by(|(_, a), (_, b)| {
-                        let a_score = if let (Some(arr), Some(sharpe)) =
-                            (a.metrics.annualized_return_rate, a.metrics.sharpe_ratio)
-                        {
-                            cv_score(sharpe, arr, &options)
-                        } else {
-                            f64::NEG_INFINITY
-                        };
+                    let cv_metrics: Vec<BacktestMetrics> = cv_results
+                        .iter()
+                        .map(|(_, result)| result.metrics.clone())
+                        .collect();
+                    let cv_sort = sort_cv_metrics(&cv_metrics, &options);
 
-                        let b_score = if let (Some(arr), Some(sharpe)) =
-                            (b.metrics.annualized_return_rate, b.metrics.sharpe_ratio)
-                        {
-                            cv_score(sharpe, arr, &options)
-                        } else {
-                            f64::NEG_INFINITY
-                        };
+                    for (i, index) in cv_sort.into_iter().rev().enumerate() {
+                        let (funds_weight, result) = &cv_results[index];
 
-                        a_score.partial_cmp(&b_score).unwrap_or(Ordering::Equal)
-                    });
-
-                    let result_count = cv_results.len();
-                    for (i, (rule_option_values, result)) in cv_results.iter().enumerate() {
-                        let top = result_count - i - 1;
+                        let top = cv_results.len() - i - 1;
 
                         let top_str = if top == 0 {
                             "Best"
@@ -311,7 +297,7 @@ pub async fn backtest_fof(
                         let _ = sender
                             .send(BacktestEvent::Info(format!(
                                 "[CV] [{top_str}] {}",
-                                rule_option_values
+                                funds_weight
                                     .iter()
                                     .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
                                     .collect::<Vec<_>>()
@@ -631,29 +617,16 @@ pub async fn backtest_fund(
                 }
 
                 if !cv_results.is_empty() {
-                    cv_results.sort_by(|(_, a), (_, b)| {
-                        let a_score = if let (Some(arr), Some(sharpe)) =
-                            (a.metrics.annualized_return_rate, a.metrics.sharpe_ratio)
-                        {
-                            cv_score(sharpe, arr, &options)
-                        } else {
-                            f64::NEG_INFINITY
-                        };
+                    let cv_metrics: Vec<BacktestMetrics> = cv_results
+                        .iter()
+                        .map(|(_, result)| result.metrics.clone())
+                        .collect();
+                    let cv_sort = sort_cv_metrics(&cv_metrics, &options);
 
-                        let b_score = if let (Some(arr), Some(sharpe)) =
-                            (b.metrics.annualized_return_rate, b.metrics.sharpe_ratio)
-                        {
-                            cv_score(sharpe, arr, &options)
-                        } else {
-                            f64::NEG_INFINITY
-                        };
+                    for (i, index) in cv_sort.into_iter().rev().enumerate() {
+                        let (rule_option_values, result) = &cv_results[index];
 
-                        a_score.partial_cmp(&b_score).unwrap_or(Ordering::Equal)
-                    });
-
-                    let result_count = cv_results.len();
-                    for (i, (rule_option_values, result)) in cv_results.iter().enumerate() {
-                        let top = result_count - i - 1;
+                        let top = cv_results.len() - i - 1;
 
                         let top_str = if top == 0 {
                             "Best"
@@ -1378,11 +1351,6 @@ fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
     stamp_duty_fee + broker_commission_fee
 }
 
-fn cv_score(sharpe: f64, arr: f64, options: &BacktestOptions) -> f64 {
-    sharpe * options.cv_score_sharpe_weight
-        + (1.0 - options.cv_score_sharpe_weight) * arr / options.cv_score_arr_max
-}
-
 async fn notify_portfolio(
     event_sender: Sender<BacktestEvent>,
     date: &NaiveDate,
@@ -1441,4 +1409,42 @@ where
     } else {
         ser.serialize_none()
     }
+}
+
+fn sort_cv_metrics(cv_metrics: &[BacktestMetrics], options: &BacktestOptions) -> Vec<usize> {
+    let normalized_sharpe_values = {
+        let sharpe_values: Vec<f64> = cv_metrics
+            .iter()
+            .map(|m| m.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
+            .collect();
+        normalize_min_max(&sharpe_values)
+    };
+
+    let normalized_arr_values = {
+        let arr_values: Vec<f64> = cv_metrics
+            .iter()
+            .map(|m| m.annualized_return_rate.unwrap_or(f64::NEG_INFINITY))
+            .collect();
+        normalize_min_max(&arr_values)
+    };
+
+    let scores_tuple: Vec<(f64, f64)> = normalized_sharpe_values
+        .into_iter()
+        .zip(normalized_arr_values)
+        .collect();
+
+    let mut cv_scores: Vec<(usize, f64)> = scores_tuple
+        .into_iter()
+        .enumerate()
+        .map(|(index, (sharpe, arr))| {
+            (
+                index,
+                sharpe * options.cv_score_sharpe_weight
+                    + arr * (1.0 - options.cv_score_sharpe_weight),
+            )
+        })
+        .collect();
+    cv_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+    cv_scores.into_iter().map(|(i, _)| i).collect()
 }

@@ -129,16 +129,10 @@ pub struct BacktestCommand {
     cv_window: bool,
 
     #[arg(
-        long = "cv-score-arr-max",
-        default_value_t = 0.15,
-        help = "score = sharpe_weight · sharpe + (1 - sharpe_weight) · arr / arr_max, the default value is 0.15"
-    )]
-    cv_score_arr_max: f64,
-
-    #[arg(
+        short = 'A',
         long = "cv-score-sharpe-weight",
-        default_value_t = 0.7,
-        help = "score = sharpe_weight · sharpe + (1 - sharpe_weight) · arr / arr_max, the default value is 0.7"
+        default_value_t = 0.6,
+        help = "score = sharpe_weight · sharpe_score + (1 - sharpe_weight) · arr_score, the default value is 0.6"
     )]
     cv_score_sharpe_weight: f64,
 }
@@ -159,7 +153,6 @@ impl BacktestCommand {
             benchmark: self.benchmark.clone(),
             cv_search: self.cv_search,
             cv_window: self.cv_window,
-            cv_score_arr_max: self.cv_score_arr_max,
             cv_score_sharpe_weight: self.cv_score_sharpe_weight,
         };
 
@@ -344,6 +337,8 @@ impl BacktestCommand {
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();
                 table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
                 table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
+                table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
+                table.modify(Columns::new(10..11).not(Rows::first()), Color::FG_CYAN);
                 table.modify(Columns::new(1..), Alignment::right());
                 table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
                 logger.println(format!("\n{table}"));

@@ -1,27 +1,21 @@
-title = "简易全天候策略，根据风险平价理论对持有的ETF/LOF进行动态调仓"
+title = "简易全天候策略，根据风险平价理论对持有的资产进行动态调仓"
 
 [tickers]
-"510300" = 10 # 沪深300ETF
-"159949" = 10 # 创业板50ETF
-"515080" = 10 # 中证红利ETF
-"513100" = 10 # 纳斯达克100ETF
-"513500" = 10 # 标普500ETF
-"511260" = 30 # 十年国债ETF
-"518880" = 10 # 黄金ETF
-"161715" = 10 # 大宗商品LOF
-
-# [[rules]]
-# name = "hold"
-# frequency = "1y"
+"515080" = 2.5 # 中证红利ETF
+"159949" = 2.5 # 创业板50ETF
+"513100" = 2.5 # 纳斯达克100ETF
+"513500" = 2.5 # 标普500ETF
+"511260" = 10  # 十年国债ETF
+"518880" = 10  # 黄金ETF
 
 [[rules]]
 name = "hold_risk_parity"
-frequency = "1y"
+frequency = "2m"
 
 [rules.options]
-weight_scale_max = 5
-weight_scale_min = 0.5
+weight_scale_max = 2
+weight_scale_min = 0
 
 [rules.search]
-weight_scale_max = [2, 5, 10]
-weight_scale_min = [0.0, 0.25, 0.5]
+weight_scale_max = [2, 4, 8, 16]
+weight_scale_min = [0, 0.125, 0.25, 0.5]

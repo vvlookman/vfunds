@@ -75,12 +75,18 @@ pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
 }
 
 pub fn normalize_min_max(values: &[f64]) -> Vec<f64> {
-    let max = values
+    let computed_values: Vec<f64> = values
+        .iter()
+        .filter(|x| !x.is_nan() && !x.is_infinite())
+        .copied()
+        .collect();
+
+    let max = computed_values
         .iter()
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
         .unwrap_or(&1.0);
 
-    let min = values
+    let min = computed_values
         .iter()
         .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
         .unwrap_or(&0.0);
@@ -91,10 +97,20 @@ pub fn normalize_min_max(values: &[f64]) -> Vec<f64> {
     values
         .iter()
         .map(|x| {
-            if is_constant {
-                1.0
+            if x.is_nan() {
+                f64::NAN
             } else {
-                (*x - *min) / range
+                match *x {
+                    f64::INFINITY => f64::INFINITY,
+                    f64::NEG_INFINITY => f64::NEG_INFINITY,
+                    _ => {
+                        if is_constant {
+                            1.0
+                        } else {
+                            (*x - *min) / range
+                        }
+                    }
+                }
             }
         })
         .collect()
@@ -123,5 +139,18 @@ mod tests {
         for (a, b) in sorted1.iter().zip(sorted2.iter()) {
             assert!((a - b).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn test_normalize_min_max() {
+        let values = vec![f64::NAN, f64::NEG_INFINITY, 0.0, 1.0, 2.0, f64::INFINITY];
+        let result = normalize_min_max(&values);
+
+        assert!(result[0].is_nan());
+        assert_eq!(result[1], f64::NEG_INFINITY);
+        assert_eq!(result[2], 0.0);
+        assert_eq!(result[3], 0.5);
+        assert_eq!(result[4], 1.0);
+        assert_eq!(result[5], f64::INFINITY);
     }
 }
