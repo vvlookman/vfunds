@@ -129,6 +129,14 @@ pub struct BacktestCommand {
     cv_window: bool,
 
     #[arg(
+        short = 'D',
+        long = "cv-min-window-days",
+        default_value_t = 365,
+        help = "Minimal time window in days for cross-validation, the default value is 365"
+    )]
+    cv_min_window_days: u64,
+
+    #[arg(
         short = 'A',
         long = "cv-score-sharpe-weight",
         default_value_t = 0.6,
@@ -153,6 +161,7 @@ impl BacktestCommand {
             benchmark: self.benchmark.clone(),
             cv_search: self.cv_search,
             cv_window: self.cv_window,
+            cv_min_window_days: self.cv_min_window_days,
             cv_score_sharpe_weight: self.cv_score_sharpe_weight,
         };
 

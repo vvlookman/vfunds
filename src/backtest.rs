@@ -29,6 +29,7 @@ use crate::{
             calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
         },
         math::normalize_min_max,
+        stats::mean,
     },
 };
 
@@ -61,6 +62,8 @@ pub struct BacktestOptions {
     pub cv_search: bool,
     #[serde(skip)]
     pub cv_window: bool,
+    #[serde(skip)]
+    pub cv_min_window_days: u64,
     #[serde(skip)]
     pub cv_score_sharpe_weight: f64,
 }
@@ -316,7 +319,7 @@ pub async fn backtest_fof(
                 let mut windows: Vec<DateRange> = vec![(options.start_date, options.end_date)];
 
                 let total_days = (options.end_date - options.start_date).num_days();
-                let i_max = (total_days / 365).ilog2() + 1;
+                let i_max = (total_days / options.cv_min_window_days as i64).ilog2() + 1;
                 if i_max >= 1 {
                     for i in 1..=i_max {
                         let n = 2_i64.pow(i);
@@ -391,36 +394,45 @@ pub async fn backtest_fof(
                     }
 
                     if let Some((_, result)) = cv_results.first() {
-                        if let (Some(arr), Some(min_arr)) = (
-                            result.metrics.annualized_return_rate,
-                            cv_results
+                        {
+                            let arrs: Vec<f64> = cv_results
                                 .iter()
-                                .map(|(_, result)| result.metrics.annualized_return_rate)
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .unwrap_or(None),
-                        ) {
-                            let _ = sender
-                                .send(BacktestEvent::Info(format!(
-                                    "[CV] [ARR Max Drop {:.2}%]",
-                                    (arr - min_arr) / arr * 100.0
-                                )))
-                                .await;
+                                .filter_map(|(_, result)| result.metrics.annualized_return_rate)
+                                .collect();
+                            if let (Some(arr_mean), Some(arr_min)) = (
+                                mean(&arrs),
+                                arrs.iter()
+                                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                    .copied(),
+                            ) {
+                                let _ = sender
+                                    .send(BacktestEvent::Info(format!(
+                                        "[CV] [ARR Mean={:.2}% Min={:.2}%]",
+                                        arr_mean * 100.0,
+                                        arr_min * 100.0
+                                    )))
+                                    .await;
+                            }
                         }
 
-                        if let (Some(sharpe), Some(min_sharpe)) = (
-                            result.metrics.sharpe_ratio,
-                            cv_results
+                        {
+                            let sharpes: Vec<f64> = cv_results
                                 .iter()
-                                .map(|(_, result)| result.metrics.sharpe_ratio)
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .unwrap_or(None),
-                        ) {
-                            let _ = sender
-                                .send(BacktestEvent::Info(format!(
-                                    "[CV] [Sharpe Max Drop {:.2}%]",
-                                    (sharpe - min_sharpe) / sharpe * 100.0
-                                )))
-                                .await;
+                                .filter_map(|(_, result)| result.metrics.sharpe_ratio)
+                                .collect();
+                            if let (Some(sharpe_mean), Some(sharpe_min)) = (
+                                mean(&sharpes),
+                                sharpes
+                                    .iter()
+                                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                    .copied(),
+                            ) {
+                                let _ = sender
+                                    .send(BacktestEvent::Info(format!(
+                                        "[CV] [Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
+                                    )))
+                                    .await;
+                            }
                         }
 
                         return Ok(result.clone());
@@ -658,7 +670,7 @@ pub async fn backtest_fund(
                 let mut windows: Vec<DateRange> = vec![(options.start_date, options.end_date)];
 
                 let total_days = (options.end_date - options.start_date).num_days();
-                let i_max = (total_days / 365).ilog2() + 1;
+                let i_max = (total_days / options.cv_min_window_days as i64).ilog2() + 1;
                 if i_max >= 1 {
                     for i in 1..=i_max {
                         let n = 2_i64.pow(i);
@@ -733,36 +745,45 @@ pub async fn backtest_fund(
                     }
 
                     if let Some((_, result)) = cv_results.first() {
-                        if let (Some(arr), Some(min_arr)) = (
-                            result.metrics.annualized_return_rate,
-                            cv_results
+                        {
+                            let arrs: Vec<f64> = cv_results
                                 .iter()
-                                .map(|(_, result)| result.metrics.annualized_return_rate)
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .unwrap_or(None),
-                        ) {
-                            let _ = sender
-                                .send(BacktestEvent::Info(format!(
-                                    "[CV] [ARR Max Drop {:.2}%]",
-                                    (arr - min_arr) / arr * 100.0
-                                )))
-                                .await;
+                                .filter_map(|(_, result)| result.metrics.annualized_return_rate)
+                                .collect();
+                            if let (Some(arr_mean), Some(arr_min)) = (
+                                mean(&arrs),
+                                arrs.iter()
+                                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                    .copied(),
+                            ) {
+                                let _ = sender
+                                    .send(BacktestEvent::Info(format!(
+                                        "[CV] [ARR Mean={:.2}% Min={:.2}%]",
+                                        arr_mean * 100.0,
+                                        arr_min * 100.0
+                                    )))
+                                    .await;
+                            }
                         }
 
-                        if let (Some(sharpe), Some(min_sharpe)) = (
-                            result.metrics.sharpe_ratio,
-                            cv_results
+                        {
+                            let sharpes: Vec<f64> = cv_results
                                 .iter()
-                                .map(|(_, result)| result.metrics.sharpe_ratio)
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .unwrap_or(None),
-                        ) {
-                            let _ = sender
-                                .send(BacktestEvent::Info(format!(
-                                    "[CV] [Sharpe Max Drop {:.2}%]",
-                                    (sharpe - min_sharpe) / sharpe * 100.0
-                                )))
-                                .await;
+                                .filter_map(|(_, result)| result.metrics.sharpe_ratio)
+                                .collect();
+                            if let (Some(sharpe_mean), Some(sharpe_min)) = (
+                                mean(&sharpes),
+                                sharpes
+                                    .iter()
+                                    .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                                    .copied(),
+                            ) {
+                                let _ = sender
+                                    .send(BacktestEvent::Info(format!(
+                                        "[CV] [Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
+                                    )))
+                                    .await;
+                            }
                         }
 
                         return Ok(result.clone());
