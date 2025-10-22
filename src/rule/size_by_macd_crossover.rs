@@ -85,11 +85,15 @@ impl RuleExecutor for Executor {
 
         for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
-            let latest_prices = kline.get_latest_values::<f64>(
-                date,
-                &StockKlineField::Close.to_string(),
-                (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
-            );
+            let latest_prices: Vec<f64> = kline
+                .get_latest_values::<f64>(
+                    date,
+                    &StockKlineField::Close.to_string(),
+                    (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
+                )
+                .iter()
+                .map(|&(_, v)| v)
+                .collect();
             let macds = calc_macd(
                 &latest_prices,
                 (macd_period_fast, macd_period_slow, macd_period_signal),
@@ -130,11 +134,15 @@ impl RuleExecutor for Executor {
 
         for (ticker, _) in context.portfolio.reserved_cash.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
-            let latest_prices = kline.get_latest_values::<f64>(
-                date,
-                &StockKlineField::Close.to_string(),
-                (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
-            );
+            let latest_prices: Vec<f64> = kline
+                .get_latest_values::<f64>(
+                    date,
+                    &StockKlineField::Close.to_string(),
+                    (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
+                )
+                .iter()
+                .map(|&(_, v)| v)
+                .collect();
             let macds = calc_macd(
                 &latest_prices,
                 (macd_period_fast, macd_period_slow, macd_period_signal),

@@ -118,7 +118,11 @@ impl DailyDataset {
         dates
     }
 
-    pub fn get_latest_value<T: NumCast>(&self, date: &NaiveDate, field_name: &str) -> Option<T> {
+    pub fn get_latest_value<T: NumCast>(
+        &self,
+        date: &NaiveDate,
+        field_name: &str,
+    ) -> Option<(NaiveDate, T)> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
             if let Ok(df) = self
                 .df
@@ -131,9 +135,18 @@ impl DailyDataset {
                 )
                 .collect()
             {
-                if let Ok(col) = df.column(origin_field_name) {
-                    if let Ok(val) = col.get(0) {
-                        return val.extract::<T>();
+                if let (Ok(col_date), Ok(col_val)) = (
+                    df.column(&self.date_field_name),
+                    df.column(origin_field_name),
+                ) {
+                    if let (Ok(cell_date), Ok(cell_val)) = (col_date.get(0), col_val.get(0)) {
+                        if let (Some(date_days_after_epoch), Some(val)) =
+                            (cell_date.extract::<i32>(), cell_val.extract::<T>())
+                        {
+                            if let Some(date) = NaiveDate::from_epoch_days(date_days_after_epoch) {
+                                return Some((date, val));
+                            }
+                        }
                     }
                 }
             }
@@ -147,7 +160,7 @@ impl DailyDataset {
         date: &NaiveDate,
         field_name: &str,
         count: u32,
-    ) -> Vec<T> {
+    ) -> Vec<(NaiveDate, T)> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
             if let Ok(df) = self
                 .df
@@ -161,13 +174,22 @@ impl DailyDataset {
                 .tail(count)
                 .collect()
             {
-                if let Ok(col) = df.column(origin_field_name) {
+                if let (Ok(col_date), Ok(col_val)) = (
+                    df.column(&self.date_field_name),
+                    df.column(origin_field_name),
+                ) {
                     let mut vals = vec![];
 
-                    for i in 0..col.len() {
-                        if let Ok(val) = col.get(i) {
-                            if let Some(val) = val.extract::<T>() {
-                                vals.push(val);
+                    for i in 0..col_date.len() {
+                        if let (Ok(cell_date), Ok(cell_val)) = (col_date.get(i), col_val.get(i)) {
+                            if let (Some(date_days_after_epoch), Some(val)) =
+                                (cell_date.extract::<i32>(), cell_val.extract::<T>())
+                            {
+                                if let Some(date) =
+                                    NaiveDate::from_epoch_days(date_days_after_epoch)
+                                {
+                                    vals.push((date, val));
+                                }
                             }
                         }
                     }
@@ -186,7 +208,7 @@ impl DailyDataset {
         field_name: &str,
         label_field_name: &str,
         count: u32,
-    ) -> Vec<(T, Option<String>)> {
+    ) -> Vec<(NaiveDate, T, Option<String>)> {
         if let (Some(origin_field_name), Some(origin_label_field_name)) = (
             self.value_field_names.get(field_name),
             self.value_field_names.get(label_field_name),
@@ -205,16 +227,25 @@ impl DailyDataset {
             {
                 let mut vals = vec![];
 
-                if let (Ok(col_val), Ok(col_label)) = (
+                if let (Ok(col_date), Ok(col_val), Ok(col_label)) = (
+                    df.column(&self.date_field_name),
                     df.column(origin_field_name),
                     df.column(origin_label_field_name),
                 ) {
-                    for i in 0..col_val.len() {
-                        if let (Ok(cell_val), Ok(cell_label)) = (col_val.get(i), col_label.get(i)) {
-                            if let (Some(val), label) =
-                                (cell_val.extract::<T>(), cell_label.get_str())
-                            {
-                                vals.push((val, label.map(|s| s.to_string())));
+                    for i in 0..col_date.len() {
+                        if let (Ok(cell_date), Ok(cell_val), Ok(cell_label)) =
+                            (col_date.get(i), col_val.get(i), col_label.get(i))
+                        {
+                            if let (Some(date_days_after_epoch), Some(val), label) = (
+                                cell_date.extract::<i32>(),
+                                cell_val.extract::<T>(),
+                                cell_label.get_str(),
+                            ) {
+                                if let Some(date) =
+                                    NaiveDate::from_epoch_days(date_days_after_epoch)
+                                {
+                                    vals.push((date, val, label.map(|s| s.to_string())));
+                                }
                             }
                         }
                     }

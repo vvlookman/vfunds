@@ -1,25 +1,36 @@
 title = "持有趋势增强得分最高的ETF"
 
-[tickers]
-"515080" = 7.5 # 中证红利ETF
-"159949" = 7.5 # 创业板50ETF
-"513100" = 7.5 # 纳斯达克100ETF
-"513500" = 7.5 # 标普500ETF
-"511260" = 50  # 十年国债ETF
-"518880" = 20  # 黄金ETF
+tickers = [
+  "510300", # 沪深300ETF
+  "510500", # 中证500ETF
+  "159949", # 创业板50ETF
+  "510900", # 恒生H股ETF
+  "512090", # MSCI中国A股ETF
+  "515080", # 中证红利ETF
+  "513100", # 纳斯达克100ETF
+  "513500", # 标普500ETF
+  "518880", # 黄金ETF
+  "511260", # 十年国债ETF
+  "161715", # 大宗商品LOF
+  "162411", # 华宝油气LOF
+]
 
 [[rules]]
 name = "hold_top_trend"
-frequency = "2w"
+frequency = "1w"
 
 [rules.options]
-limit = 4
-lookback_trade_days = 60
-regression_alpha = 0.5
-regression_test = 0.6
+limit = 1
+lookback_trade_days = 66
+ma_exp = 20
+ma_period_fast = 5
+ma_period_slow = 20
+regression_alpha = 8
+regression_test = 0.3
 
 [rules.search]
-limit = [3, 4, 5]
-lookback_trade_days = [50, 60, 70]
-regression_alpha = [0.1, 0.3, 0.5, 0.7, 1.0]
-regression_test = [0.5, 0.6, 0.7]
+limit = [1, 2, 3, 4, 5]
+lookback_trade_days = [44, 66, 88]
+ma_exp = [10, 20, 25]
+# regression_alpha = [1, 2, 4, 8, 16]
+# regression_test = [0.2, 0.3, 0.4]

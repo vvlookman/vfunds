@@ -69,19 +69,21 @@ pub fn slope(values: &[f64]) -> Option<f64> {
     None
 }
 
+pub fn standardize(values: &[f64]) -> Vec<f64> {
+    if let (Some(mean), Some(std)) = (mean(values), std(values)) {
+        if std > 0.0 {
+            return values.iter().map(|&x| (x - mean) / std).collect();
+        }
+    }
+
+    vec![0.0; values.len()]
+}
+
 pub fn std(values: &[f64]) -> Option<f64> {
     if let Some(mean) = mean(values) {
         let count = values.len();
         if count > 0 {
-            let variance = values
-                .iter()
-                .map(|value| {
-                    let diff = *value - mean;
-
-                    diff * diff
-                })
-                .sum::<f64>()
-                / count as f64;
+            let variance = values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / count as f64;
 
             return Some(variance.sqrt());
         }
@@ -120,6 +122,15 @@ mod tests {
     #[test]
     fn test_slope() {
         assert_eq!(slope(&vec![1.0, 2.0, 3.0]).unwrap(), 1.0);
+    }
+
+    #[test]
+    fn test_standardize() {
+        let new_data = standardize(&vec![1.0, 3.0, 5.0, 7.0]);
+        let new_mean = mean(&new_data).unwrap();
+        let new_std = std(&new_data).unwrap();
+        assert!((new_mean - 0.0).abs() < 1e-12);
+        assert!((new_std - 1.0).abs() < 1e-12);
     }
 
     #[test]

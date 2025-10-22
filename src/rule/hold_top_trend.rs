@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use log::debug;
 use smartcore::{
     linalg::basic::matrix::DenseMatrix,
@@ -18,7 +18,10 @@ use crate::{
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annualized_return_rate},
+    utils::{
+        datetime::date_to_str,
+        financial::{calc_annualized_return_rate, calc_ema},
+    },
 };
 
 pub struct Executor {
@@ -54,6 +57,21 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(30);
+        let ma_exp = self
+            .options
+            .get("ma_exp")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10);
+        let ma_period_fast = self
+            .options
+            .get("ma_period_fast")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5);
+        let ma_period_slow = self
+            .options
+            .get("ma_period_slow")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20);
         let regression_alpha = self
             .options
             .get("regression_alpha")
@@ -71,6 +89,18 @@ impl RuleExecutor for Executor {
 
             if lookback_trade_days == 0 {
                 panic!("lookback_trade_days must > 0");
+            }
+
+            if ma_period_fast == 0 {
+                panic!("ma_period_fast must > 0");
+            }
+
+            if ma_period_slow == 0 {
+                panic!("ma_period_slow must > 0");
+            }
+
+            if ma_period_fast >= ma_period_slow {
+                panic!("ma_period_fast must < ma_period_slow");
             }
 
             if regression_alpha < 0.0 {
@@ -96,13 +126,13 @@ impl RuleExecutor for Executor {
                     }
 
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                    let prices = kline.get_latest_values::<f64>(
+                    let prices_with_date = kline.get_latest_values::<f64>(
                         date,
                         &StockKlineField::Close.to_string(),
                         lookback_trade_days as u32,
                     );
 
-                    if prices.len() < lookback_trade_days as usize {
+                    if prices_with_date.len() < lookback_trade_days as usize {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(
                                 "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
@@ -111,6 +141,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
+                    let prices: Vec<f64> = prices_with_date.iter().map(|&(_, v)| v).collect();
                     if let Some(arr) = calc_annualized_return_rate(
                         prices[0],
                         prices[prices.len() - 1],
@@ -119,29 +150,30 @@ impl RuleExecutor for Executor {
                         let total_len = prices.len();
                         let train_len = (total_len as f64 * (1.0 - regression_test)) as usize;
 
-                        let generate_feature = |i: usize| {
-                            let x = i as f64;
-                            vec![x, x.powi(2)]
-                        };
-                        let features_train: Vec<Vec<f64>> = Vec::from_iter(0..train_len)
+                        let features: Vec<Vec<f64>> = prices_with_date
                             .iter()
-                            .map(|&i| generate_feature(i))
-                            .collect();
-                        let features_test: Vec<Vec<f64>> = Vec::from_iter(train_len..total_len)
-                            .iter()
-                            .map(|&i| generate_feature(i))
+                            .enumerate()
+                            .map(|(i, &(date, _))| {
+                                let x_i = i as f64;
+                                let x_weekday = date.weekday().number_from_monday() as f64;
+                                let x_monthday = date.day() as f64;
+
+                                vec![x_i, x_weekday, x_monthday]
+                            })
                             .collect();
 
                         if let (Ok(x_train), Ok(x_test)) = (
                             DenseMatrix::from_2d_array(
-                                &features_train
+                                &features
                                     .iter()
+                                    .take(train_len)
                                     .map(|v| v.as_slice())
                                     .collect::<Vec<&[f64]>>(),
                             ),
                             DenseMatrix::from_2d_array(
-                                &features_test
+                                &features
                                     .iter()
+                                    .skip(train_len)
                                     .map(|v| v.as_slice())
                                     .collect::<Vec<&[f64]>>(),
                             ),
@@ -157,9 +189,21 @@ impl RuleExecutor for Executor {
                             {
                                 if let Ok(y_pred) = model.predict(&x_test) {
                                     let r2_score = r2(&y_test, &y_pred);
-                                    let indicator = arr * (1.0 + r2_score);
+                                    let r2_normal = r2_score.max(0.0);
+
+                                    let emas_fast = calc_ema(&prices, ma_period_fast as usize);
+                                    let emas_slow = calc_ema(&prices, ma_period_slow as usize);
+                                    let ema_ratio = if let (Some(ema_fast), Some(ema_slow)) =
+                                        (emas_fast.last(), emas_slow.last())
+                                    {
+                                        (ema_slow / ema_fast).powi(ma_exp as i32)
+                                    } else {
+                                        0.0
+                                    };
+
+                                    let indicator = arr * r2_normal * ema_ratio;
                                     debug!(
-                                        "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_score:.4})"
+                                        "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_normal:.4} EMA_RATIO={ema_ratio:.4})"
                                     );
 
                                     indicators.push((ticker.clone(), indicator));
@@ -192,7 +236,11 @@ impl RuleExecutor for Executor {
 
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            let filetered_indicators = indicators.iter().take(limit as usize).collect::<Vec<_>>();
+            let filetered_indicators = indicators
+                .iter()
+                .filter(|&(_, v)| *v > 0.0)
+                .take(limit as usize)
+                .collect::<Vec<_>>();
 
             if !filetered_indicators.is_empty() {
                 let mut top_tickers_strs: Vec<String> = vec![];

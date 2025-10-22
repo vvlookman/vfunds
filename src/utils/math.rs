@@ -116,6 +116,16 @@ pub fn normalize_min_max(values: &[f64]) -> Vec<f64> {
         .collect()
 }
 
+pub fn transpose(mat: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    if mat.is_empty() || mat[0].is_empty() {
+        return vec![];
+    }
+
+    (0..mat[0].len())
+        .map(|c| mat.iter().map(|row| row[c]).collect())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +162,18 @@ mod tests {
         assert_eq!(result[3], 0.5);
         assert_eq!(result[4], 1.0);
         assert_eq!(result[5], f64::INFINITY);
+    }
+
+    #[test]
+    fn test_transpose() {
+        let mat = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let result = transpose(&mat);
+
+        assert_eq!(result[0][0], 1.0);
+        assert_eq!(result[1][0], 2.0);
+        assert_eq!(result[2][0], 3.0);
+        assert_eq!(result[0][1], 4.0);
+        assert_eq!(result[1][1], 5.0);
+        assert_eq!(result[2][1], 6.0);
     }
 }

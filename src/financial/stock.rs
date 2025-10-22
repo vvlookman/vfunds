@@ -339,7 +339,7 @@ mod tests {
         let ticker = Ticker::from_str("000001").unwrap();
         let dataset = fetch_stock_dividends(&ticker).await.unwrap();
 
-        let data = dataset
+        let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
                 &StockDividendField::PriceAdjustmentFactor.to_string(),
@@ -356,7 +356,7 @@ mod tests {
             .await
             .unwrap();
 
-        let data = dataset
+        let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
                 &StockKlineField::Close.to_string(),

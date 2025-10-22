@@ -100,11 +100,15 @@ impl RuleExecutor for Executor {
 
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
 
-                    let prices = kline.get_latest_values::<f64>(
-                        date,
-                        &StockKlineField::Close.to_string(),
-                        lookback_trade_days as u32,
-                    );
+                    let prices: Vec<f64> = kline
+                        .get_latest_values::<f64>(
+                            date,
+                            &StockKlineField::Close.to_string(),
+                            lookback_trade_days as u32,
+                        )
+                        .iter()
+                        .map(|&(_, v)| v)
+                        .collect();
 
                     if prices.len() < lookback_trade_days as usize {
                         let _ = event_sender

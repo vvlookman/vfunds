@@ -349,7 +349,7 @@ impl Executor {
                 let report_income = fetch_stock_report_income(ticker).await?;
                 let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                if let (Some(price), Some(total_captical), revenues, epss) = (
+                if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
                     kline.get_latest_value::<f64>(&watch_date, &StockKlineField::Close.to_string()),
                     report_capital.get_latest_value::<f64>(
                         &watch_date,
@@ -371,10 +371,10 @@ impl Executor {
                     let mut fiscal_epss: Vec<(FiscalQuarter, f64)> = vec![];
                     {
                         let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
-                        for (eps, date_label) in epss {
-                            if let Some(date_label_str) = date_label {
-                                if let Ok(date) = date_from_str(&date_label_str) {
-                                    let fiscal_quarter = date_to_fiscal_quarter(&date);
+                        for (_, eps, report_date_label) in epss {
+                            if let Some(report_date_label_str) = report_date_label {
+                                if let Ok(report_date) = date_from_str(&report_date_label_str) {
+                                    let fiscal_quarter = date_to_fiscal_quarter(&report_date);
 
                                     if let Some(current_fiscal_quarter) = current_fiscal_quarter {
                                         if fiscal_quarter.prev() != current_fiscal_quarter {
@@ -393,10 +393,10 @@ impl Executor {
                     let mut fiscal_revenues: Vec<(FiscalQuarter, f64)> = vec![];
                     {
                         let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
-                        for (revenue, date_label) in revenues {
-                            if let Some(date_label_str) = date_label {
-                                if let Ok(date) = date_from_str(&date_label_str) {
-                                    let fiscal_quarter = date_to_fiscal_quarter(&date);
+                        for (_, revenue, report_date_label) in revenues {
+                            if let Some(report_date_label_str) = report_date_label {
+                                if let Ok(report_date) = date_from_str(&report_date_label_str) {
+                                    let fiscal_quarter = date_to_fiscal_quarter(&report_date);
 
                                     if let Some(current_fiscal_quarter) = current_fiscal_quarter {
                                         if fiscal_quarter.prev() != current_fiscal_quarter {

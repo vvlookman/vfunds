@@ -1,6 +1,8 @@
 use ta::{
     Next,
-    indicators::{MovingAverageConvergenceDivergence, RelativeStrengthIndex},
+    indicators::{
+        ExponentialMovingAverage, MovingAverageConvergenceDivergence, RelativeStrengthIndex,
+    },
 };
 
 use crate::utils::stats;
@@ -26,6 +28,20 @@ pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
     }
 
     None
+}
+
+pub fn calc_ema(daily_values: &[f64], period: usize) -> Vec<f64> {
+    let mut results: Vec<f64> = vec![];
+
+    if daily_values.len() > 1 {
+        if let Ok(mut ema) = ExponentialMovingAverage::new(period) {
+            for value in daily_values {
+                results.push(ema.next(*value));
+            }
+        }
+    }
+
+    results
 }
 
 pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f64, f64, f64)> {
