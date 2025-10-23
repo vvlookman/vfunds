@@ -20,8 +20,8 @@ use crate::{
         tool::fetch_trade_dates,
     },
     rule::Rule,
-    spec::{FofDefinition, FundDefinition},
-    ticker::{Ticker, TickersIndex},
+    spec::{FofDefinition, FundDefinition, TickerSourceDefinition},
+    ticker::Ticker,
     utils::{
         datetime::date_to_str,
         financial::{
@@ -1134,7 +1134,7 @@ impl FundBacktestContext<'_> {
     async fn position_tickers_map(
         &self,
         date: &NaiveDate,
-    ) -> VfResult<HashMap<Ticker, (f64, Option<TickersIndex>)>> {
+    ) -> VfResult<HashMap<Ticker, (f64, Option<TickerSourceDefinition>)>> {
         let all_tickers_map = self.fund_definition.all_tickers_map(date).await?;
         Ok(all_tickers_map
             .into_iter()

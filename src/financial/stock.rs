@@ -4,7 +4,10 @@ use chrono::NaiveDate;
 use dashmap::DashMap;
 use serde_json::json;
 
-use crate::{data::daily::*, ds::qmt, error::*, ticker::Ticker, utils::datetime::date_from_str};
+use crate::{
+    data::daily::*, ds::qmt, error::*, financial::sector::fetch_sector_tickers, ticker::Ticker,
+    utils::datetime::date_from_str,
+};
 
 #[derive(Clone)]
 #[allow(dead_code)]
@@ -87,17 +90,14 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     )
     .await?;
 
-    let stocks_sector_json =
-        qmt::call_api("/stocks_sector", &json!({"sector_prefix": "SW1"}), Some(30)).await?;
+    let tickers_sector_map = fetch_sector_tickers("SW1").await?;
 
     let result = StockDetail {
         title: json["InstrumentName"]
             .as_str()
             .unwrap_or_default()
             .to_string(),
-        sector: stocks_sector_json[ticker.to_qmt_code()]
-            .as_str()
-            .map(|s| s.to_string()),
+        sector: tickers_sector_map.get(ticker).map(|s| s.to_string()),
         trading_date: json["TradingDay"]
             .as_str()
             .and_then(|s| date_from_str(s).ok()),

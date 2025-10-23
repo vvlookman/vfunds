@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::VfResult,
+    financial::sector::fetch_sector_tickers,
     ticker::{Ticker, TickersIndex},
 };
 
@@ -27,7 +28,7 @@ pub struct FundDefinition {
     pub tickers: TickersDefinition,
 
     #[serde(default)]
-    pub ticker_sources: Vec<String>,
+    pub ticker_sources: Vec<TickerSourceDefinition>,
 
     #[serde(default)]
     pub rules: Vec<RuleDefinition>,
@@ -60,6 +61,19 @@ pub enum TickersDefinition {
     Map(HashMap<String, f64>),
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TickerSourceDefinition {
+    pub source: String,
+    pub source_type: TickerSourceType,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum TickerSourceType {
+    Index,
+    Sector,
+}
+
 impl FofDefinition {
     pub fn from_file(path: &Path) -> VfResult<Self> {
         confy::load_path(path).map_err(Into::into)
@@ -74,8 +88,8 @@ impl FundDefinition {
     pub async fn all_tickers_map(
         &self,
         date: &NaiveDate,
-    ) -> VfResult<HashMap<Ticker, (f64, Option<TickersIndex>)>> {
-        let mut all_tickers_map: HashMap<Ticker, (f64, Option<TickersIndex>)> = HashMap::new();
+    ) -> VfResult<HashMap<Ticker, (f64, Option<TickerSourceDefinition>)>> {
+        let mut all_tickers_map = HashMap::new();
 
         match &self.tickers {
             TickersDefinition::Array(array) => {
@@ -94,11 +108,21 @@ impl FundDefinition {
             }
         };
 
-        for ticker_source_str in &self.ticker_sources {
-            let ticker_source = TickersIndex::from_str(ticker_source_str)?;
-            let index_tickers = ticker_source.all_tickers(date).await?;
-            for ticker in index_tickers {
-                all_tickers_map.insert(ticker, (1.0, Some(ticker_source.clone())));
+        for ticker_source in &self.ticker_sources {
+            match ticker_source.source_type {
+                TickerSourceType::Index => {
+                    let index = TickersIndex::from_str(&ticker_source.source)?;
+                    let index_tickers = index.all_tickers(date).await?;
+                    for ticker in index_tickers {
+                        all_tickers_map.insert(ticker, (1.0, Some(ticker_source.clone())));
+                    }
+                }
+                TickerSourceType::Sector => {
+                    let tickers_sector_map = fetch_sector_tickers(&ticker_source.source).await?;
+                    for ticker in tickers_sector_map.keys() {
+                        all_tickers_map.insert(ticker.clone(), (1.0, Some(ticker_source.clone())));
+                    }
+                }
             }
         }
 

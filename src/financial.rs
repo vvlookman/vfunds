@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::ticker::Ticker;
 
 pub mod index;
+pub mod sector;
 pub mod stock;
 pub mod tool;
 

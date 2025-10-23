@@ -1,6 +1,8 @@
 title = "持有中证A500中股息率最高的股票"
 
-ticker_sources = ["000510.CSI"]
+[[ticker_sources]]
+source = "000510.CSI"
+source_type = "index"
 
 [[rules]]
 name = "hold_top_dividend"

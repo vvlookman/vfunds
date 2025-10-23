@@ -14,6 +14,7 @@ use crate::{
         fetch_stock_report_capital, fetch_stock_report_income, fetch_stock_report_pershare,
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    spec::TickerSourceType,
     ticker::{Ticker, TickersIndex},
     utils::{
         datetime::{FiscalQuarter, date_from_str, date_to_fiscal_quarter, date_to_str},
@@ -167,7 +168,18 @@ impl RuleExecutor for Executor {
                         Some(index.clone())
                     } else {
                         if let Some((_, Some(ticker_source))) = tickers_map.get(ticker) {
-                            ticker_source_watch_index_map.get(ticker_source).cloned()
+                            match ticker_source.source_type {
+                                TickerSourceType::Index => {
+                                    if let Ok(tickers_index) =
+                                        TickersIndex::from_str(&ticker_source.source)
+                                    {
+                                        ticker_source_watch_index_map.get(&tickers_index).cloned()
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            }
                         } else {
                             None
                         }
