@@ -6,8 +6,9 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     error::VfResult,
-    financial::stock::{
-        StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
+    financial::{
+        get_ticker_title,
+        stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -133,7 +134,7 @@ impl RuleExecutor for Executor {
             {
                 let mut tickers_strs: Vec<String> = vec![];
                 for (ticker, weight) in &targets_weight {
-                    let ticker_title = fetch_stock_detail(ticker).await?.title;
+                    let ticker_title = get_ticker_title(ticker).await.unwrap_or_default();
                     tickers_strs.push(format!("{ticker}({ticker_title})={weight:.4}"));
                 }
 

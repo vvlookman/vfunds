@@ -10,6 +10,7 @@ use crate::{
 
 pub mod hold;
 pub mod hold_risk_parity;
+pub mod hold_top_conv_bond;
 pub mod hold_top_dividend;
 pub mod hold_top_factors_score;
 pub mod hold_top_trend;
@@ -40,6 +41,7 @@ impl Rule {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "hold" => Box::new(hold::Executor::new(definition)),
             "hold_risk_parity" => Box::new(hold_risk_parity::Executor::new(definition)),
+            "hold_top_conv_bond" => Box::new(hold_top_conv_bond::Executor::new(definition)),
             "hold_top_dividend" => Box::new(hold_top_dividend::Executor::new(definition)),
             "hold_top_factors_score" => Box::new(hold_top_factors_score::Executor::new(definition)),
             "hold_top_trend" => Box::new(hold_top_trend::Executor::new(definition)),

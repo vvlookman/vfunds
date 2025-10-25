@@ -14,11 +14,7 @@ use tokio::sync::{
 use crate::{
     CHANNEL_BUFFER_DEFAULT, WORKSPACE,
     error::*,
-    financial::{
-        Portfolio,
-        stock::{StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline},
-        tool::fetch_trade_dates,
-    },
+    financial::{Portfolio, get_ticker_price, get_ticker_title, tool::fetch_trade_dates},
     rule::Rule,
     spec::{FofDefinition, FundDefinition, TickerSourceDefinition},
     ticker::Ticker,
@@ -520,10 +516,7 @@ pub async fn backtest_fund(
 
             let mut final_positions_value: HashMap<Ticker, f64> = HashMap::new();
             for (ticker, units) in &context.portfolio.positions {
-                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                if let Some((_, price)) = kline
-                    .get_latest_value::<f64>(&options.end_date, &StockKlineField::Close.to_string())
-                {
+                if let Some(price) = get_ticker_price(ticker, &options.end_date).await? {
                     let value = *units as f64 * price;
                     final_positions_value.insert(ticker.clone(), value);
                 }
@@ -832,13 +825,7 @@ impl FundBacktestContext<'_> {
                             let fee = calc_buy_fee(deploy_cash, self.options);
                             let delta_value = deploy_cash - fee;
                             if delta_value > 0.0 {
-                                let kline =
-                                    fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp)
-                                        .await?;
-                                if let Some((_, price)) = kline.get_latest_value::<f64>(
-                                    date,
-                                    &StockKlineField::Close.to_string(),
-                                ) {
+                                if let Some(price) = get_ticker_price(ticker, date).await? {
                                     let ticker_value = *units as f64 * price + delta_value;
 
                                     self.scale_position(
@@ -879,11 +866,7 @@ impl FundBacktestContext<'_> {
                         let fee = calc_sell_fee(raise_cash, self.options);
                         let delta_value = raise_cash + fee;
 
-                        let kline =
-                            fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                        if let Some((_, price)) =
-                            kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                        {
+                        if let Some(price) = get_ticker_price(ticker, date).await? {
                             let sell_units = (delta_value / price).ceil().min(*units as f64);
                             let ticker_value = (*units as f64 - sell_units) * price;
                             if ticker_value > 0.0 {
@@ -967,11 +950,9 @@ impl FundBacktestContext<'_> {
 
         let mut position_strs: Vec<String> = vec![];
         for (ticker, position_units) in self.portfolio.positions.iter() {
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some((_, price)) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
+            let ticker_title = get_ticker_title(ticker).await?;
+
+            if let Some(price) = get_ticker_price(ticker, date).await? {
                 let value = *position_units as f64 * price;
                 let value_pct = value / total_value * 100.0;
 
@@ -987,10 +968,7 @@ impl FundBacktestContext<'_> {
 
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
         for (ticker, position_units) in self.portfolio.positions.iter() {
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some((_, price)) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
+            if let Some(price) = get_ticker_price(ticker, date).await? {
                 let value = *position_units as f64 * price;
                 positions_value.insert(ticker.clone(), value);
             }
@@ -1009,12 +987,9 @@ impl FundBacktestContext<'_> {
     ) -> VfResult<()> {
         if let Some(reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
             let date_str = date_to_str(date);
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            let ticker_title = get_ticker_title(ticker).await?;
 
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some((_, price)) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
+            if let Some(price) = get_ticker_price(ticker, date).await? {
                 let delta_value = reserved_cash - calc_buy_fee(*reserved_cash, self.options);
 
                 let buy_units = (delta_value / price).floor();
@@ -1060,12 +1035,9 @@ impl FundBacktestContext<'_> {
         let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
         if position_units > 0 {
             let date_str = date_to_str(date);
-            let ticker_title = fetch_stock_detail(ticker).await?.title;
+            let ticker_title = get_ticker_title(ticker).await?;
 
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some((_, price)) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
+            if let Some(price) = get_ticker_price(ticker, date).await? {
                 let sell_units = position_units as f64;
                 let value = sell_units * price;
                 let fee = calc_sell_fee(value, self.options);
@@ -1120,10 +1092,7 @@ impl FundBacktestContext<'_> {
         let mut total_value: f64 = self.calc_total_cash().await?;
 
         for (ticker, units) in &self.portfolio.positions {
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-            if let Some((_, price)) =
-                kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-            {
+            if let Some(price) = get_ticker_price(ticker, date).await? {
                 total_value += *units as f64 * price;
             }
         }
@@ -1150,12 +1119,9 @@ impl FundBacktestContext<'_> {
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let date_str = date_to_str(date);
-        let ticker_title = fetch_stock_detail(ticker).await?.title;
+        let ticker_title = get_ticker_title(ticker).await?;
 
-        let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-        if let Some((_, price)) =
-            kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-        {
+        if let Some(price) = get_ticker_price(ticker, date).await? {
             let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
             let position_value = position_units as f64 * price;
             let delta_value = ticker_value - position_value;
@@ -1391,7 +1357,7 @@ async fn notify_portfolio(
 
         for (ticker, value) in positions_value {
             if *value > 0.0 {
-                let ticker_title = fetch_stock_detail(ticker).await?.title;
+                let ticker_title = get_ticker_title(ticker).await?;
                 let value_pct = value / total_value * 100.0;
 
                 portfolio_str.push_str(

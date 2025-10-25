@@ -15,15 +15,23 @@ def df_to_json(df):
     return df.to_dict(orient="records")
 
 
-@app.get("/detail/{stock}")
-def detail(stock: str):
+@app.get("/index_weight/{index}")
+def index_weight(index: str):
+    xtdata.download_index_weight()
+    data = xtdata.get_index_weight(index_code=index)
+
+    return data
+
+
+@app.get("/stock_detail/{stock}")
+def stock_detail(stock: str):
     data = xtdata.get_instrument_detail(stock_code=stock)
 
     return data
 
 
-@app.get("/dividend/{stock}")
-def dividend(stock: str):
+@app.get("/stock_dividend/{stock}")
+def stock_dividend(stock: str):
     df = xtdata.get_divid_factors(stock_code=stock)
 
     if 'time' in df.columns:
@@ -33,16 +41,8 @@ def dividend(stock: str):
     return df_to_json(df)
 
 
-@app.get("/index_weight/{index}")
-def index_weight(index: str):
-    xtdata.download_index_weight()
-    data = xtdata.get_index_weight(index_code=index)
-
-    return data
-
-
-@app.get("/kline/{stock}")
-def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
+@app.get("/stock_kline/{stock}")
+def stock_kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
     xtdata.download_history_data2(stock, period)
     data = xtdata.get_market_data_ex(
         stock_list=[stock], dividend_type=dividend_type)
@@ -62,8 +62,8 @@ def kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
         raise HTTPException(status_code=404)
 
 
-@app.get("/report/{stock}")
-def report(stock: str, table: str = 'PershareIndex'):
+@app.get("/stock_report/{stock}")
+def stock_report(stock: str, table: str = 'PershareIndex'):
     # 'Balance'          # 资产负债表
     # 'Income'           # 利润表
     # 'CashFlow'         # 现金流量表

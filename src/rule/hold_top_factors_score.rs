@@ -8,8 +8,9 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
-    financial::stock::{
-        StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
+    financial::{
+        get_ticker_title,
+        stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -180,11 +181,10 @@ impl RuleExecutor for Executor {
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             let filetered_indicators = indicators.iter().take(limit as usize).collect::<Vec<_>>();
-
             if !filetered_indicators.is_empty() {
                 let mut top_tickers_strs: Vec<String> = vec![];
                 for (ticker, indicator) in &filetered_indicators {
-                    let ticker_title = fetch_stock_detail(ticker).await?.title;
+                    let ticker_title = get_ticker_title(ticker).await.unwrap_or_default();
                     top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
                 }
 

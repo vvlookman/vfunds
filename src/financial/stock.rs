@@ -15,6 +15,7 @@ pub struct StockDetail {
     pub title: String,
     pub sector: Option<String>,
     pub trading_date: Option<NaiveDate>,
+    pub expire_date: Option<NaiveDate>,
     pub pre_close_price: Option<f64>,
     pub float_volume: Option<u64>,
     pub total_volume: Option<u64>,
@@ -84,7 +85,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     }
 
     let json = qmt::call_api(
-        &format!("/detail/{}", ticker.to_qmt_code()),
+        &format!("/stock_detail/{}", ticker.to_qmt_code()),
         &json!({}),
         Some(30),
     )
@@ -99,6 +100,9 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
             .to_string(),
         sector: tickers_sector_map.get(ticker).map(|s| s.to_string()),
         trading_date: json["TradingDay"]
+            .as_str()
+            .and_then(|s| date_from_str(s).ok()),
+        expire_date: json["ExpireDate"]
             .as_str()
             .and_then(|s| date_from_str(s).ok()),
         pre_close_price: json["PreClose"].as_f64(),
@@ -117,7 +121,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
     }
 
     let json = qmt::call_api(
-        &format!("/dividend/{}", ticker.to_qmt_code()),
+        &format!("/stock_dividend/{}", ticker.to_qmt_code()),
         &json!({}),
         None,
     )
@@ -157,7 +161,7 @@ pub async fn fetch_stock_kline(
     };
 
     let json = qmt::call_api(
-        &format!("/kline/{}", ticker.to_qmt_code()),
+        &format!("/stock_kline/{}", ticker.to_qmt_code()),
         &json!({
             "dividend_type": param_dividend_type,
         }),
@@ -185,7 +189,7 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailyDatase
     }
 
     let json = qmt::call_api(
-        &format!("/report/{}", ticker.to_qmt_code()),
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
         &json!({
             "table": "Capital",
         }),
@@ -224,7 +228,7 @@ pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailyDataset
     }
 
     let json = qmt::call_api(
-        &format!("/report/{}", ticker.to_qmt_code()),
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
         &json!({
             "table": "Income",
         }),
@@ -263,7 +267,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
     }
 
     let json = qmt::call_api(
-        &format!("/report/{}", ticker.to_qmt_code()),
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
         &json!({
             "table": "PershareIndex",
         }),

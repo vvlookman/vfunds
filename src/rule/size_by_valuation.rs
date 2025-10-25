@@ -8,10 +8,13 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
-    financial::stock::{
-        StockDividendAdjust, StockKlineField, StockReportCapitalField, StockReportIncomeField,
-        StockReportPershareField, fetch_stock_detail, fetch_stock_kline,
-        fetch_stock_report_capital, fetch_stock_report_income, fetch_stock_report_pershare,
+    financial::{
+        get_ticker_title,
+        stock::{
+            StockDividendAdjust, StockKlineField, StockReportCapitalField, StockReportIncomeField,
+            StockReportPershareField, fetch_stock_kline, fetch_stock_report_capital,
+            fetch_stock_report_income, fetch_stock_report_pershare,
+        },
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     spec::TickerSourceType,
@@ -220,7 +223,8 @@ impl RuleExecutor for Executor {
                                 "[{date_str}] {ticker} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2} ps={ps:.2}  ps_overvalued={ps_overvalued:.2} ps_sell={ps_sell:.2}"
                             );
                             if *pe > pe_overvalued || *ps > ps_overvalued {
-                                let ticker_title = fetch_stock_detail(ticker).await?.title;
+                                let ticker_title =
+                                    get_ticker_title(ticker).await.unwrap_or_default();
 
                                 if *pe > pe_sell || *ps > ps_sell {
                                     let _ = event_sender
@@ -267,7 +271,8 @@ impl RuleExecutor for Executor {
                                 "[{date_str}] {ticker} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2} ps={ps:.2} ps_undervalued={ps_undervalued:.2} ps_buy={ps_buy:.2}"
                             );
                             if *pe < pe_undervalued && *ps < ps_undervalued {
-                                let ticker_title = fetch_stock_detail(ticker).await?.title;
+                                let ticker_title =
+                                    get_ticker_title(ticker).await.unwrap_or_default();
 
                                 if *pe < pe_buy && *ps < ps_buy {
                                     let _ = event_sender

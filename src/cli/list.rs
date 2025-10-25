@@ -1,19 +1,19 @@
 use colored::Colorize;
 use tabled::settings::{Color, object::Columns};
-use vfunds::api;
+use vfunds::{api, api::Vfund};
 
 #[derive(clap::Args)]
 pub struct ListCommand;
 
 impl ListCommand {
     pub async fn exec(&self) {
-        match api::load_fund_definitions().await {
-            Ok(fund_definitions) => {
-                if fund_definitions.is_empty() {
+        match api::load_vfunds().await {
+            Ok(vfunds) => {
+                if vfunds.is_empty() {
                     match api::get_workspace().await {
                         Ok(workspace) => {
                             println!(
-                                "[!] No fund definition in '{}'",
+                                "[!] No vfund defined in '{}'",
                                 workspace.to_string_lossy().yellow()
                             );
                         }
@@ -23,8 +23,12 @@ impl ListCommand {
                     }
                 } else {
                     let mut table_data: Vec<Vec<String>> = vec![];
-                    for (fund_name, fund_definition) in fund_definitions {
-                        table_data.push(vec![fund_name, fund_definition.title]);
+                    for (vfund_name, vfund) in vfunds {
+                        let title = match vfund {
+                            Vfund::Fof(fof_definition) => fof_definition.title,
+                            Vfund::Fund(fund_definition) => fund_definition.title,
+                        };
+                        table_data.push(vec![vfund_name, title]);
                     }
 
                     let mut table = tabled::builder::Builder::from_iter(&table_data).build();

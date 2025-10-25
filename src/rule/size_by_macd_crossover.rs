@@ -6,8 +6,9 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     error::VfResult,
-    financial::stock::{
-        StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline,
+    financial::{
+        get_ticker_title,
+        stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     utils::{
@@ -113,7 +114,7 @@ impl RuleExecutor for Executor {
                 let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
-                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
+                    let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
@@ -162,7 +163,7 @@ impl RuleExecutor for Executor {
                 let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
-                    let ticker_title = fetch_stock_detail(&ticker).await?.title;
+                    let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
 
                     let _ = event_sender
                         .send(BacktestEvent::Info(format!(
