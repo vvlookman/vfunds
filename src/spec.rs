@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, str::FromStr};
+use std::{collections::HashMap, num::ParseIntError, path::Path, str::FromStr};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -74,6 +74,28 @@ pub enum TickerSourceType {
     Sector,
 }
 
+impl FromStr for Frequency {
+    type Err = ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let days: i64 = if let Some(stripped) = s.strip_suffix("d") {
+            stripped.parse()?
+        } else if let Some(stripped) = s.strip_suffix("w") {
+            let weeks: i64 = stripped.parse()?;
+            7 * weeks
+        } else if let Some(stripped) = s.strip_suffix("m") {
+            let months: i64 = stripped.parse()?;
+            30 * months
+        } else if let Some(stripped) = s.strip_suffix("y") {
+            let years: i64 = stripped.parse()?;
+            365 * years
+        } else {
+            0
+        };
+
+        Ok(Frequency { days })
+    }
+}
+
 impl FofDefinition {
     pub fn from_file(path: &Path) -> VfResult<Self> {
         confy::load_path(path).map_err(Into::into)
@@ -142,20 +164,5 @@ where
 {
     let s = String::deserialize(deserializer)?.to_lowercase();
 
-    let days: i64 = if s.ends_with("d") {
-        s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?
-    } else if s.ends_with("w") {
-        let weeks: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
-        7 * weeks
-    } else if s.ends_with("m") {
-        let months: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
-        30 * months
-    } else if s.ends_with("y") {
-        let years: i64 = s[..s.len() - 1].parse().map_err(serde::de::Error::custom)?;
-        365 * years
-    } else {
-        0
-    };
-
-    Ok(Frequency { days })
+    Frequency::from_str(&s).map_err(serde::de::Error::custom)
 }

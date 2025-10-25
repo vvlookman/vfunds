@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap},
+    str::FromStr,
 };
 
 use chrono::{Datelike, Duration, NaiveDate};
@@ -16,7 +17,7 @@ use crate::{
     error::*,
     financial::{Portfolio, get_ticker_price, get_ticker_title, tool::fetch_trade_dates},
     rule::Rule,
-    spec::{FofDefinition, FundDefinition, TickerSourceDefinition},
+    spec::{FofDefinition, Frequency, FundDefinition, TickerSourceDefinition},
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
@@ -586,9 +587,17 @@ pub async fn backtest_fund(
                             .iter_mut()
                             .find(|r| r.name == *rule_name)
                         {
-                            rule_definition
-                                .options
-                                .insert(option_name.to_string(), option_value.clone());
+                            if option_name == "frequency" {
+                                if let Ok(frequency) =
+                                    Frequency::from_str(option_value.as_str().unwrap_or_default())
+                                {
+                                    rule_definition.frequency = frequency;
+                                }
+                            } else {
+                                rule_definition
+                                    .options
+                                    .insert(option_name.to_string(), option_value.clone());
+                            }
                         }
                     }
 

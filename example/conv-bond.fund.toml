@@ -10,6 +10,7 @@ filter_min_remaining_days = 30
 limit = 5
 
 [rules.search]
+frequency = ["1w", "2w", "4w", "3m"]
 filter_issue_size_floor = [0.25, 0.5, 1, 2]
 limit = [3, 5, 10]
 filter_min_remaining_days = [0, 30, 60, 90, 120]

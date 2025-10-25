@@ -56,14 +56,6 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
         {
-            if filter_issue_size_floor < 0.0 {
-                panic!("filter_issue_size_floor must >= 0");
-            }
-
-            if filter_min_remaining_days == 0 {
-                panic!("filter_min_remaining_days must > 0");
-            }
-
             if limit == 0 {
                 panic!("limit must > 0");
             }
