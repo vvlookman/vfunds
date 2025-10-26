@@ -29,6 +29,7 @@ ticker_watch_index = { "510300" = "000300.CSI", "159949" = "399673.CNI", "515080
 watch_period_days = 28
 
 [rules.search]
+frequency = ["1w", "2w", "4w", "8w"]
 allow_short = [true, false]
 lookback_years = [5, 6]
 ps_quantile_ceil = [0.7, 0.8]

@@ -1,16 +1,16 @@
-title = "持有满足一定条件且溢价最高的可转债"
+title = "持有满足一定条件且最有性价比的可转债"
 
 [[rules]]
 name = "hold_top_conv_bond"
 frequency = "1w"
 
 [rules.options]
-filter_issue_size_floor = 2
 filter_min_remaining_days = 90
+issue_size_quantile_floor = 0.04
 limit = 3
 
 [rules.search]
-# frequency = ["1w", "2w", "4w", "3m"]
-filter_issue_size_floor = [0.5, 1, 2, 3, 4]
+frequency = ["1w", "2w", "4w", "3m"]
+filter_min_remaining_days = [0, 30, 90, 180]
+issue_size_quantile_floor = [0, 0.02, 0.04, 0.05, 0.06, 0.08, 0.1]
 limit = [2, 3, 5, 10]
-filter_min_remaining_days = [0, 10, 30, 90, 180]

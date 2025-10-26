@@ -25,6 +25,7 @@ rsi_low = 40
 rsi_high = 60
 
 [rules.search]
+frequency = ["3m", "6m", "1y"]
 allow_short = [true, false]
 macd_period_fast = [12, 24, 30]
 macd_period_slow = [26, 52, 60]

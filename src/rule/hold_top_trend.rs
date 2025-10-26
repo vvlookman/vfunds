@@ -132,7 +132,6 @@ impl RuleExecutor for Executor {
                         &StockKlineField::Close.to_string(),
                         lookback_trade_days as u32,
                     );
-
                     if prices_with_date.len() < lookback_trade_days as usize {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(

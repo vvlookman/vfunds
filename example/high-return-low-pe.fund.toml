@@ -1,22 +1,20 @@
-title = "持有中证A500中股息率最高的股票"
+title = "持有国证1000中全收益与PE比值最高的股票"
 
 [[ticker_sources]]
-source = "000510.CSI"
+source = "399311.CNI"
 source_type = "index"
 
 [[rules]]
-name = "hold_top_dividend"
+name = "hold_top_return_pe_ratio"
 frequency = "1y"
 
 [rules.options]
-filter_roe_floor = 0.0
 limit = 5
 lookback_years = 3
 skip_same_sector = false
 
 [rules.search]
 frequency = ["3m", "6m", "1y"]
-filter_roe_floor = [0.0, 0.01, 0.1]
-limit = [3, 5, 10]
-lookback_years = [2, 3, 4]
+limit = [2, 3, 5, 10]
+lookback_years = [2, 3, 4, 5]
 skip_same_sector = [true, false]

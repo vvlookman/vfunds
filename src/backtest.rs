@@ -281,9 +281,13 @@ pub async fn backtest_fof(
                         .iter()
                         .map(|(_, result)| result.metrics.clone())
                         .collect();
-                    let cv_sort = sort_cv_metrics(&cv_metrics, &options);
+                    let cv_sort = sort_cv_by_score(&cv_metrics, &options);
+                    let best_score = cv_sort
+                        .first()
+                        .map(|(_, score)| *score)
+                        .unwrap_or(f64::NEG_INFINITY);
 
-                    for (i, index) in cv_sort.into_iter().rev().enumerate() {
+                    for (i, (index, score)) in cv_sort.into_iter().rev().enumerate() {
                         let (funds_weight, result) = &cv_results[index];
 
                         let top = cv_results.len() - i - 1;
@@ -291,7 +295,11 @@ pub async fn backtest_fof(
                         let top_str = if top == 0 {
                             "Best"
                         } else {
-                            &format!("Top {top}")
+                            if (best_score - score).abs() < best_score.abs() * 1e-2 {
+                                &format!("Top {top} ≈ Best")
+                            } else {
+                                &format!("Top {top}")
+                            }
                         };
 
                         let _ = sender
@@ -636,9 +644,13 @@ pub async fn backtest_fund(
                         .iter()
                         .map(|(_, result)| result.metrics.clone())
                         .collect();
-                    let cv_sort = sort_cv_metrics(&cv_metrics, &options);
+                    let cv_sort = sort_cv_by_score(&cv_metrics, &options);
+                    let best_score = cv_sort
+                        .first()
+                        .map(|(_, score)| *score)
+                        .unwrap_or(f64::NEG_INFINITY);
 
-                    for (i, index) in cv_sort.into_iter().rev().enumerate() {
+                    for (i, (index, score)) in cv_sort.into_iter().rev().enumerate() {
                         let (rule_option_values, result) = &cv_results[index];
 
                         let top = cv_results.len() - i - 1;
@@ -646,7 +658,11 @@ pub async fn backtest_fund(
                         let top_str = if top == 0 {
                             "Best"
                         } else {
-                            &format!("Top {top}")
+                            if (best_score - score).abs() < best_score.abs() * 1e-2 {
+                                &format!("Top {top} ≈ Best")
+                            } else {
+                                &format!("Top {top}")
+                            }
                         };
 
                         let _ = sender
@@ -1413,7 +1429,10 @@ where
     }
 }
 
-fn sort_cv_metrics(cv_metrics: &[BacktestMetrics], options: &BacktestOptions) -> Vec<usize> {
+fn sort_cv_by_score(
+    cv_metrics: &[BacktestMetrics],
+    options: &BacktestOptions,
+) -> Vec<(usize, f64)> {
     let normalized_sharpe_values = {
         let sharpe_values: Vec<f64> = cv_metrics
             .iter()
@@ -1448,5 +1467,5 @@ fn sort_cv_metrics(cv_metrics: &[BacktestMetrics], options: &BacktestOptions) ->
         .collect();
     cv_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-    cv_scores.into_iter().map(|(i, _)| i).collect()
+    cv_scores
 }

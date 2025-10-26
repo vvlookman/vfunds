@@ -14,7 +14,7 @@ use crate::{
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
-    utils::datetime::date_to_str,
+    utils::{datetime::date_to_str, stats::quantile},
 };
 
 pub struct Executor {
@@ -40,16 +40,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let filter_issue_size_floor = self
-            .options
-            .get("filter_issue_size_floor")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(10000.0);
         let filter_min_remaining_days = self
             .options
             .get("filter_min_remaining_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(30);
+        let issue_size_quantile_floor = self
+            .options
+            .get("issue_size_quantile_floor")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.5);
         let limit = self
             .options
             .get("limit")
@@ -65,6 +65,13 @@ impl RuleExecutor for Executor {
         if !conv_bonds.is_empty() {
             let date_str = date_to_str(date);
 
+            let conv_bonds_issue_size = conv_bonds
+                .iter()
+                .filter_map(|b| b.issue_size)
+                .collect::<Vec<_>>();
+            let filter_issue_size_floor =
+                quantile(&conv_bonds_issue_size, issue_size_quantile_floor);
+
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             {
                 let mut last_time = Instant::now();
@@ -75,8 +82,10 @@ impl RuleExecutor for Executor {
                     }
 
                     if let Some(issue_size) = conv_bond.issue_size {
-                        if issue_size < filter_issue_size_floor {
-                            continue;
+                        if let Some(filter_issue_size_floor) = filter_issue_size_floor {
+                            if issue_size < filter_issue_size_floor {
+                                continue;
+                            }
                         }
                     }
 

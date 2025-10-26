@@ -11,3 +11,6 @@ title = "简易永久组合"
 [[rules]]
 name = "hold"
 frequency = "2m"
+
+[rules.search]
+frequency = ["1m", "2m", "3m", "6m", "1y"]

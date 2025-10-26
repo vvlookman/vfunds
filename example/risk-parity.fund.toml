@@ -17,5 +17,6 @@ weight_scale_max = 2
 weight_scale_min = 0
 
 [rules.search]
+frequency = ["1m", "2m", "3m", "6m", "1y"]
 weight_scale_max = [2, 4, 8, 16]
 weight_scale_min = [0, 0.125, 0.25, 0.5]

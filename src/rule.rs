@@ -13,6 +13,7 @@ pub mod hold_risk_parity;
 pub mod hold_top_conv_bond;
 pub mod hold_top_dividend;
 pub mod hold_top_factors_score;
+pub mod hold_top_return_pe_ratio;
 pub mod hold_top_trend;
 pub mod size_by_macd_crossover;
 pub mod size_by_valuation;
@@ -44,6 +45,9 @@ impl Rule {
             "hold_top_conv_bond" => Box::new(hold_top_conv_bond::Executor::new(definition)),
             "hold_top_dividend" => Box::new(hold_top_dividend::Executor::new(definition)),
             "hold_top_factors_score" => Box::new(hold_top_factors_score::Executor::new(definition)),
+            "hold_top_return_pe_ratio" => {
+                Box::new(hold_top_return_pe_ratio::Executor::new(definition))
+            }
             "hold_top_trend" => Box::new(hold_top_trend::Executor::new(definition)),
             "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
             "size_by_valuation" => Box::new(size_by_valuation::Executor::new(definition)),

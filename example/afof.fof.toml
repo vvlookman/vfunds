@@ -1,11 +1,13 @@
 title = "基金组合FOF"
 
 [funds]
+conv-bond = 4
 factors-ranker = 1
-high-dividend = 1
+high-dividend = 4
 risk-parity = 1
 
 [search]
+conv-bond = [1, 2, 4]
 factors-ranker = [1, 2, 4]
 high-dividend = [1, 2, 4]
 risk-parity = [1, 2, 4]
