@@ -505,8 +505,9 @@ pub async fn backtest_fund(
                         rule_executed_date.insert(rule_index, date);
                     }
 
-                    let total_value = context.calc_total_value(&date).await?;
-                    trade_dates_value.push((date, total_value));
+                    if let Ok(total_value) = context.calc_total_value(&date).await {
+                        trade_dates_value.push((date, total_value));
+                    }
                 }
             }
 
@@ -1103,6 +1104,11 @@ impl FundBacktestContext<'_> {
         for (ticker, units) in &self.portfolio.positions {
             if let Some(price) = get_ticker_price(ticker, date).await? {
                 total_value += *units as f64 * price;
+            } else {
+                return Err(VfError::NoData {
+                    code: "PRICE_NOT_EXISTS",
+                    message: format!("Price of '{ticker}' not exists"),
+                });
             }
         }
 

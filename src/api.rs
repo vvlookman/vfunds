@@ -171,7 +171,7 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
                     let fof_definition =
                         FofDefinition::from_file(&entry_path).map_err(|_| VfError::Invalid {
                             code: "INVALID_FOF_DEFINITION",
-                            message: format!("FOF definition invalid {}", entry_path.display()),
+                            message: format!("FOF definition '{}' invalid", entry_path.display()),
                         })?;
                     vfunds.push((fof_name, Vfund::Fof(fof_definition)));
                 } else if file_stem_str.ends_with(".fund") {
@@ -183,7 +183,7 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
                     let fund_definition =
                         FundDefinition::from_file(&entry_path).map_err(|_| VfError::Invalid {
                             code: "INVALID_FUND_DEFINITION",
-                            message: format!("Fund definition invalid {}", entry_path.display()),
+                            message: format!("Fund definition '{}' invalid", entry_path.display()),
                         })?;
                     vfunds.push((fund_name, Vfund::Fund(fund_definition)));
                 }

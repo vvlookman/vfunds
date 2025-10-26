@@ -128,7 +128,11 @@ impl DailyDataset {
                 .df
                 .clone()
                 .lazy()
-                .filter(col(&self.date_field_name).lt_eq(lit(*date)))
+                .filter(
+                    col(&self.date_field_name)
+                        .lt_eq(lit(*date))
+                        .and(col(origin_field_name).is_not_null()),
+                )
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(true),
@@ -166,7 +170,11 @@ impl DailyDataset {
                 .df
                 .clone()
                 .lazy()
-                .filter(col(&self.date_field_name).lt_eq(lit(*date)))
+                .filter(
+                    col(&self.date_field_name)
+                        .lt_eq(lit(*date))
+                        .and(col(origin_field_name).is_not_null()),
+                )
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(false),
@@ -217,7 +225,11 @@ impl DailyDataset {
                 .df
                 .clone()
                 .lazy()
-                .filter(col(&self.date_field_name).lt_eq(lit(*date)))
+                .filter(
+                    col(&self.date_field_name)
+                        .lt_eq(lit(*date))
+                        .and(col(origin_field_name).is_not_null()),
+                )
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(false),
@@ -272,7 +284,8 @@ impl DailyDataset {
                 .filter(
                     col(&self.date_field_name)
                         .gt_eq(lit(*date_from))
-                        .and(col(&self.date_field_name).lt_eq(lit(*date_to))),
+                        .and(col(&self.date_field_name).lt_eq(lit(*date_to)))
+                        .and(col(origin_field_name).is_not_null()),
                 )
                 .collect()
             {

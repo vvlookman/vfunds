@@ -2,15 +2,15 @@ title = "持有满足一定条件且溢价最高的可转债"
 
 [[rules]]
 name = "hold_top_conv_bond"
-frequency = "4w"
+frequency = "1w"
 
 [rules.options]
-filter_issue_size_floor = 1
-filter_min_remaining_days = 30
-limit = 5
+filter_issue_size_floor = 2
+filter_min_remaining_days = 90
+limit = 3
 
 [rules.search]
-frequency = ["1w", "2w", "4w", "3m"]
-filter_issue_size_floor = [0.25, 0.5, 1, 2]
-limit = [3, 5, 10]
-filter_min_remaining_days = [0, 30, 60, 90, 120]
+# frequency = ["1w", "2w", "4w", "3m"]
+filter_issue_size_floor = [0.5, 1, 2, 3, 4]
+limit = [2, 3, 5, 10]
+filter_min_remaining_days = [0, 10, 30, 90, 180]
