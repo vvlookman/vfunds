@@ -1,4 +1,5 @@
-title = "持有中证A500中股息率最高的股票"
+title = "高股息"
+description = "持有中证A500中股息率最高的股票"
 
 [[ticker_sources]]
 source = "000510.CSI"

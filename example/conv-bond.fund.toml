@@ -1,4 +1,5 @@
-title = "持有满足一定条件且最有性价比的可转债"
+title = "高性价比可转债"
+description = "持有满足一定条件且最有性价比的可转债"
 
 [[rules]]
 name = "hold_top_conv_bond"

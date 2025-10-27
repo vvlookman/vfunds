@@ -1,4 +1,5 @@
-title = "基金组合FOF"
+title = "A FOF"
+description = "基金按权重进行组合"
 
 [funds]
 conv-bond = 4

@@ -24,11 +24,16 @@ impl ListCommand {
                 } else {
                     let mut table_data: Vec<Vec<String>> = vec![];
                     for (vfund_name, vfund) in vfunds {
-                        let title = match vfund {
-                            Vfund::Fof(fof_definition) => fof_definition.title,
-                            Vfund::Fund(fund_definition) => fund_definition.title,
+                        let (title, description) = match vfund {
+                            Vfund::Fof(f) => (f.title, f.description),
+                            Vfund::Fund(f) => (f.title, f.description),
                         };
-                        table_data.push(vec![vfund_name, title]);
+
+                        table_data.push(vec![
+                            vfund_name,
+                            title,
+                            description.unwrap_or("-".to_string()),
+                        ]);
                     }
 
                     let mut table = tabled::builder::Builder::from_iter(&table_data).build();

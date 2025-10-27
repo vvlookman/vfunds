@@ -12,6 +12,7 @@ use crate::{
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct FofDefinition {
     pub title: String,
+    pub description: Option<String>,
 
     #[serde(default)]
     pub funds: HashMap<String, f64>,
@@ -23,6 +24,7 @@ pub struct FofDefinition {
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
+    pub description: Option<String>,
 
     #[serde(default)]
     pub tickers: TickersDefinition,

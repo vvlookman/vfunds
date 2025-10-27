@@ -1,4 +1,5 @@
-title = "根据MACD对美国ETF进行调仓"
+title = "金叉美国"
+description = "根据MACD对美国ETF进行调仓"
 
 tickers = [
   "513100", # 纳斯达克100ETF
