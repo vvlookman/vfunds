@@ -201,79 +201,46 @@ impl BacktestCommand {
                     "Calmar".to_string(),
                     "Sortino".to_string(),
                 ]];
-                for (fund_name, mut stream) in streams {
+                for (vfund_name, mut stream) in streams {
                     while let Some(event) = stream.next().await {
                         match event {
                             BacktestEvent::Buy(s) => {
-                                logger.println(format!("[{fund_name}][+] {s}"));
+                                logger.println(format!("[{vfund_name}][+] {s}"));
                             }
                             BacktestEvent::Sell(s) => {
-                                logger.println(format!("[{fund_name}][-] {s}"));
+                                logger.println(format!("[{vfund_name}][-] {s}"));
                             }
                             BacktestEvent::Info(s) => {
-                                logger.println(format!("[{fund_name}][i] {}", s.bright_black()));
+                                logger.println(format!("[{vfund_name}][i] {}", s.bright_black()));
                             }
                             BacktestEvent::Toast(s) => {
-                                spinner
-                                    .set_message(format!("[{fund_name}][i] {} ", s.bright_black()));
+                                spinner.set_message(format!(
+                                    "[{vfund_name}][i] {} ",
+                                    s.bright_black()
+                                ));
                             }
-                            BacktestEvent::Result(fund_result) => {
+                            BacktestEvent::Result(backtest_result) => {
                                 if let Some(output_dir) = &self.output_dir {
                                     if !output_dir.exists() {
                                         let _ = fs::create_dir_all(output_dir);
                                     }
 
-                                    let output_daily_values =
-                                        |fund_result: &BacktestResult| -> VfResult<()> {
-                                            let path =
-                                                output_dir.join(format!("{fund_name}.values.csv"));
-                                            let mut csv_writer = csv::Writer::from_path(&path)?;
-                                            csv_writer.write_record(["date", "value"])?;
-                                            for (date, value) in &fund_result.trade_dates_value {
-                                                csv_writer.write_record(&[
-                                                    date_to_str(date),
-                                                    format!("{value:.2}"),
-                                                ])?;
-                                            }
-                                            csv_writer.flush()?;
-                                            Ok(())
-                                        };
-                                    if let Err(err) = output_daily_values(&fund_result) {
-                                        errors.insert(fund_name.to_string(), err);
-                                    }
-
-                                    let output_result =
-                                        |fund_result: &BacktestResult| -> VfResult<()> {
-                                            let result = BacktestOutputResult {
-                                                options: fund_result.options.clone(),
-                                                portfolio: BacktestOutputPortfolio {
-                                                    cash: fund_result.final_cash,
-                                                    positions_value: fund_result
-                                                        .final_positions_value
-                                                        .iter()
-                                                        .map(|(k, v)| (k.to_string(), *v))
-                                                        .collect(),
-                                                },
-                                                metrics: fund_result.metrics.clone(),
-                                            };
-
-                                            let path = output_dir
-                                                .join(format!("{fund_name}.backtest.json"));
-                                            let file = fs::File::create(path)?;
-                                            serde_json::to_writer_pretty(file, &result)?;
-
-                                            Ok(())
-                                        };
-                                    if let Err(err) = output_result(&fund_result) {
-                                        errors.insert(fund_name.to_string(), err);
+                                    if let Err(err) = api::output_backtest_result(
+                                        output_dir,
+                                        &vfund_name,
+                                        &backtest_result,
+                                    )
+                                    .await
+                                    {
+                                        errors.insert(vfund_name.to_string(), err);
                                     }
                                 }
 
                                 let BacktestResult {
                                     options, metrics, ..
-                                } = *fund_result;
+                                } = *backtest_result;
                                 table_data.push(vec![
-                                    fund_name.to_string(),
+                                    vfund_name.to_string(),
                                     metrics
                                         .last_trade_date
                                         .map(|d| date_to_str(&d))
@@ -327,14 +294,14 @@ impl BacktestCommand {
                                 ]);
                             }
                             BacktestEvent::Error(err) => {
-                                errors.insert(fund_name.to_string(), err);
+                                errors.insert(vfund_name.to_string(), err);
                             }
                         }
                     }
                 }
 
-                for (fund_name, err) in &errors {
-                    logger.println(format!("[{fund_name}][!] {}", err.to_string().red()));
+                for (vfund_name, err) in &errors {
+                    logger.println(format!("[{vfund_name}][!] {}", err.to_string().red()));
                 }
 
                 if errors.is_empty() {

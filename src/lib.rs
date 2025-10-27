@@ -18,6 +18,7 @@ macro_rules! mod_name {
 
 pub mod api;
 pub mod error;
+pub mod gui;
 pub mod spec;
 pub mod utils;
 

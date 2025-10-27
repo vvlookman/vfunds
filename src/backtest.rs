@@ -89,6 +89,7 @@ pub struct BacktestMetrics {
 
 #[derive(Clone, Debug)]
 pub struct BacktestResult {
+    pub title: Option<String>,
     pub options: BacktestOptions,
     pub final_cash: f64,
     pub final_positions_value: HashMap<Ticker, f64>,
@@ -206,6 +207,7 @@ pub async fn backtest_fof(
                 };
 
                 Ok(BacktestResult {
+                    title: Some(fof_definition.title.clone()),
                     options: options.clone(),
                     final_cash,
                     final_positions_value,
@@ -214,6 +216,7 @@ pub async fn backtest_fof(
                 })
             } else {
                 Ok(BacktestResult {
+                    title: Some(fof_definition.title.clone()),
                     options: options.clone(),
                     final_cash: options.init_cash,
                     final_positions_value: HashMap::new(),
@@ -541,6 +544,7 @@ pub async fn backtest_fund(
             .await;
 
             Ok(BacktestResult {
+                title: Some(fund_definition.title.clone()),
                 options: options.clone(),
                 final_cash,
                 final_positions_value,

@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use chrono::NaiveDate;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +13,7 @@ use crate::{
     error::*,
     spec::{FofDefinition, FundDefinition, RuleDefinition, TickersDefinition},
     utils,
+    utils::datetime::{date_from_str, date_to_str},
 };
 
 pub type BacktestEvent = backtest::BacktestEvent;
@@ -22,6 +24,7 @@ pub type BacktestStream = backtest::BacktestStream;
 
 #[derive(Serialize, Deserialize)]
 pub struct BacktestOutputResult {
+    pub title: Option<String>,
     pub options: BacktestOptions,
     pub portfolio: BacktestOutputPortfolio,
     pub metrics: BacktestMetrics,
@@ -86,9 +89,14 @@ pub async fn backtest(
     Ok(streams)
 }
 
-pub async fn backtest_results(
-    vfund_names: &[String],
+pub async fn get_workspace() -> VfResult<PathBuf> {
+    let workspace = { WORKSPACE.read().await.clone() };
+    Ok(workspace)
+}
+
+pub async fn load_backtest_results(
     output_dir: &Path,
+    vfund_names: &[String],
 ) -> VfResult<Vec<(String, BacktestOutputResult)>> {
     let mut results: Vec<(String, BacktestOutputResult)> = vec![];
 
@@ -131,9 +139,26 @@ pub async fn backtest_results(
     Ok(results)
 }
 
-pub async fn get_workspace() -> VfResult<PathBuf> {
-    let workspace = { WORKSPACE.read().await.clone() };
-    Ok(workspace)
+pub async fn load_backtest_values(
+    output_dir: &Path,
+    vfund_name: &str,
+) -> VfResult<Vec<(NaiveDate, f64)>> {
+    let mut result: Vec<(NaiveDate, f64)> = vec![];
+
+    let path = output_dir.join(format!("{vfund_name}.values.csv"));
+    let mut csv_reader = csv::Reader::from_path(&path)?;
+    for record in csv_reader.records() {
+        let row = record?;
+
+        let date_str = &row[0];
+        let value_str = &row[1];
+
+        if let (Ok(date), Ok(value)) = (date_from_str(date_str), value_str.parse::<f64>()) {
+            result.push((date, value));
+        }
+    }
+
+    Ok(result)
 }
 
 pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
@@ -192,4 +217,60 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
     }
 
     Ok(vfunds)
+}
+
+pub async fn output_backtest_result(
+    output_dir: &Path,
+    vfund_name: &str,
+    backtest_result: &BacktestResult,
+) -> VfResult<()> {
+    {
+        let result = BacktestOutputResult {
+            title: backtest_result.title.clone(),
+            options: backtest_result.options.clone(),
+            portfolio: BacktestOutputPortfolio {
+                cash: backtest_result.final_cash,
+                positions_value: backtest_result
+                    .final_positions_value
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), *v))
+                    .collect(),
+            },
+            metrics: backtest_result.metrics.clone(),
+        };
+
+        let path = output_dir.join(format!("{vfund_name}.backtest.json"));
+        let file = fs::File::create(path)?;
+        serde_json::to_writer_pretty(file, &result)?;
+    }
+
+    {
+        let path = output_dir.join(format!("{vfund_name}.values.csv"));
+
+        let mut csv_writer = csv::Writer::from_path(&path)?;
+        csv_writer.write_record(["date", "value"])?;
+        for (date, value) in &backtest_result.trade_dates_value {
+            csv_writer.write_record(&[date_to_str(date), format!("{value:.2}")])?;
+        }
+        csv_writer.flush()?;
+    }
+
+    Ok(())
+}
+
+pub async fn save_backtest_values(
+    output_dir: &Path,
+    vfund_name: &str,
+    backtest_result: &BacktestResult,
+) -> VfResult<()> {
+    let path = output_dir.join(format!("{vfund_name}.values.csv"));
+
+    let mut csv_writer = csv::Writer::from_path(&path)?;
+    csv_writer.write_record(["date", "value"])?;
+    for (date, value) in &backtest_result.trade_dates_value {
+        csv_writer.write_record(&[date_to_str(date), format!("{value:.2}")])?;
+    }
+    csv_writer.flush()?;
+
+    Ok(())
 }

@@ -1,13 +1,16 @@
 use std::path::PathBuf;
 
 use colored::Colorize;
+use eframe::{egui, icon_data};
 use tabled::settings::{
     Alignment, Color, Width,
     measurement::Percent,
     object::{Columns, Object, Rows},
     peaker::Priority,
 };
-use vfunds::{api, api::BacktestOutputResult, utils::datetime::date_to_str};
+use vfunds::{
+    api, api::BacktestOutputResult, gui::result_viewer::ResultViewer, utils::datetime::date_to_str,
+};
 
 #[derive(clap::Args)]
 pub struct ResultCommand {
@@ -16,7 +19,7 @@ pub struct ResultCommand {
         long = "fund",
         help = "Virtual fund should be shown, e.g. -f index_fund -f hedge_fund"
     )]
-    funds: Vec<String>,
+    vfund_names: Vec<String>,
 
     #[arg(
         short = 'o',
@@ -24,11 +27,17 @@ pub struct ResultCommand {
         help = "Output directory where backtest results are stored"
     )]
     output_dir: PathBuf,
+
+    #[arg(
+        short = 'g',
+        help = "Open GUI window to display additional information such as chart"
+    )]
+    gui: bool,
 }
 
 impl ResultCommand {
     pub async fn exec(&self) {
-        match api::backtest_results(&self.funds, &self.output_dir).await {
+        match api::load_backtest_results(&self.output_dir, &self.vfund_names).await {
             Ok(results) => {
                 let mut table_data: Vec<Vec<String>> = vec![vec![
                     "".to_string(),
@@ -45,7 +54,7 @@ impl ResultCommand {
                     "Calmar".to_string(),
                     "Sortino".to_string(),
                 ]];
-                for (fund_name, fund_result) in results {
+                for (fund_name, fund_result) in &results {
                     let BacktestOutputResult {
                         options, metrics, ..
                     } = fund_result;
@@ -109,6 +118,30 @@ impl ResultCommand {
                 table.modify(Columns::new(1..), Alignment::right());
                 table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
                 println!("\n{table}");
+
+                if self.gui {
+                    let icon = icon_data::from_png_bytes(include_bytes!("../../assets/icon.png"))
+                        .unwrap_or_default();
+
+                    let options = eframe::NativeOptions {
+                        viewport: egui::ViewportBuilder::default()
+                            .with_icon(icon)
+                            .with_maximized(true),
+                        ..Default::default()
+                    };
+
+                    let _ = eframe::run_native(
+                        "Vfunds Result Viewer",
+                        options,
+                        Box::new(|cc| {
+                            Ok(Box::new(ResultViewer::new(
+                                cc,
+                                &self.output_dir,
+                                &self.vfund_names,
+                            )))
+                        }),
+                    );
+                }
             }
             Err(err) => {
                 println!("[!] {}", err.to_string().red());
