@@ -10,7 +10,7 @@ use tabled::settings::{
 use vfunds::{api, api::BacktestOutputResult, utils::datetime::date_to_str};
 
 #[derive(clap::Args)]
-pub struct ShowCommand {
+pub struct ResultCommand {
     #[arg(
         short = 'f',
         long = "fund",
@@ -26,7 +26,7 @@ pub struct ShowCommand {
     output_dir: PathBuf,
 }
 
-impl ShowCommand {
+impl ResultCommand {
     pub async fn exec(&self) {
         match api::backtest_results(&self.funds, &self.output_dir).await {
             Ok(results) => {
