@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{Days, NaiveDate};
 use eframe::egui;
-use egui_plot::{Corner, Legend, Line, Plot};
+use egui_plot::{Corner, Legend, Line, Plot, Points};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -24,7 +24,9 @@ pub struct ResultViewer {
 
     plot_start_date: Option<NaiveDate>,
     plot_values_points: HashMap<String, Vec<[f64; 2]>>,
+    plot_orders_points: HashMap<String, Vec<[f64; 2]>>,
 
+    show_orders: bool,
     warning_message: Option<String>,
 }
 
@@ -37,12 +39,38 @@ enum LoadEvent {
 
 impl ResultViewer {
     pub fn new(cc: &eframe::CreationContext, result_dir: &Path, vfund_names: &[String]) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        {
+            let font_name = "Noto Sans Mono";
+
+            fonts.font_data.insert(
+                font_name.to_owned(),
+                egui::FontData::from_static(include_bytes!(
+                    "../../assets/NotoSansMonoCJKsc-Regular.otf"
+                ))
+                .into(),
+            );
+
+            fonts
+                .families
+                .entry(egui::FontFamily::Proportional)
+                .or_default()
+                .insert(0, font_name.to_owned());
+
+            fonts
+                .families
+                .entry(egui::FontFamily::Monospace)
+                .or_default()
+                .insert(0, font_name.to_owned());
+        }
+
+        cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
 
         let (load_event_sender, load_event_receiver) =
             mpsc::channel::<LoadEvent>(CHANNEL_BUFFER_DEFAULT);
 
-        Self {
+        let mut app = Self {
             result_dir: result_dir.to_path_buf(),
             vfund_names: vfund_names.to_vec(),
 
@@ -52,15 +80,28 @@ impl ResultViewer {
 
             plot_start_date: None,
             plot_values_points: HashMap::new(),
+            plot_orders_points: HashMap::new(),
 
+            show_orders: true,
             warning_message: None,
+        };
+
+        if let Some(storage) = cc.storage {
+            if let Some(show_orders_str) = storage.get_string("show_orders") {
+                if let Ok(v) = show_orders_str.parse() {
+                    app.show_orders = v;
+                }
+            }
         }
+
+        app
     }
 
     fn load_results(&mut self) {
         self.warning_message = None;
 
         self.plot_values_points.clear();
+        self.plot_orders_points.clear();
 
         let result_dir = self.result_dir.clone();
         let vfund_names = self.vfund_names.clone();
@@ -101,16 +142,23 @@ impl ResultViewer {
                     .min();
 
                 if let Some(plot_start_date) = self.plot_start_date {
-                    for (vfund_name, _, daily_values) in &results {
+                    for (vfund_name, output_result, daily_values) in &results {
                         let mut values_points: Vec<[f64; 2]> = vec![];
+                        let mut orders_points: Vec<[f64; 2]> = vec![];
 
                         for (date, value) in daily_values {
                             let x = (*date - plot_start_date).num_days() as f64;
                             values_points.push([x, *value]);
+
+                            if output_result.order_dates.contains(date) {
+                                orders_points.push([x, *value]);
+                            }
                         }
 
                         self.plot_values_points
                             .insert(vfund_name.to_string(), values_points);
+                        self.plot_orders_points
+                            .insert(vfund_name.to_string(), orders_points);
                     }
                 }
 
@@ -143,9 +191,13 @@ impl eframe::App for ResultViewer {
                 .show_separator_line(false)
                 .show_inside(ui, |ui| {
                     ui.horizontal_centered(|ui| {
-                        if ui.button("↻ Refresh").clicked() {
-                            self.load_results();
-                        }
+                        ui.checkbox(&mut self.show_orders, "Show Orders");
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("↻ Refresh").clicked() {
+                                self.load_results();
+                            }
+                        });
                     });
                 });
 
@@ -192,6 +244,9 @@ impl eframe::App for ResultViewer {
                             }
                         }
                     })
+                    .allow_scroll(false)
+                    .show_grid(false)
+                    .y_axis_label("$")
                     .legend(Legend::default().position(Corner::LeftTop))
                     .show(ui, |plot_ui| {
                         for (vfund_name, points) in &self.plot_values_points {
@@ -213,16 +268,23 @@ impl eframe::App for ResultViewer {
                             );
                         }
 
-                        // if !self.plot_order_points.is_empty() {
-                        // plot_ui.points(
-                        //     Points::new(self.plot_order_points.clone())
-                        //         .color(egui::Color32::GOLD)
-                        //         .radius(2.8),
-                        // );
-                        // }
+                        if self.show_orders {
+                            for (_, points) in &self.plot_orders_points {
+                                plot_ui.points(
+                                    Points::new("", points.clone())
+                                        .radius(1.6)
+                                        .color(egui::Color32::GOLD),
+                                );
+                            }
+                        }
                     });
             });
         });
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        storage.set_string("show_orders", self.show_orders.to_string());
+        storage.flush();
     }
 }
 

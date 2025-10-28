@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -54,8 +54,6 @@ pub struct BacktestOptions {
     pub broker_commission_min_fee: f64,
 
     #[serde(skip)]
-    pub benchmark: Option<String>,
-    #[serde(skip)]
     pub cv_search: bool,
     #[serde(skip)]
     pub cv_window: bool,
@@ -94,6 +92,7 @@ pub struct BacktestResult {
     pub final_cash: f64,
     pub final_positions_value: HashMap<Ticker, f64>,
     pub metrics: BacktestMetrics,
+    pub order_dates: Vec<NaiveDate>,
     pub trade_dates_value: Vec<(NaiveDate, f64)>,
 }
 
@@ -101,6 +100,7 @@ pub struct FundBacktestContext<'a> {
     pub options: &'a BacktestOptions,
     pub fund_definition: &'a FundDefinition,
     pub portfolio: &'a mut Portfolio,
+    pub order_dates: &'a mut HashSet<NaiveDate>,
 }
 
 pub async fn backtest_fof(
@@ -191,15 +191,30 @@ pub async fn backtest_fof(
                 )
                 .await;
 
+                let order_dates: Vec<NaiveDate> = {
+                    let mut order_dates_set: HashSet<NaiveDate> = HashSet::new();
+
+                    for (_, fund_result) in &funds_result {
+                        for date in &fund_result.order_dates {
+                            order_dates_set.insert(*date);
+                        }
+                    }
+
+                    let mut order_dates: Vec<NaiveDate> = order_dates_set.into_iter().collect();
+                    order_dates.sort_unstable();
+
+                    order_dates
+                };
+
                 let trade_dates_value: Vec<(NaiveDate, f64)> = {
                     let mut trade_dates_value_map: BTreeMap<NaiveDate, f64> = BTreeMap::new();
 
-                    for (_, fund_result) in funds_result {
-                        for (date, value) in fund_result.trade_dates_value {
+                    for (_, fund_result) in &funds_result {
+                        for (date, value) in &fund_result.trade_dates_value {
                             trade_dates_value_map
-                                .entry(date)
+                                .entry(*date)
                                 .and_modify(|v| *v += value)
-                                .or_insert(value);
+                                .or_insert(*value);
                         }
                     }
 
@@ -212,6 +227,7 @@ pub async fn backtest_fof(
                     final_cash,
                     final_positions_value,
                     metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
+                    order_dates,
                     trade_dates_value,
                 })
             } else {
@@ -221,6 +237,7 @@ pub async fn backtest_fof(
                     final_cash: options.init_cash,
                     final_positions_value: HashMap::new(),
                     metrics: BacktestMetrics::default(),
+                    order_dates: vec![],
                     trade_dates_value: vec![],
                 })
             }
@@ -483,6 +500,7 @@ pub async fn backtest_fund(
                 fund_definition,
                 options,
                 portfolio: &mut Portfolio::new(options.init_cash),
+                order_dates: &mut HashSet::new(),
             };
 
             let mut rules = fund_definition
@@ -543,12 +561,16 @@ pub async fn backtest_fund(
             )
             .await;
 
+            let mut order_dates: Vec<NaiveDate> = context.order_dates.iter().copied().collect();
+            order_dates.sort_unstable();
+
             Ok(BacktestResult {
                 title: Some(fund_definition.title.clone()),
                 options: options.clone(),
                 final_cash,
                 final_positions_value,
                 metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
+                order_dates,
                 trade_dates_value,
             })
         };
@@ -1037,6 +1059,7 @@ impl FundBacktestContext<'_> {
                         .and_modify(|v| *v += buy_units as u64)
                         .or_insert(buy_units as u64);
 
+                    self.order_dates.insert(*date);
                     let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
                                     "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
@@ -1084,6 +1107,7 @@ impl FundBacktestContext<'_> {
                 }
                 self.portfolio.positions.remove(ticker);
 
+                self.order_dates.insert(*date);
                 let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
@@ -1176,6 +1200,7 @@ impl FundBacktestContext<'_> {
                         .and_modify(|v| *v += buy_units as u64)
                         .or_insert(buy_units as u64);
 
+                    self.order_dates.insert(*date);
                     let _ = event_sender
                                 .send(BacktestEvent::Buy(format!(
                                     "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
@@ -1208,6 +1233,7 @@ impl FundBacktestContext<'_> {
                             .and_modify(|v| *v -= sell_units as u64);
                     }
 
+                    self.order_dates.insert(*date);
                     let _ = event_sender
                                 .send(BacktestEvent::Sell(format!(
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"

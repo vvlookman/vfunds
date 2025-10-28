@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     WORKSPACE, backtest,
     error::*,
-    spec::{FofDefinition, FundDefinition, RuleDefinition, TickersDefinition},
+    spec::{FofDefinition, FundDefinition},
     utils,
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -28,6 +28,9 @@ pub struct BacktestOutputResult {
     pub options: BacktestOptions,
     pub portfolio: BacktestOutputPortfolio,
     pub metrics: BacktestMetrics,
+
+    #[serde(default)]
+    pub order_dates: Vec<NaiveDate>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -59,21 +62,6 @@ pub async fn backtest(
                 message: format!("Vfund '{name}' not exists"),
             });
         }
-    }
-
-    if let Some(benchmark_str) = &options.benchmark {
-        let fund_definition = FundDefinition {
-            title: format!("Benchmark: {benchmark_str}"),
-            tickers: TickersDefinition::Array(vec![benchmark_str.to_string()]),
-            rules: vec![RuleDefinition {
-                name: "hold".to_string(),
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-
-        let stream = backtest::backtest_fund(&fund_definition, options).await?;
-        streams.push((format!("*{benchmark_str}*"), stream));
     }
 
     for (vfund_name, vfund) in vfunds {
@@ -237,6 +225,7 @@ pub async fn output_backtest_result(
                     .collect(),
             },
             metrics: backtest_result.metrics.clone(),
+            order_dates: backtest_result.order_dates.clone(),
         };
 
         let path = output_dir.join(format!("{vfund_name}.backtest.json"));
@@ -254,23 +243,6 @@ pub async fn output_backtest_result(
         }
         csv_writer.flush()?;
     }
-
-    Ok(())
-}
-
-pub async fn save_backtest_values(
-    output_dir: &Path,
-    vfund_name: &str,
-    backtest_result: &BacktestResult,
-) -> VfResult<()> {
-    let path = output_dir.join(format!("{vfund_name}.values.csv"));
-
-    let mut csv_writer = csv::Writer::from_path(&path)?;
-    csv_writer.write_record(["date", "value"])?;
-    for (date, value) in &backtest_result.trade_dates_value {
-        csv_writer.write_record(&[date_to_str(date), format!("{value:.2}")])?;
-    }
-    csv_writer.flush()?;
 
     Ok(())
 }

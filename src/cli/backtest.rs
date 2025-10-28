@@ -12,11 +12,8 @@ use tabled::settings::{
 use tokio::time::Duration;
 use vfunds::{
     api,
-    api::{
-        BacktestEvent, BacktestOptions, BacktestOutputPortfolio, BacktestOutputResult,
-        BacktestResult,
-    },
-    error::{VfError, VfResult},
+    api::{BacktestEvent, BacktestOptions, BacktestResult},
+    error::VfError,
     utils::datetime::{date_from_str, date_to_str},
 };
 
@@ -53,13 +50,6 @@ pub struct BacktestCommand {
         help = "Virtual fund requires backtesting, e.g. -f index_fund -f hedge_fund"
     )]
     funds: Vec<String>,
-
-    #[arg(
-        short = 'B',
-        long = "benchmark",
-        help = "Benchmark ticker, e.g. -B 510300"
-    )]
-    benchmark: Option<String>,
 
     #[arg(
         short = 'b',
@@ -158,7 +148,6 @@ impl BacktestCommand {
             broker_commission_rate: self.broker_commission_rate,
             broker_commission_min_fee: self.broker_commission_min_fee,
 
-            benchmark: self.benchmark.clone(),
             cv_search: self.cv_search,
             cv_window: self.cv_window,
             cv_min_window_days: self.cv_min_window_days,

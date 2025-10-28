@@ -2,9 +2,9 @@ title = "A FOF"
 description = "基金按权重进行组合"
 
 [funds]
-conv-bond = 4
+conv-bond = 1
 factors-ranker = 1
-high-dividend = 4
+high-dividend = 1
 risk-parity = 1
 
 [search]
