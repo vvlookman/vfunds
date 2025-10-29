@@ -79,7 +79,17 @@ impl Ticker {
             _ => &self.exchange,
         };
 
-        format!("{}.{}", self.symbol, suffix)
+        format!("{}.{suffix}", self.symbol)
+    }
+
+    pub fn to_sina_code(&self) -> String {
+        let prefix = match self.exchange.as_str() {
+            "XSHG" => "sh",
+            "XSHE" => "sz",
+            _ => "",
+        };
+
+        format!("{prefix}{}", self.symbol)
     }
 }
 

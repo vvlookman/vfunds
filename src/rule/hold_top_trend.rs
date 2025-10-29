@@ -14,8 +14,8 @@ use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
-        get_ticker_title,
-        stock::{StockDividendAdjust, StockKlineField, fetch_stock_kline},
+        KlineField, get_ticker_title,
+        stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -130,7 +130,7 @@ impl RuleExecutor for Executor {
                     let prices_with_date = kline.get_latest_values::<f64>(
                         date,
                         false,
-                        &StockKlineField::Close.to_string(),
+                        &KlineField::Close.to_string(),
                         lookback_trade_days as u32,
                     );
                     if prices_with_date.len() < lookback_trade_days as usize {

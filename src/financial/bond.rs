@@ -8,6 +8,7 @@ use crate::{
     data::daily::DailyDataset,
     ds::aktools,
     error::*,
+    financial::KlineField,
     ticker::Ticker,
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -115,6 +116,35 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
     Ok(result)
 }
 
+pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailyDataset> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = CONV_BOND_KLINE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = aktools::call_api(
+        "/bond_zh_hs_cov_daily",
+        &json!({
+            "symbol": ticker.to_sina_code(),
+        }),
+        None,
+        None,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(KlineField::Open.to_string(), "open".to_string());
+    fields.insert(KlineField::Close.to_string(), "close".to_string());
+    fields.insert(KlineField::High.to_string(), "high".to_string());
+    fields.insert(KlineField::Low.to_string(), "low".to_string());
+    fields.insert(KlineField::Volume.to_string(), "volume".to_string());
+
+    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    CONV_BOND_KLINE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
 pub async fn fetch_conv_bonds(
     date: &NaiveDate,
     lookback_months: u32,
@@ -168,12 +198,15 @@ static CONV_BOND_ANALYSIS_CACHE: LazyLock<DashMap<String, DailyDataset>> =
     LazyLock::new(DashMap::new);
 static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
     LazyLock::new(DashMap::new);
+static CONV_BOND_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
 static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondDetail>>> =
     LazyLock::new(DashMap::new);
 
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use chrono::Local;
 
     use super::*;
     use crate::utils::datetime::date_from_str;
@@ -201,6 +234,22 @@ mod tests {
 
         assert_eq!(detail.code, "110098");
         assert_eq!(detail.title, "南药转债");
+    }
+
+    #[tokio::test]
+    async fn test_fetch_conv_bond_kline() {
+        let ticker = Ticker::from_str("110098").unwrap();
+        let dataset = fetch_conv_bond_kline(&ticker).await.unwrap();
+
+        let (_, data) = dataset
+            .get_latest_value::<f64>(
+                &Local::now().date_naive(),
+                false,
+                &KlineField::Close.to_string(),
+            )
+            .unwrap();
+
+        assert!(data > 0.0);
     }
 
     #[tokio::test]

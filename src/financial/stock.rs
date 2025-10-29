@@ -5,7 +5,11 @@ use dashmap::DashMap;
 use serde_json::json;
 
 use crate::{
-    data::daily::*, ds::qmt, error::*, financial::sector::fetch_sector_tickers, ticker::Ticker,
+    data::daily::*,
+    ds::qmt,
+    error::*,
+    financial::{KlineField, sector::fetch_sector_tickers},
+    ticker::Ticker,
     utils::datetime::date_from_str,
 };
 
@@ -36,16 +40,6 @@ pub enum StockDividendAdjust {
 pub enum StockDividendField {
     Interest,
     PriceAdjustmentFactor,
-}
-
-#[derive(strum::Display, strum::EnumString)]
-#[strum(ascii_case_insensitive)]
-pub enum StockKlineField {
-    Open,
-    Close,
-    High,
-    Low,
-    Volume,
 }
 
 #[derive(strum::Display, strum::EnumString)]
@@ -170,11 +164,11 @@ pub async fn fetch_stock_kline(
     .await?;
 
     let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(StockKlineField::Open.to_string(), "open".to_string());
-    fields.insert(StockKlineField::Close.to_string(), "close".to_string());
-    fields.insert(StockKlineField::High.to_string(), "high".to_string());
-    fields.insert(StockKlineField::Low.to_string(), "low".to_string());
-    fields.insert(StockKlineField::Volume.to_string(), "volume".to_string());
+    fields.insert(KlineField::Open.to_string(), "open".to_string());
+    fields.insert(KlineField::Close.to_string(), "close".to_string());
+    fields.insert(KlineField::High.to_string(), "high".to_string());
+    fields.insert(KlineField::Low.to_string(), "low".to_string());
+    fields.insert(KlineField::Volume.to_string(), "volume".to_string());
 
     let result = DailyDataset::from_json(&json, "date", &fields)?;
     STOCK_KLINE_CACHE.insert(cache_key, result.clone());
@@ -365,7 +359,7 @@ mod tests {
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
                 false,
-                &StockKlineField::Close.to_string(),
+                &KlineField::Close.to_string(),
             )
             .unwrap();
 

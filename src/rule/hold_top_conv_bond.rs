@@ -10,7 +10,7 @@ use crate::{
     error::VfResult,
     financial::{
         bond::{ConvBondAnalysisField, fetch_conv_bond_analysis, fetch_conv_bonds},
-        get_ticker_title,
+        get_ticker_price, get_ticker_title,
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -96,26 +96,22 @@ impl RuleExecutor for Executor {
                     }
 
                     if let Ok(ticker) = Ticker::from_str(&conv_bond.code) {
-                        let analysis = fetch_conv_bond_analysis(&ticker).await?;
-                        if let (Some((_, conversion_premium)), Some((_, price))) = (
-                            analysis.get_latest_value::<f64>(
+                        // Some conv bond kline data is missing
+                        if let Ok(Some(price)) = get_ticker_price(&ticker, date, false, 0).await {
+                            let analysis = fetch_conv_bond_analysis(&ticker).await?;
+                            if let Some((_, conversion_premium)) = analysis.get_latest_value::<f64>(
                                 date,
                                 false,
                                 &ConvBondAnalysisField::ConversionPremium.to_string(),
-                            ),
-                            analysis.get_latest_value::<f64>(
-                                date,
-                                false,
-                                &ConvBondAnalysisField::Price.to_string(),
-                            ),
-                        ) {
-                            if conversion_premium > 0.0 && price > 0.0 {
-                                let indicator = 100.0 / (100.0 + conversion_premium);
-                                debug!(
-                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
-                                );
+                            ) {
+                                if conversion_premium > 0.0 && price > 0.0 {
+                                    let indicator = 100.0 / (100.0 + conversion_premium);
+                                    debug!(
+                                        "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
+                                    );
 
-                                indicators.push((ticker, indicator));
+                                    indicators.push((ticker, indicator));
+                                }
                             }
                         }
                     }

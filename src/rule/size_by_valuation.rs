@@ -9,9 +9,9 @@ use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
-        get_ticker_title,
+        KlineField, get_ticker_title,
         stock::{
-            StockDividendAdjust, StockKlineField, StockReportCapitalField, StockReportIncomeField,
+            StockDividendAdjust, StockReportCapitalField, StockReportIncomeField,
             StockReportPershareField, fetch_stock_kline, fetch_stock_report_capital,
             fetch_stock_report_income, fetch_stock_report_pershare,
         },
@@ -370,7 +370,7 @@ impl Executor {
                     kline.get_latest_value::<f64>(
                         &watch_date,
                         true,
-                        &StockKlineField::Close.to_string(),
+                        &KlineField::Close.to_string(),
                     ),
                     report_capital.get_latest_value::<f64>(
                         &watch_date,

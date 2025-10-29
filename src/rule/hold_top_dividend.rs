@@ -8,10 +8,13 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
-    financial::stock::{
-        StockDetail, StockDividendAdjust, StockDividendField, StockKlineField,
-        StockReportPershareField, fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline,
-        fetch_stock_report_pershare,
+    financial::{
+        KlineField,
+        stock::{
+            StockDetail, StockDividendAdjust, StockDividendField, StockReportPershareField,
+            fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline,
+            fetch_stock_report_pershare,
+        },
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
     ticker::Ticker,
@@ -87,11 +90,9 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
                 for ticker in tickers_map.keys() {
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
-                    if let Some((_, price)) = kline.get_latest_value::<f64>(
-                        date,
-                        false,
-                        &StockKlineField::Close.to_string(),
-                    ) {
+                    if let Some((_, price)) =
+                        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string())
+                    {
                         if price > 0.0 {
                             let filter_roe = if filter_roe_floor > 0.0 {
                                 let report_pershare = fetch_stock_report_pershare(ticker).await?;

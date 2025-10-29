@@ -5,8 +5,8 @@ use chrono::NaiveDate;
 use crate::{
     error::VfResult,
     financial::{
-        bond::{ConvBondAnalysisField, fetch_conv_bond_analysis, fetch_conv_bond_detail},
-        stock::{StockDividendAdjust, StockKlineField, fetch_stock_detail, fetch_stock_kline},
+        bond::{fetch_conv_bond_detail, fetch_conv_bond_kline},
+        stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
     },
     ticker::{Ticker, TickerType},
 };
@@ -16,6 +16,16 @@ pub mod index;
 pub mod sector;
 pub mod stock;
 pub mod tool;
+
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum KlineField {
+    Open,
+    Close,
+    High,
+    Low,
+    Volume,
+}
 
 #[derive(Debug, Clone)]
 pub struct Portfolio {
@@ -38,26 +48,22 @@ pub async fn get_ticker_price(
     include_today: bool,
     price_bias: i32, // >0 is high price, <0 is low price, =0 is close price
 ) -> VfResult<Option<f64>> {
+    let field = if price_bias > 0 {
+        KlineField::High
+    } else if price_bias < 0 {
+        KlineField::Low
+    } else {
+        KlineField::Close
+    };
+
     match ticker.r#type {
         TickerType::ConvBond => {
-            let analysis = fetch_conv_bond_analysis(ticker).await?;
-            Ok(analysis
-                .get_latest_value::<f64>(
-                    date,
-                    include_today,
-                    &ConvBondAnalysisField::Price.to_string(),
-                )
+            let kline = fetch_conv_bond_kline(ticker).await?;
+            Ok(kline
+                .get_latest_value::<f64>(date, include_today, &field.to_string())
                 .map(|(_, price)| price))
         }
         TickerType::Stock => {
-            let field = if price_bias > 0 {
-                StockKlineField::High
-            } else if price_bias < 0 {
-                StockKlineField::Low
-            } else {
-                StockKlineField::Close
-            };
-
             let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
             Ok(kline
                 .get_latest_value::<f64>(date, include_today, &field.to_string())
