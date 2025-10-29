@@ -5,7 +5,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::{
-    CACHE_ONLY, cache,
+    CACHE_ONLY, CONFIG, cache,
     error::{VfError, VfResult},
     utils::{compress, net::http_get},
 };
@@ -15,10 +15,8 @@ pub async fn call_api(
     params: &serde_json::Value,
     expire_days: Option<i64>,
 ) -> VfResult<serde_json::Value> {
-    let api_url = std::env::var("QMT_API")
-        .as_deref()
-        .unwrap_or("http://192.168.0.222:9000")
-        .to_string();
+    let qmt_api = { &CONFIG.read().await.qmt_api };
+    let api_url = qmt_api.to_string();
 
     let cache_key = format!("qmt:{path}?{params}");
 

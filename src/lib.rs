@@ -4,17 +4,10 @@ use std::{collections::HashMap, env, path::PathBuf, sync::LazyLock};
 
 use directories::ProjectDirs;
 use rayon::iter::*;
+use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-#[macro_export]
-macro_rules! mod_name {
-    () => {
-        std::module_path!()
-            .rsplit("::")
-            .next()
-            .unwrap_or(std::module_path!())
-    };
-}
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod api;
 pub mod error;
@@ -23,6 +16,12 @@ pub mod spec;
 pub mod utils;
 
 pub static CHANNEL_BUFFER_DEFAULT: usize = 64;
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub aktools_api: String,
+    pub qmt_api: String,
+}
 
 /// Options that each item is String in <key>:<value> format
 pub struct VecOptions<'a>(pub &'a [String]);
@@ -36,12 +35,25 @@ pub async fn init(workspace: Option<PathBuf>) {
         panic!("Initialize cache error: {err}");
     }
 
+    if let Ok(config) = confy::load_path::<Config>(&*CONFIG_PATH) {
+        *CONFIG.write().await = config;
+    }
+
     if let Some(workspace) = workspace {
         if workspace.is_dir() {
-            let mut guard = WORKSPACE.write().await;
-            *guard = workspace;
+            *WORKSPACE.write().await = workspace;
         }
     }
+}
+
+#[macro_export]
+macro_rules! mod_name {
+    () => {
+        std::module_path!()
+            .rsplit("::")
+            .next()
+            .unwrap_or(std::module_path!())
+    };
 }
 
 mod backtest;
@@ -68,10 +80,29 @@ static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
     .join("cache.db")
 });
 
+static CONFIG_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
+    match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
+        Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),
+        None => env::current_dir().expect("Unable to get current directory!"),
+    }
+    .join("config.toml")
+});
+
+static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| RwLock::new(Config::default()));
+
 static PROGRESS_INTERVAL_SECS: u64 = 1;
 
 static WORKSPACE: LazyLock<RwLock<PathBuf>> =
     LazyLock::new(|| RwLock::new(env::current_dir().expect("Unable to get current directory!")));
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            aktools_api: "http://127.0.0.1:8080".to_string(),
+            qmt_api: "http://127.0.0.1:9000".to_string(),
+        }
+    }
+}
 
 impl VecOptions<'_> {
     pub fn get(&self, name: &str) -> Option<String> {

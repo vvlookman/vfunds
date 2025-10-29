@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    WORKSPACE, backtest,
+    CONFIG, CONFIG_PATH, Config, WORKSPACE, backtest,
     error::*,
     spec::{FofDefinition, FundDefinition},
     utils,
@@ -75,6 +75,11 @@ pub async fn backtest(
     }
 
     Ok(streams)
+}
+
+pub async fn get_config() -> VfResult<Config> {
+    let config = { CONFIG.read().await.clone() };
+    Ok(config)
 }
 
 pub async fn get_workspace() -> VfResult<PathBuf> {
@@ -204,6 +209,33 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
     }
 
     Ok(vfunds)
+}
+
+pub async fn set_config(key: &str, value: &str) -> VfResult<Config> {
+    let mut config = { CONFIG.read().await.clone() };
+
+    match key.to_lowercase().as_str() {
+        "aktools_api" => {
+            config.aktools_api = value.to_string();
+        }
+        "qmt_api" => {
+            config.qmt_api = value.to_string();
+        }
+        _ => {
+            return Err(VfError::Invalid {
+                code: "INVALID_CONFIG_KEY",
+                message: format!("Invalid config key '{key}'"),
+            });
+        }
+    }
+
+    {
+        *CONFIG.write().await = config.clone();
+    }
+
+    confy::store_path(&*CONFIG_PATH, &config)?;
+
+    Ok(config)
 }
 
 pub async fn output_backtest_result(

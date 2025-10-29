@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::{
-    CACHE_ONLY, cache,
+    CACHE_ONLY, CONFIG, cache,
     error::{VfError, VfResult},
     utils::{
         compress,
@@ -21,12 +21,8 @@ pub async fn call_api(
     expire_days: Option<i64>,
     request_referer: Option<&str>,
 ) -> VfResult<serde_json::Value> {
-    let api_url = join_url(
-        std::env::var("AKTOOLS_API")
-            .as_deref()
-            .unwrap_or("http://127.0.0.1:8080"),
-        "/api/public",
-    )?;
+    let aktools_api = { &CONFIG.read().await.aktools_api };
+    let api_url = join_url(aktools_api, "/api/public")?;
 
     let cache_key = format!("aktools:{path}?{params}");
 

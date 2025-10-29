@@ -8,9 +8,7 @@ use tabled::settings::{
     object::{Columns, Object, Rows},
     peaker::Priority,
 };
-use vfunds::{
-    api, api::BacktestOutputResult, gui::result_viewer::ResultViewer, utils::datetime::date_to_str,
-};
+use vfunds::{VERSION, api, gui::result_viewer::ResultViewer, utils::datetime::date_to_str};
 
 #[derive(clap::Args)]
 pub struct ResultCommand {
@@ -55,7 +53,7 @@ impl ResultCommand {
                     "Sortino".to_string(),
                 ]];
                 for (fund_name, fund_result) in &results {
-                    let BacktestOutputResult {
+                    let api::BacktestOutputResult {
                         options, metrics, ..
                     } = fund_result;
                     table_data.push(vec![
@@ -131,7 +129,7 @@ impl ResultCommand {
                     };
 
                     let _ = eframe::run_native(
-                        "Vfunds Result Viewer",
+                        &format!("Vfunds Result Viewer {VERSION}"),
                         options,
                         Box::new(|cc| {
                             Ok(Box::new(ResultViewer::new(

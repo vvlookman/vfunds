@@ -1,6 +1,7 @@
 use clap::Subcommand;
 
 mod backtest;
+mod config;
 mod list;
 mod result;
 
@@ -9,6 +10,10 @@ pub enum Commands {
     #[command(about = "Backtest virtual funds")]
     #[clap(visible_aliases = &["test"])]
     Backtest(Box<backtest::BacktestCommand>),
+
+    #[command(about = "Show and edit configurations")]
+    #[clap(subcommand)]
+    Config(Box<config::ConfigCommand>),
 
     #[command(about = "List all virtual funds")]
     #[clap(visible_aliases = &["ls"])]
