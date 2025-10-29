@@ -129,6 +129,7 @@ impl RuleExecutor for Executor {
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
                     let prices_with_date = kline.get_latest_values::<f64>(
                         date,
+                        false,
                         &StockKlineField::Close.to_string(),
                         lookback_trade_days as u32,
                     );

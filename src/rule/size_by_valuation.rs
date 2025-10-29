@@ -336,10 +336,10 @@ impl Executor {
         let rule_name = mod_name!();
         let date_str = date_to_str(date_to);
 
-        let watch_days = date_to.signed_duration_since(*date_from).num_days() + 1;
+        let watch_days = date_to.signed_duration_since(*date_from).num_days();
         let period_count = (watch_days as f64 / watch_period_days as f64).ceil() as i64;
         for i in 0..period_count {
-            let watch_date = *date_to - Duration::days((period_count - i - 1) * watch_period_days);
+            let watch_date = *date_to - Duration::days((period_count - i) * watch_period_days);
             let watch_cache_idx =
                 (watch_date.to_epoch_days() as f64 / watch_period_days as f64).round() as i64;
 
@@ -367,19 +367,26 @@ impl Executor {
                 let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
                 if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
-                    kline.get_latest_value::<f64>(&watch_date, &StockKlineField::Close.to_string()),
+                    kline.get_latest_value::<f64>(
+                        &watch_date,
+                        true,
+                        &StockKlineField::Close.to_string(),
+                    ),
                     report_capital.get_latest_value::<f64>(
                         &watch_date,
+                        true,
                         &StockReportCapitalField::Total.to_string(),
                     ),
                     report_income.get_latest_values_with_label::<f64>(
                         &watch_date,
+                        true,
                         &StockReportIncomeField::Revenue.to_string(),
                         &StockReportIncomeField::ReportDate.to_string(),
                         5,
                     ),
                     report_pershare.get_latest_values_with_label::<f64>(
                         &watch_date,
+                        true,
                         &StockReportPershareField::Eps.to_string(),
                         &StockReportIncomeField::ReportDate.to_string(),
                         5,

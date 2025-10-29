@@ -87,15 +87,18 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
                 for ticker in tickers_map.keys() {
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
-                    if let Some((_, price)) =
-                        kline.get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
-                    {
+                    if let Some((_, price)) = kline.get_latest_value::<f64>(
+                        date,
+                        false,
+                        &StockKlineField::Close.to_string(),
+                    ) {
                         if price > 0.0 {
                             let filter_roe = if filter_roe_floor > 0.0 {
                                 let report_pershare = fetch_stock_report_pershare(ticker).await?;
                                 let roe = report_pershare
                                     .get_latest_value::<f64>(
                                         date,
+                                        false,
                                         &StockReportPershareField::RoeRate.to_string(),
                                     )
                                     .map(|(_, v)| v)

@@ -117,9 +117,8 @@ pub async fn load_backtest_results(
                 }
 
                 let content = fs::read_to_string(&entry_path)?;
-                if let Ok(result) = serde_json::from_str(&content) {
-                    results.push((vfund_name, result));
-                }
+                let result = serde_json::from_str(&content)?;
+                results.push((vfund_name, result));
             }
         }
     }

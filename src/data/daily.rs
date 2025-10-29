@@ -121,18 +121,25 @@ impl DailyDataset {
     pub fn get_latest_value<T: NumCast>(
         &self,
         date: &NaiveDate,
+        include_today: bool,
         field_name: &str,
     ) -> Option<(NaiveDate, T)> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            let filter = if include_today {
+                col(&self.date_field_name)
+                    .lt_eq(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            } else {
+                col(&self.date_field_name)
+                    .lt(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            };
+
             if let Ok(df) = self
                 .df
                 .clone()
                 .lazy()
-                .filter(
-                    col(&self.date_field_name)
-                        .lt_eq(lit(*date))
-                        .and(col(origin_field_name).is_not_null()),
-                )
+                .filter(filter)
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(true),
@@ -162,19 +169,26 @@ impl DailyDataset {
     pub fn get_latest_values<T: NumCast>(
         &self,
         date: &NaiveDate,
+        include_today: bool,
         field_name: &str,
         count: u32,
     ) -> Vec<(NaiveDate, T)> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            let filter = if include_today {
+                col(&self.date_field_name)
+                    .lt_eq(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            } else {
+                col(&self.date_field_name)
+                    .lt(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            };
+
             if let Ok(df) = self
                 .df
                 .clone()
                 .lazy()
-                .filter(
-                    col(&self.date_field_name)
-                        .lt_eq(lit(*date))
-                        .and(col(origin_field_name).is_not_null()),
-                )
+                .filter(filter)
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(false),
@@ -213,6 +227,7 @@ impl DailyDataset {
     pub fn get_latest_values_with_label<T: NumCast>(
         &self,
         date: &NaiveDate,
+        include_today: bool,
         field_name: &str,
         label_field_name: &str,
         count: u32,
@@ -221,15 +236,21 @@ impl DailyDataset {
             self.value_field_names.get(field_name),
             self.value_field_names.get(label_field_name),
         ) {
+            let filter = if include_today {
+                col(&self.date_field_name)
+                    .lt_eq(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            } else {
+                col(&self.date_field_name)
+                    .lt(lit(*date))
+                    .and(col(origin_field_name).is_not_null())
+            };
+
             if let Ok(df) = self
                 .df
                 .clone()
                 .lazy()
-                .filter(
-                    col(&self.date_field_name)
-                        .lt_eq(lit(*date))
-                        .and(col(origin_field_name).is_not_null()),
-                )
+                .filter(filter)
                 .sort(
                     [&self.date_field_name],
                     SortMultipleOptions::default().with_order_descending(false),

@@ -82,6 +82,7 @@ impl RuleExecutor for Executor {
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
+                            false,
                             &StockKlineField::Close.to_string(),
                             lookback_years as u32 * 365,
                         )
@@ -106,10 +107,14 @@ impl RuleExecutor for Executor {
                         let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
                         if let (Some((_, price)), epss) = (
-                            kline
-                                .get_latest_value::<f64>(date, &StockKlineField::Close.to_string()),
+                            kline.get_latest_value::<f64>(
+                                date,
+                                false,
+                                &StockKlineField::Close.to_string(),
+                            ),
                             report_pershare.get_latest_values_with_label::<f64>(
                                 date,
+                                false,
                                 &StockReportPershareField::Eps.to_string(),
                                 &StockReportIncomeField::ReportDate.to_string(),
                                 5,

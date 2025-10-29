@@ -103,6 +103,7 @@ impl RuleExecutor for Executor {
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
+                            false,
                             &StockKlineField::Close.to_string(),
                             lookback_trade_days as u32,
                         )

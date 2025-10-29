@@ -32,18 +32,35 @@ pub enum Prospect {
     Neutral,
 }
 
-pub async fn get_ticker_price(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
+pub async fn get_ticker_price(
+    ticker: &Ticker,
+    date: &NaiveDate,
+    include_today: bool,
+    price_bias: i32, // >0 is high price, <0 is low price, =0 is close price
+) -> VfResult<Option<f64>> {
     match ticker.r#type {
         TickerType::ConvBond => {
             let analysis = fetch_conv_bond_analysis(ticker).await?;
             Ok(analysis
-                .get_latest_value::<f64>(date, &ConvBondAnalysisField::Price.to_string())
+                .get_latest_value::<f64>(
+                    date,
+                    include_today,
+                    &ConvBondAnalysisField::Price.to_string(),
+                )
                 .map(|(_, price)| price))
         }
         TickerType::Stock => {
+            let field = if price_bias > 0 {
+                StockKlineField::High
+            } else if price_bias < 0 {
+                StockKlineField::Low
+            } else {
+                StockKlineField::Close
+            };
+
             let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
             Ok(kline
-                .get_latest_value::<f64>(date, &StockKlineField::Close.to_string())
+                .get_latest_value::<f64>(date, include_today, &field.to_string())
                 .map(|(_, price)| price))
         }
     }

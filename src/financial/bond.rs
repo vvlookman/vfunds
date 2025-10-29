@@ -186,6 +186,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &date_from_str("2025-08-08").unwrap(),
+                false,
                 &ConvBondAnalysisField::ConversionPremium.to_string(),
             )
             .unwrap();

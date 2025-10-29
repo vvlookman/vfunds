@@ -42,11 +42,16 @@ pub enum BacktestEvent {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BacktestOptions {
     pub init_cash: f64,
+
     #[serde(serialize_with = "serialize_date")]
     pub start_date: NaiveDate,
     #[serde(serialize_with = "serialize_date")]
     pub end_date: NaiveDate,
+    #[serde(default)]
+    pub pessimistic: bool,
+    #[serde(default)]
     pub buffer_ratio: f64,
+
     pub risk_free_rate: f64,
     pub stamp_duty_rate: f64,
     pub stamp_duty_min_fee: f64,
@@ -547,7 +552,7 @@ pub async fn backtest_fund(
 
             let mut final_positions_value: HashMap<Ticker, f64> = HashMap::new();
             for (ticker, units) in &context.portfolio.positions {
-                if let Some(price) = get_ticker_price(ticker, &options.end_date).await? {
+                if let Some(price) = get_ticker_price(ticker, &options.end_date, true, 0).await? {
                     let value = *units as f64 * price;
                     final_positions_value.insert(ticker.clone(), value);
                 }
@@ -870,6 +875,7 @@ impl FundBacktestContext<'_> {
 
                 let total_deploy_cash = self.portfolio.free_cash - buffer_cash;
                 if total_deploy_cash > 0.0 {
+                    let price_bias = if self.options.pessimistic { 1 } else { 0 };
                     for (ticker, units) in &self.portfolio.positions.clone() {
                         if let Some((weight, _)) = position_tickers_map.get(ticker) {
                             let deploy_cash = total_deploy_cash * weight / position_weight_sum;
@@ -877,12 +883,15 @@ impl FundBacktestContext<'_> {
                             let fee = calc_buy_fee(deploy_cash, self.options);
                             let delta_value = deploy_cash - fee;
                             if delta_value > 0.0 {
-                                if let Some(price) = get_ticker_price(ticker, date).await? {
+                                if let Some(price) =
+                                    get_ticker_price(ticker, date, true, price_bias).await?
+                                {
                                     let ticker_value = *units as f64 * price + delta_value;
 
                                     self.scale_position(
                                         ticker,
                                         ticker_value,
+                                        price_bias,
                                         date,
                                         event_sender.clone(),
                                     )
@@ -912,19 +921,23 @@ impl FundBacktestContext<'_> {
                 .map(|(_, (weight, _))| *weight)
                 .sum::<f64>();
             if position_weight_sum > 0.0 {
+                let price_bias = if self.options.pessimistic { -1 } else { 0 };
                 for (ticker, units) in &self.portfolio.positions.clone() {
                     if let Some((weight, _)) = position_tickers_map.get(ticker) {
                         let raise_cash = cash * weight / position_weight_sum;
                         let fee = calc_sell_fee(raise_cash, self.options);
                         let delta_value = raise_cash + fee;
 
-                        if let Some(price) = get_ticker_price(ticker, date).await? {
+                        if let Some(price) =
+                            get_ticker_price(ticker, date, true, price_bias).await?
+                        {
                             let sell_units = (delta_value / price).ceil().min(*units as f64);
                             let ticker_value = (*units as f64 - sell_units) * price;
                             if ticker_value > 0.0 {
                                 self.scale_position(
                                     ticker,
                                     ticker_value,
+                                    price_bias,
                                     date,
                                     event_sender.clone(),
                                 )
@@ -991,28 +1004,34 @@ impl FundBacktestContext<'_> {
                             .entry(ticker.clone())
                             .and_modify(|v| *v += delta_cash);
                     } else {
-                        self.scale_position(ticker, ticker_value, date, event_sender.clone())
-                            .await?;
+                        let mut price_bias = 0;
+                        if self.options.pessimistic {
+                            if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
+                                if let Some(current_ticker_value) = self
+                                    .portfolio
+                                    .positions
+                                    .get(ticker)
+                                    .map(|units| *units as f64 * price)
+                                {
+                                    if ticker_value > current_ticker_value {
+                                        price_bias = 1;
+                                    } else if ticker_value < current_ticker_value {
+                                        price_bias = -1;
+                                    }
+                                }
+                            }
+                        }
+
+                        self.scale_position(
+                            ticker,
+                            ticker_value,
+                            price_bias,
+                            date,
+                            event_sender.clone(),
+                        )
+                        .await?;
                     }
                 }
-            }
-        }
-
-        let total_value = self.calc_total_value(date).await?;
-
-        let mut position_strs: Vec<String> = vec![];
-        for (ticker, position_units) in self.portfolio.positions.iter() {
-            let ticker_title = get_ticker_title(ticker).await?;
-
-            if let Some(price) = get_ticker_price(ticker, date).await? {
-                let value = *position_units as f64 * price;
-                let value_pct = value / total_value * 100.0;
-
-                position_strs.push(format!(
-                    "{ticker}({ticker_title})=${value:.2}({value_pct:.2}%)"
-                ));
-            } else {
-                position_strs.push(format!("{ticker}({ticker_title})=$?"));
             }
         }
 
@@ -1020,7 +1039,7 @@ impl FundBacktestContext<'_> {
 
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
         for (ticker, position_units) in self.portfolio.positions.iter() {
-            if let Some(price) = get_ticker_price(ticker, date).await? {
+            if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
                 let value = *position_units as f64 * price;
                 positions_value.insert(ticker.clone(), value);
             }
@@ -1041,7 +1060,8 @@ impl FundBacktestContext<'_> {
             let date_str = date_to_str(date);
             let ticker_title = get_ticker_title(ticker).await?;
 
-            if let Some(price) = get_ticker_price(ticker, date).await? {
+            let price_bias = if self.options.pessimistic { 1 } else { 0 };
+            if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
                 let delta_value = reserved_cash - calc_buy_fee(*reserved_cash, self.options);
 
                 let buy_units = (delta_value / price).floor();
@@ -1090,7 +1110,8 @@ impl FundBacktestContext<'_> {
             let date_str = date_to_str(date);
             let ticker_title = get_ticker_title(ticker).await?;
 
-            if let Some(price) = get_ticker_price(ticker, date).await? {
+            let price_bias = if self.options.pessimistic { -1 } else { 0 };
+            if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
                 let sell_units = position_units as f64;
                 let value = sell_units * price;
                 let fee = calc_sell_fee(value, self.options);
@@ -1146,7 +1167,7 @@ impl FundBacktestContext<'_> {
         let mut total_value: f64 = self.calc_total_cash().await?;
 
         for (ticker, units) in &self.portfolio.positions {
-            if let Some(price) = get_ticker_price(ticker, date).await? {
+            if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
                 total_value += *units as f64 * price;
             } else {
                 return Err(VfError::NoData {
@@ -1174,13 +1195,14 @@ impl FundBacktestContext<'_> {
         &mut self,
         ticker: &Ticker,
         ticker_value: f64,
+        price_bias: i32,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let date_str = date_to_str(date);
         let ticker_title = get_ticker_title(ticker).await?;
 
-        if let Some(price) = get_ticker_price(ticker, date).await? {
+        if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
             let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
             let position_value = position_units as f64 * price;
             let delta_value = ticker_value - position_value;

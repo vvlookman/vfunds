@@ -100,10 +100,12 @@ impl RuleExecutor for Executor {
                         if let (Some((_, conversion_premium)), Some((_, price))) = (
                             analysis.get_latest_value::<f64>(
                                 date,
+                                false,
                                 &ConvBondAnalysisField::ConversionPremium.to_string(),
                             ),
                             analysis.get_latest_value::<f64>(
                                 date,
+                                false,
                                 &ConvBondAnalysisField::Price.to_string(),
                             ),
                         ) {

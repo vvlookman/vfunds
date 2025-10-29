@@ -346,6 +346,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
+                false,
                 &StockDividendField::PriceAdjustmentFactor.to_string(),
             )
             .unwrap();
@@ -363,6 +364,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
+                false,
                 &StockKlineField::Close.to_string(),
             )
             .unwrap();

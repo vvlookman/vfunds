@@ -52,6 +52,12 @@ pub struct BacktestCommand {
     funds: Vec<String>,
 
     #[arg(
+        short = 'p',
+        help = "Buy at the highest price and sell at the lowest price during trading"
+    )]
+    pessimistic: bool,
+
+    #[arg(
         short = 'b',
         long = "buffer",
         default_value_t = 0.002,
@@ -141,6 +147,7 @@ impl BacktestCommand {
             init_cash: self.init_cash,
             start_date: self.start_date,
             end_date: self.end_date.unwrap_or(Local::now().date_naive()),
+            pessimistic: self.pessimistic,
             buffer_ratio: self.buffer_ratio,
             risk_free_rate: self.risk_free_rate,
             stamp_duty_rate: self.stamp_duty_rate,

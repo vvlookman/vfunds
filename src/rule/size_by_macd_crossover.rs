@@ -89,6 +89,7 @@ impl RuleExecutor for Executor {
             let latest_prices: Vec<f64> = kline
                 .get_latest_values::<f64>(
                     date,
+                    false,
                     &StockKlineField::Close.to_string(),
                     (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
                 )
@@ -138,6 +139,7 @@ impl RuleExecutor for Executor {
             let latest_prices: Vec<f64> = kline
                 .get_latest_values::<f64>(
                     date,
+                    false,
                     &StockKlineField::Close.to_string(),
                     (macd_period_slow + macd_period_signal + macd_slope_window) as u32,
                 )
