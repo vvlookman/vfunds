@@ -148,10 +148,11 @@ impl ResultViewer {
 
                         for (date, value) in daily_values {
                             let x = (*date - plot_start_date).num_days() as f64;
-                            values_points.push([x, *value]);
+                            let y = *value / output_result.options.init_cash * 100.0;
+                            values_points.push([x, y]);
 
                             if output_result.order_dates.contains(date) {
-                                orders_points.push([x, *value]);
+                                orders_points.push([x, y]);
                             }
                         }
 
@@ -227,57 +228,67 @@ impl eframe::App for ResultViewer {
                 });
 
             egui::CentralPanel::default().show_inside(ui, |ui| {
-                Plot::new("plot")
-                    .label_formatter(|name, point| {
-                        if name.is_empty() {
-                            "".to_string()
-                        } else {
-                            if let Some(plot_start_date) = self.plot_start_date {
+                if let Some(plot_start_date) = self.plot_start_date {
+                    let last_trade_date = self
+                        .results
+                        .iter()
+                        .filter_map(|(_, output_result, _)| output_result.metrics.last_trade_date)
+                        .max();
+
+                    Plot::new("plot")
+                        .label_formatter(|name, point| {
+                            if name.is_empty() {
+                                "".to_string()
+                            } else {
                                 format!(
-                                    "[{}] {} ${:.2}",
+                                    "[{}] {} {:.2}%",
                                     date_to_str(&(plot_start_date + Days::new(point.x as u64))),
                                     name,
                                     point.y
                                 )
-                            } else {
-                                "".to_string()
                             }
-                        }
-                    })
-                    .allow_scroll(false)
-                    .show_grid(false)
-                    .y_axis_label("$")
-                    .legend(Legend::default().position(Corner::LeftTop))
-                    .show(ui, |plot_ui| {
-                        for (vfund_name, points) in &self.plot_values_points {
-                            let name = if let Some(Some(title)) = self
-                                .results
-                                .iter()
-                                .find(|(n, _, _)| n == vfund_name)
-                                .map(|(_, output_result, _)| output_result.title.clone())
-                            {
-                                &format!("{vfund_name} [{title}]")
-                            } else {
-                                vfund_name
-                            };
+                        })
+                        .allow_scroll(false)
+                        .show_grid(false)
+                        .x_axis_label(format!(
+                            "[{}] ~ [{}]",
+                            date_to_str(&plot_start_date),
+                            last_trade_date.map_or("-".to_string(), |date| date_to_str(&date))
+                        ))
+                        .x_axis_formatter(|_, _| "".to_string())
+                        .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
+                        .legend(Legend::default().position(Corner::LeftTop))
+                        .show(ui, |plot_ui| {
+                            for (vfund_name, points) in &self.plot_values_points {
+                                let name = if let Some(Some(title)) = self
+                                    .results
+                                    .iter()
+                                    .find(|(n, _, _)| n == vfund_name)
+                                    .map(|(_, output_result, _)| output_result.title.clone())
+                                {
+                                    &format!("{vfund_name} [{title}]")
+                                } else {
+                                    vfund_name
+                                };
 
-                            plot_ui.line(
-                                Line::new(name, points.clone())
-                                    .width(1.2)
-                                    .color(str_to_color(vfund_name)),
-                            );
-                        }
-
-                        if self.show_orders {
-                            for points in self.plot_orders_points.values() {
-                                plot_ui.points(
-                                    Points::new("", points.clone())
-                                        .radius(1.6)
-                                        .color(egui::Color32::GOLD),
+                                plot_ui.line(
+                                    Line::new(name, points.clone())
+                                        .width(1.2)
+                                        .color(str_to_color(vfund_name)),
                                 );
                             }
-                        }
-                    });
+
+                            if self.show_orders {
+                                for points in self.plot_orders_points.values() {
+                                    plot_ui.points(
+                                        Points::new("", points.clone())
+                                            .radius(1.6)
+                                            .color(egui::Color32::GOLD),
+                                    );
+                                }
+                            }
+                        });
+                }
             });
         });
     }
