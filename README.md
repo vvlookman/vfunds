@@ -15,9 +15,9 @@ python proxy/qmt_http.py # Access QMT (China market data), MUST run on Windows s
 vfunds config show # Show configurations
 vfunds config set qmt_api http://192.168.0.222:9000 # Set configuration
 
-vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2019-08-08 # Run example backtest
-vfunds list -w ~/vfunds/example # List virtual funds
-vfunds result -o ~/vfunds/output # Show backtest results
+vfunds list -w ~/vfunds/example # List all virtual funds
+vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2019-08-08 # Run backtest
+vfunds result -o ~/vfunds/output -g # Show backtest result with GUI chart
 ```
 
 ## Develop
