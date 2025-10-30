@@ -5,7 +5,7 @@ use ta::{
     },
 };
 
-use crate::utils::stats;
+use crate::utils::{stats, stats::slope};
 
 const DAYS_PER_YEAR: f64 = 365.2425;
 const TRADE_DAYS_PER_YEAR: f64 = 252.0;
@@ -83,16 +83,9 @@ pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
     None
 }
 
-pub fn calc_momentum(daily_values: &[f64]) -> Option<f64> {
-    if daily_values.len() > 1 {
-        let daily_return = stats::pct_change(daily_values);
-
-        if let Some(slope) = stats::slope(&daily_return) {
-            return Some(slope);
-        }
-    }
-
-    None
+pub fn calc_regression_momentum(daily_values: &[f64]) -> Option<f64> {
+    let ln_values: Vec<f64> = daily_values.iter().map(|&v| v.ln()).collect();
+    slope(&ln_values)
 }
 
 pub fn calc_profit_factor(daily_values: &[f64]) -> Option<f64> {

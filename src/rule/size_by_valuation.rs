@@ -369,24 +369,24 @@ impl Executor {
                 if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
                     kline.get_latest_value::<f64>(
                         &watch_date,
-                        true,
+                        false,
                         &KlineField::Close.to_string(),
                     ),
                     report_capital.get_latest_value::<f64>(
                         &watch_date,
-                        true,
+                        false,
                         &StockReportCapitalField::Total.to_string(),
                     ),
                     report_income.get_latest_values_with_label::<f64>(
                         &watch_date,
-                        true,
+                        false,
                         &StockReportIncomeField::Revenue.to_string(),
                         &StockReportIncomeField::ReportDate.to_string(),
                         5,
                     ),
                     report_pershare.get_latest_values_with_label::<f64>(
                         &watch_date,
-                        true,
+                        false,
                         &StockReportPershareField::Eps.to_string(),
                         &StockReportIncomeField::ReportDate.to_string(),
                         5,

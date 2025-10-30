@@ -12,27 +12,29 @@ tickers = [
   "513500", # 标普500ETF
   "518880", # 黄金ETF
   "511260", # 十年国债ETF
-  "161715", # 大宗商品LOF
+  "511180", # 可转债ETF
+  "516650", # 有色金属ETF
   "162411", # 华宝油气LOF
+  "159985", # 豆粕期货ETF
 ]
 
 [[rules]]
 name = "hold_top_factors_score"
-frequency = "1w"
+frequency = "6m"
 
 [rules.options]
-limit = 3
-lookback_trade_days = 40
-weight_max_drawdown = 5
-weight_momentum = 0
-weight_sharpe = 10
-weight_volatility = 35
+limit = 2
+lookback_trade_days = 126
+weight_max_drawdown = 0
+weight_momentum = 1
+weight_sharpe = 1
+weight_volatility = 0
 
 [rules.search]
-frequency = ["1w", "2w", "4w", "3m"]
-limit = [3, 5]
-lookback_trade_days = [35, 40, 45]
-weight_max_drawdown = [0, 5, 10]
-weight_momentum = [0, 5, 10]
-weight_sharpe = [5, 10, 15]
-weight_volatility = [30, 35, 40]
+frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
+limit = [2, 3, 4, 5]
+lookback_trade_days = [21, 63, 126, 189, 252]
+# weight_max_drawdown = [0, 1, 2]
+# weight_momentum = [0, 1, 2]
+# weight_sharpe = [0, 1, 2]
+# weight_volatility = [0, 1, 2]

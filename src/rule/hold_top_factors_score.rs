@@ -17,7 +17,8 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annualized_volatility, calc_max_drawdown, calc_momentum, calc_sharpe_ratio,
+            calc_annualized_volatility, calc_max_drawdown, calc_regression_momentum,
+            calc_sharpe_ratio,
         },
         math::normalize_zscore,
     },
@@ -120,10 +121,10 @@ impl RuleExecutor for Executor {
                     }
 
                     if let (Some(sharpe), Some(max_drawdown), Some(volatility), Some(momentum)) = (
-                        calc_sharpe_ratio(&prices, context.options.risk_free_rate),
+                        calc_sharpe_ratio(&prices, 0.0),
                         calc_max_drawdown(&prices),
                         calc_annualized_volatility(&prices),
-                        calc_momentum(&prices),
+                        calc_regression_momentum(&prices),
                     ) {
                         factors
                             .push((ticker.clone(), [sharpe, max_drawdown, volatility, momentum]));
@@ -168,10 +169,10 @@ impl RuleExecutor for Executor {
                     let volatility = normalized_factor_values[2][i];
                     let momentum = normalized_factor_values[3][i];
 
-                    let indicator = weight_sharpe * sharpe
-                        - weight_max_drawdown * max_drawdown
-                        - weight_volatility * volatility
-                        + weight_momentum * momentum;
+                    let indicator = weight_sharpe * (1.0 + sharpe.tanh())
+                        + weight_max_drawdown * (1.0 - max_drawdown.tanh())
+                        + weight_volatility * (1.0 - volatility.tanh())
+                        + weight_momentum * (1.0 + momentum.tanh());
                     debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Momentum={momentum:.4}");
 
                     (ticker.clone(), indicator)

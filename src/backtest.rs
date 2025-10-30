@@ -309,10 +309,10 @@ pub async fn backtest_fof(
                     let cv_sort = sort_cv_by_score(&cv_metrics, &options);
                     let best_score = cv_sort
                         .first()
-                        .map(|(_, score)| *score)
+                        .map(|(_, score, _, _)| *score)
                         .unwrap_or(f64::NEG_INFINITY);
 
-                    for (i, (index, score)) in cv_sort.into_iter().rev().enumerate() {
+                    for (i, (index, score, arr, sharpe)) in cv_sort.into_iter().rev().enumerate() {
                         let (funds_weight, result) = &cv_results[index];
 
                         let top = cv_results.len() - i - 1;
@@ -329,7 +329,8 @@ pub async fn backtest_fof(
 
                         let _ = sender
                             .send(BacktestEvent::Info(format!(
-                                "[CV] [{top_str}] {}",
+                                "[CV] [{top_str}] [ARR={:.2}% Sharpe={sharpe:.3}] {}",
+                                arr * 100.0,
                                 funds_weight
                                     .iter()
                                     .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
@@ -678,10 +679,10 @@ pub async fn backtest_fund(
                     let cv_sort = sort_cv_by_score(&cv_metrics, &options);
                     let best_score = cv_sort
                         .first()
-                        .map(|(_, score)| *score)
+                        .map(|(_, score, _, _)| *score)
                         .unwrap_or(f64::NEG_INFINITY);
 
-                    for (i, (index, score)) in cv_sort.into_iter().rev().enumerate() {
+                    for (i, (index, score, arr, sharpe)) in cv_sort.into_iter().rev().enumerate() {
                         let (rule_option_values, result) = &cv_results[index];
 
                         let top = cv_results.len() - i - 1;
@@ -698,7 +699,8 @@ pub async fn backtest_fund(
 
                         let _ = sender
                             .send(BacktestEvent::Info(format!(
-                                "[CV] [{top_str}] {}",
+                                "[CV] [{top_str}] [ARR={:.2}% Sharpe={sharpe:.3}] {}",
+                                arr * 100.0,
                                 rule_option_values
                                     .iter()
                                     .map(|(_, option_name, option_value)| {
@@ -1484,37 +1486,41 @@ where
 fn sort_cv_by_score(
     cv_metrics: &[BacktestMetrics],
     options: &BacktestOptions,
-) -> Vec<(usize, f64)> {
-    let normalized_arr_values = {
-        let arr_values: Vec<f64> = cv_metrics
-            .iter()
-            .map(|m| m.annualized_return_rate.unwrap_or(f64::NEG_INFINITY))
-            .collect();
-        normalize_zscore(&arr_values)
-    };
+) -> Vec<(usize, f64, f64, f64)> {
+    let arr_values: Vec<f64> = cv_metrics
+        .iter()
+        .map(|m| m.annualized_return_rate.unwrap_or(f64::NEG_INFINITY))
+        .collect();
+    let normalized_arr_values = normalize_zscore(&arr_values);
 
-    let normalized_sharpe_values = {
-        let sharpe_values: Vec<f64> = cv_metrics
-            .iter()
-            .map(|m| m.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
-            .collect();
-        normalize_zscore(&sharpe_values)
-    };
+    let sharpe_values: Vec<f64> = cv_metrics
+        .iter()
+        .map(|m| m.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
+        .collect();
+    let normalized_sharpe_values = normalize_zscore(&sharpe_values);
 
-    let scores_tuple: Vec<(f64, f64)> = normalized_arr_values
+    let scores_tuple: Vec<(f64, f64, f64, f64)> = normalized_arr_values
         .into_iter()
         .zip(normalized_sharpe_values)
+        .zip(arr_values)
+        .zip(sharpe_values)
+        .map(|(((w, x), y), z)| (w, x, y, z))
         .collect();
 
-    let mut cv_scores: Vec<(usize, f64)> = scores_tuple
+    let mut cv_scores: Vec<(usize, f64, f64, f64)> = scores_tuple
         .into_iter()
         .enumerate()
-        .map(|(index, (arr, sharpe))| {
-            (
-                index,
-                arr * options.cv_score_arr_weight + sharpe * (1.0 - options.cv_score_arr_weight),
-            )
-        })
+        .map(
+            |(index, (normalized_arr, normalized_sharpe, arr, sharpe))| {
+                (
+                    index,
+                    normalized_arr * options.cv_score_arr_weight
+                        + normalized_sharpe * (1.0 - options.cv_score_arr_weight),
+                    arr,
+                    sharpe,
+                )
+            },
+        )
         .collect();
     cv_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
