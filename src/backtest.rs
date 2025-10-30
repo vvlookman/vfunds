@@ -25,7 +25,7 @@ use crate::{
             calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
             calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
         },
-        math::normalize_min_max,
+        math::normalize_zscore,
         stats::mean,
     },
 };
@@ -65,7 +65,7 @@ pub struct BacktestOptions {
     #[serde(skip)]
     pub cv_min_window_days: u64,
     #[serde(skip)]
-    pub cv_score_sharpe_weight: f64,
+    pub cv_score_arr_weight: f64,
 }
 
 pub struct BacktestStream {
@@ -1485,35 +1485,34 @@ fn sort_cv_by_score(
     cv_metrics: &[BacktestMetrics],
     options: &BacktestOptions,
 ) -> Vec<(usize, f64)> {
-    let normalized_sharpe_values = {
-        let sharpe_values: Vec<f64> = cv_metrics
-            .iter()
-            .map(|m| m.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
-            .collect();
-        normalize_min_max(&sharpe_values)
-    };
-
     let normalized_arr_values = {
         let arr_values: Vec<f64> = cv_metrics
             .iter()
             .map(|m| m.annualized_return_rate.unwrap_or(f64::NEG_INFINITY))
             .collect();
-        normalize_min_max(&arr_values)
+        normalize_zscore(&arr_values)
     };
 
-    let scores_tuple: Vec<(f64, f64)> = normalized_sharpe_values
+    let normalized_sharpe_values = {
+        let sharpe_values: Vec<f64> = cv_metrics
+            .iter()
+            .map(|m| m.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
+            .collect();
+        normalize_zscore(&sharpe_values)
+    };
+
+    let scores_tuple: Vec<(f64, f64)> = normalized_arr_values
         .into_iter()
-        .zip(normalized_arr_values)
+        .zip(normalized_sharpe_values)
         .collect();
 
     let mut cv_scores: Vec<(usize, f64)> = scores_tuple
         .into_iter()
         .enumerate()
-        .map(|(index, (sharpe, arr))| {
+        .map(|(index, (arr, sharpe))| {
             (
                 index,
-                sharpe * options.cv_score_sharpe_weight
-                    + arr * (1.0 - options.cv_score_sharpe_weight),
+                arr * options.cv_score_arr_weight + sharpe * (1.0 - options.cv_score_arr_weight),
             )
         })
         .collect();

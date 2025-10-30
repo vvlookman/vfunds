@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     let n = values.len();
     let sum: f64 = values.iter().sum();
@@ -74,46 +72,29 @@ pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     result
 }
 
-pub fn normalize_min_max(values: &[f64]) -> Vec<f64> {
-    let computed_values: Vec<f64> = values
-        .iter()
-        .filter(|x| !x.is_nan() && !x.is_infinite())
-        .copied()
-        .collect();
+pub fn normalize_zscore(values: &[f64]) -> Vec<f64> {
+    let computed_values: Vec<f64> = values.iter().filter(|v| v.is_finite()).copied().collect();
+    if computed_values.is_empty() {
+        return values.to_vec();
+    }
 
-    let max = computed_values
+    let n = computed_values.len() as f64;
+    let mean = computed_values.iter().sum::<f64>() / n;
+    let std = (computed_values
         .iter()
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-        .unwrap_or(&1.0);
+        .map(|&v| (v - mean).powi(2))
+        .sum::<f64>()
+        / n)
+        .sqrt();
 
-    let min = computed_values
-        .iter()
-        .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-        .unwrap_or(&0.0);
-
-    let range = max - min;
-    let is_constant = range.abs() < f64::EPSILON;
-
-    values
-        .iter()
-        .map(|x| {
-            if x.is_nan() {
-                f64::NAN
-            } else {
-                match *x {
-                    f64::INFINITY => f64::INFINITY,
-                    f64::NEG_INFINITY => f64::NEG_INFINITY,
-                    _ => {
-                        if is_constant {
-                            1.0
-                        } else {
-                            (*x - *min) / range
-                        }
-                    }
-                }
-            }
-        })
-        .collect()
+    if std == 0.0 {
+        values.to_vec()
+    } else {
+        values
+            .iter()
+            .map(|&v| if v.is_finite() { (v - mean) / std } else { v })
+            .collect()
+    }
 }
 
 pub fn transpose(mat: &[Vec<f64>]) -> Vec<Vec<f64>> {
@@ -152,15 +133,15 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_min_max() {
+    fn test_normalize_zscore() {
         let values = vec![f64::NAN, f64::NEG_INFINITY, 0.0, 1.0, 2.0, f64::INFINITY];
-        let result = normalize_min_max(&values);
+        let result = normalize_zscore(&values);
 
         assert!(result[0].is_nan());
         assert_eq!(result[1], f64::NEG_INFINITY);
-        assert_eq!(result[2], 0.0);
-        assert_eq!(result[3], 0.5);
-        assert_eq!(result[4], 1.0);
+        assert!((result[2] + 1.5_f64.sqrt()).abs() < 1e-10);
+        assert!(result[3].abs() < 1e-10);
+        assert!((result[4] - 1.5_f64.sqrt()).abs() < 1e-10);
         assert_eq!(result[5], f64::INFINITY);
     }
 

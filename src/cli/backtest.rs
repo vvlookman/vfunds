@@ -134,11 +134,11 @@ pub struct BacktestCommand {
 
     #[arg(
         short = 'A',
-        long = "cv-score-sharpe-weight",
+        long = "cv-score-arr-weight",
         default_value_t = 0.6,
-        help = "score = sharpe_weight · sharpe_score + (1 - sharpe_weight) · arr_score, the default value is 0.6"
+        help = "score = arr_weight · arr_score + (1 - arr_weight) · sharpe_score, the default value is 0.6"
     )]
-    cv_score_sharpe_weight: f64,
+    cv_score_arr_weight: f64,
 }
 
 impl BacktestCommand {
@@ -158,7 +158,7 @@ impl BacktestCommand {
             cv_search: self.cv_search,
             cv_window: self.cv_window,
             cv_min_window_days: self.cv_min_window_days,
-            cv_score_sharpe_weight: self.cv_score_sharpe_weight,
+            cv_score_arr_weight: self.cv_score_arr_weight,
         };
 
         println!(

@@ -19,7 +19,7 @@ use crate::{
         financial::{
             calc_annualized_volatility, calc_max_drawdown, calc_momentum, calc_sharpe_ratio,
         },
-        math::normalize_min_max,
+        math::normalize_zscore,
     },
 };
 
@@ -154,7 +154,7 @@ impl RuleExecutor for Executor {
             let mut normalized_factor_values: Vec<Vec<f64>> = vec![];
             for j in 0..FACTORS_NUM {
                 let factor_values: Vec<f64> = factors.iter().map(|x| x.1[j]).collect();
-                normalized_factor_values.push(normalize_min_max(&factor_values));
+                normalized_factor_values.push(normalize_zscore(&factor_values));
             }
 
             let mut indicators: Vec<(Ticker, f64)> = factors
@@ -169,8 +169,8 @@ impl RuleExecutor for Executor {
                     let momentum = normalized_factor_values[3][i];
 
                     let indicator = weight_sharpe * sharpe
-                        + weight_max_drawdown * (1.0 - max_drawdown)
-                        + weight_volatility * (1.0 - volatility)
+                        - weight_max_drawdown * max_drawdown
+                        - weight_volatility * volatility
                         + weight_momentum * momentum;
                     debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Momentum={momentum:.4}");
 
