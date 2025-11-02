@@ -1,8 +1,8 @@
 title = "高收益PE比"
-description = "持有中证A500中全收益与PE比值最高的股票"
+description = "持有国证300中全收益与PE比值最高的股票"
 
 [[ticker_sources]]
-source = "000510.CSI"
+source = "399312.CNI"
 source_type = "index"
 
 [[rules]]
@@ -10,12 +10,12 @@ name = "hold_top_return_pe_ratio"
 frequency = "1y"
 
 [rules.options]
-limit = 2
-lookback_years = 2
-skip_same_sector = true
+limit = 5
+lookback_years = 1
+skip_same_sector = false
 
 [rules.search]
 frequency = ["3m", "6m", "1y"]
 limit = [2, 3, 5, 10]
-lookback_years = [2, 3, 4, 5]
+lookback_years = [1, 2, 3]
 skip_same_sector = [true, false]

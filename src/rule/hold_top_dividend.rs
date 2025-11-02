@@ -16,7 +16,9 @@ use crate::{
             fetch_stock_report_pershare,
         },
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+    },
     ticker::Ticker,
     utils::datetime::date_to_str,
 };
@@ -161,73 +163,55 @@ impl RuleExecutor for Executor {
                 .collect::<Vec<_>>();
 
             let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
-            for (ticker, _) in &top_indicators {
-                let detail = fetch_stock_detail(ticker).await?;
-                tickers_detail.insert(ticker.clone(), detail);
+            if skip_same_sector {
+                for (ticker, _) in &top_indicators {
+                    let detail = fetch_stock_detail(ticker).await?;
+                    tickers_detail.insert(ticker.clone(), detail);
+                }
             }
 
-            let mut selected_tickers: Vec<(Ticker, f64)> = vec![];
-            let mut candidate_tickers: Vec<(Ticker, f64)> = vec![];
+            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
+            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
             for (ticker, indicator) in &top_indicators {
-                if selected_tickers.len() < limit as usize {
+                if targets_indicator.len() < limit as usize {
                     if skip_same_sector
-                        && selected_tickers.iter().any(|(a, _)| {
-                            let sector_a = tickers_detail.get(a).map(|v| v.sector.as_ref());
-                            let sector_b = tickers_detail.get(ticker).map(|v| v.sector.as_ref());
-
-                            sector_a == sector_b && sector_a.is_some()
+                        && targets_indicator.iter().any(|(a, _)| {
+                            if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
+                                tickers_detail.get(a).map(|v| &v.sector),
+                                tickers_detail.get(ticker).map(|v| &v.sector),
+                            ) {
+                                sector_a == sector_b
+                            } else {
+                                false
+                            }
                         })
                     {
-                        candidate_tickers.push((ticker.clone(), *indicator));
+                        candidates_indicator.push((ticker.clone(), *indicator));
                     } else {
-                        selected_tickers.push((ticker.clone(), *indicator));
+                        targets_indicator.push((ticker.clone(), *indicator));
                     }
                 } else {
-                    candidate_tickers.push((ticker.clone(), *indicator));
+                    candidates_indicator.push((ticker.clone(), *indicator));
                 }
             }
 
-            if !selected_tickers.is_empty() {
-                let format_ticker = |(ticker, indicator): &(Ticker, f64)| {
-                    if let Some(detail) = tickers_detail.get(ticker) {
-                        let ticker_title = &detail.title;
-                        let ticker_sector = detail
-                            .sector
-                            .as_ref()
-                            .map(|v| format!("|{v}"))
-                            .unwrap_or_default();
-                        format!("{ticker}({ticker_title}{ticker_sector})={indicator:.4}")
-                    } else {
-                        format!("{ticker}={indicator:.4}")
-                    }
-                };
-
-                let selected_strs = selected_tickers
+            notify_tickers_indicator(
+                event_sender.clone(),
+                date,
+                rule_name,
+                &targets_indicator
                     .iter()
-                    .map(format_ticker)
-                    .collect::<Vec<_>>();
-                let candidate_strs = candidate_tickers
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+                &candidates_indicator
                     .iter()
-                    .map(format_ticker)
-                    .collect::<Vec<_>>();
-
-                let mut top_tickers_str = String::new();
-                top_tickers_str.push_str(&selected_strs.join(" "));
-                if !candidate_strs.is_empty() {
-                    top_tickers_str.push_str(" (");
-                    top_tickers_str.push_str(&candidate_strs.join(" "));
-                    top_tickers_str.push(')');
-                }
-
-                let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [{rule_name}] {top_tickers_str}"
-                    )))
-                    .await;
-            }
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, _) in &selected_tickers {
+            for (ticker, _) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((ticker.clone(), *weight));
                 }

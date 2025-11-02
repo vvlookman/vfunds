@@ -1230,12 +1230,6 @@ impl FundBacktestContext<'_> {
                                     "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
                                 )))
                                 .await;
-                } else {
-                    let _ = event_sender
-                        .send(BacktestEvent::Buy(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
-                        )))
-                        .await;
                 }
             } else {
                 let sell_value = delta_value.abs();
@@ -1263,12 +1257,6 @@ impl FundBacktestContext<'_> {
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
                                 )))
                                 .await;
-                } else {
-                    let _ = event_sender
-                        .send(BacktestEvent::Sell(format!(
-                            "[{date_str}] {ticker}({ticker_title}) $0 (≈{position_value})"
-                        )))
-                        .await;
                 }
             }
         } else {

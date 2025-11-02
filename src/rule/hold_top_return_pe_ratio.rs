@@ -11,11 +11,14 @@ use crate::{
     financial::{
         KlineField,
         stock::{
-            StockDetail, StockDividendAdjust, StockReportIncomeField, StockReportPershareField,
-            fetch_stock_detail, fetch_stock_kline, fetch_stock_report_pershare,
+            StockDetail, StockDividendAdjust, StockReportCapitalField, StockReportIncomeField,
+            StockReportPershareField, fetch_stock_detail, fetch_stock_kline,
+            fetch_stock_report_capital, fetch_stock_report_income, fetch_stock_report_pershare,
         },
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+    },
     ticker::Ticker,
     utils::{
         datetime::{FiscalQuarter, date_from_str, date_to_fiscal_quarter, date_to_str},
@@ -106,13 +109,27 @@ impl RuleExecutor for Executor {
                         prices.len() as u64,
                     ) {
                         let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
+                        let report_capital = fetch_stock_report_capital(ticker).await?;
+                        let report_income = fetch_stock_report_income(ticker).await?;
                         let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                        if let (Some((_, price)), epss) = (
+                        if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
                             kline.get_latest_value::<f64>(
                                 date,
                                 false,
                                 &KlineField::Close.to_string(),
+                            ),
+                            report_capital.get_latest_value::<f64>(
+                                date,
+                                false,
+                                &StockReportCapitalField::Total.to_string(),
+                            ),
+                            report_income.get_latest_values_with_label::<f64>(
+                                date,
+                                false,
+                                &StockReportIncomeField::Revenue.to_string(),
+                                &StockReportIncomeField::ReportDate.to_string(),
+                                5,
                             ),
                             report_pershare.get_latest_values_with_label::<f64>(
                                 date,
@@ -149,7 +166,34 @@ impl RuleExecutor for Executor {
                                 }
                             }
 
-                            if fiscal_epss.len() == 5 {
+                            let mut fiscal_revenues: Vec<(FiscalQuarter, f64)> = vec![];
+                            {
+                                let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
+                                for (_, revenue, report_date_label) in revenues {
+                                    if let Some(report_date_label_str) = report_date_label {
+                                        if let Ok(report_date) =
+                                            date_from_str(&report_date_label_str)
+                                        {
+                                            let fiscal_quarter =
+                                                date_to_fiscal_quarter(&report_date);
+
+                                            if let Some(current_fiscal_quarter) =
+                                                current_fiscal_quarter
+                                            {
+                                                if fiscal_quarter.prev() != current_fiscal_quarter {
+                                                    // Reports must be consistent
+                                                    break;
+                                                }
+                                            }
+
+                                            current_fiscal_quarter = Some(fiscal_quarter.clone());
+                                            fiscal_revenues.push((fiscal_quarter, revenue));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if fiscal_epss.len() == 5 && fiscal_revenues.len() == 5 {
                                 let mut eps_ttm = 0.0;
                                 for i in 1..5 {
                                     let (_, prev_eps) = &fiscal_epss[i - 1];
@@ -164,9 +208,24 @@ impl RuleExecutor for Executor {
                                     eps_ttm += quarter_eps;
                                 }
 
-                                let pe_ttm = price / eps_ttm;
+                                let mut revenue_ttm = 0.0;
+                                for i in 1..5 {
+                                    let (_, prev_revenue) = &fiscal_revenues[i - 1];
+                                    let (fiscal_quarter, revenue) = &fiscal_revenues[i];
 
-                                let indicator = arr / pe_ttm;
+                                    let quarter_revenue: f64 = if fiscal_quarter.quarter == 1 {
+                                        *revenue
+                                    } else {
+                                        revenue - prev_revenue
+                                    };
+
+                                    revenue_ttm += quarter_revenue;
+                                }
+
+                                let _pe_ttm = price / eps_ttm;
+                                let ps_ttm = price * total_captical / revenue_ttm;
+
+                                let indicator = arr / ps_ttm;
                                 debug!("[{date_str}] [{rule_name}] {ticker}={indicator:.4}");
 
                                 indicators.push((ticker.clone(), indicator));
@@ -204,73 +263,55 @@ impl RuleExecutor for Executor {
                 .collect::<Vec<_>>();
 
             let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
-            for (ticker, _) in &top_indicators {
-                let detail = fetch_stock_detail(ticker).await?;
-                tickers_detail.insert(ticker.clone(), detail);
+            if skip_same_sector {
+                for (ticker, _) in &top_indicators {
+                    let detail = fetch_stock_detail(ticker).await?;
+                    tickers_detail.insert(ticker.clone(), detail);
+                }
             }
 
-            let mut selected_tickers: Vec<(Ticker, f64)> = vec![];
-            let mut candidate_tickers: Vec<(Ticker, f64)> = vec![];
+            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
+            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
             for (ticker, indicator) in &top_indicators {
-                if selected_tickers.len() < limit as usize {
+                if targets_indicator.len() < limit as usize {
                     if skip_same_sector
-                        && selected_tickers.iter().any(|(a, _)| {
-                            let sector_a = tickers_detail.get(a).map(|v| v.sector.as_ref());
-                            let sector_b = tickers_detail.get(ticker).map(|v| v.sector.as_ref());
-
-                            sector_a == sector_b && sector_a.is_some()
+                        && targets_indicator.iter().any(|(a, _)| {
+                            if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
+                                tickers_detail.get(a).map(|v| &v.sector),
+                                tickers_detail.get(ticker).map(|v| &v.sector),
+                            ) {
+                                sector_a == sector_b
+                            } else {
+                                false
+                            }
                         })
                     {
-                        candidate_tickers.push((ticker.clone(), *indicator));
+                        candidates_indicator.push((ticker.clone(), *indicator));
                     } else {
-                        selected_tickers.push((ticker.clone(), *indicator));
+                        targets_indicator.push((ticker.clone(), *indicator));
                     }
                 } else {
-                    candidate_tickers.push((ticker.clone(), *indicator));
+                    candidates_indicator.push((ticker.clone(), *indicator));
                 }
             }
 
-            if !selected_tickers.is_empty() {
-                let format_ticker = |(ticker, indicator): &(Ticker, f64)| {
-                    if let Some(detail) = tickers_detail.get(ticker) {
-                        let ticker_title = &detail.title;
-                        let ticker_sector = detail
-                            .sector
-                            .as_ref()
-                            .map(|v| format!("|{v}"))
-                            .unwrap_or_default();
-                        format!("{ticker}({ticker_title}{ticker_sector})={indicator:.4}")
-                    } else {
-                        format!("{ticker}={indicator:.4}")
-                    }
-                };
-
-                let selected_strs = selected_tickers
+            notify_tickers_indicator(
+                event_sender.clone(),
+                date,
+                rule_name,
+                &targets_indicator
                     .iter()
-                    .map(format_ticker)
-                    .collect::<Vec<_>>();
-                let candidate_strs = candidate_tickers
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+                &candidates_indicator
                     .iter()
-                    .map(format_ticker)
-                    .collect::<Vec<_>>();
-
-                let mut top_tickers_str = String::new();
-                top_tickers_str.push_str(&selected_strs.join(" "));
-                if !candidate_strs.is_empty() {
-                    top_tickers_str.push_str(" (");
-                    top_tickers_str.push_str(&candidate_strs.join(" "));
-                    top_tickers_str.push(')');
-                }
-
-                let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [{rule_name}] {top_tickers_str}"
-                    )))
-                    .await;
-            }
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, _) in &selected_tickers {
+            for (ticker, _) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((ticker.clone(), *weight));
                 }

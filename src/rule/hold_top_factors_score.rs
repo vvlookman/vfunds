@@ -9,10 +9,12 @@ use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
-        KlineField, get_ticker_title,
+        KlineField,
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+    },
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
@@ -180,24 +182,27 @@ impl RuleExecutor for Executor {
                 .collect();
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-            let filetered_indicators = indicators.iter().take(limit as usize).collect::<Vec<_>>();
-            if !filetered_indicators.is_empty() {
-                let mut top_tickers_strs: Vec<String> = vec![];
-                for (ticker, indicator) in &filetered_indicators {
-                    let ticker_title = get_ticker_title(ticker).await.unwrap_or_default();
-                    top_tickers_strs.push(format!("{ticker}({ticker_title})={indicator:.4}"));
-                }
+            let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
 
-                let top_tickers_str = top_tickers_strs.join(" ");
-                let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [{rule_name}] {top_tickers_str}"
-                    )))
-                    .await;
-            }
+            notify_tickers_indicator(
+                event_sender.clone(),
+                date,
+                rule_name,
+                &targets_indicator
+                    .iter()
+                    .map(|&(t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+                &indicators
+                    .iter()
+                    .skip(limit as usize)
+                    .take(limit as usize)
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+            )
+            .await?;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &filetered_indicators {
+            for (ticker, indicator) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((ticker.clone(), (*weight) * (*indicator)));
                 }

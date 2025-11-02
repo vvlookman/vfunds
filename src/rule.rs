@@ -5,7 +5,10 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     backtest::{BacktestEvent, FundBacktestContext},
     error::VfResult,
+    financial::get_ticker_title,
     spec::RuleDefinition,
+    ticker::Ticker,
+    utils::datetime::date_to_str,
 };
 
 pub mod hold;
@@ -68,4 +71,49 @@ impl Rule {
     ) -> VfResult<()> {
         self.executor.exec(context, date, event_sender).await
     }
+}
+
+async fn notify_tickers_indicator(
+    event_sender: Sender<BacktestEvent>,
+    date: &NaiveDate,
+    rule_name: &str,
+    tickers_indicator: &[(Ticker, String)],
+    candidates: &[(Ticker, String)],
+) -> VfResult<()> {
+    if !tickers_indicator.is_empty() {
+        let mut strs: Vec<String> = vec![];
+        for (ticker, indicator) in tickers_indicator.iter() {
+            if let Ok(ticker_title) = get_ticker_title(ticker).await {
+                strs.push(format!("{ticker}({ticker_title})={indicator}"));
+            } else {
+                strs.push(format!("{ticker}={indicator}"));
+            }
+        }
+
+        let mut candidate_strs: Vec<String> = vec![];
+        for (ticker, indicator) in candidates.iter() {
+            if let Ok(ticker_title) = get_ticker_title(ticker).await {
+                candidate_strs.push(format!("{ticker}({ticker_title})={indicator}"));
+            } else {
+                candidate_strs.push(format!("{ticker}={indicator}"));
+            }
+        }
+
+        let mut message_str = String::new();
+        message_str.push_str(&strs.join(" "));
+        if !candidate_strs.is_empty() {
+            message_str.push_str(" [[ ");
+            message_str.push_str(&candidate_strs.join(" "));
+            message_str.push_str(" ]]");
+        }
+
+        let date_str = date_to_str(date);
+        let _ = event_sender
+            .send(BacktestEvent::Info(format!(
+                "[{date_str}] [{rule_name}] {message_str}"
+            )))
+            .await;
+    }
+
+    Ok(())
 }

@@ -7,12 +7,14 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     error::VfResult,
     financial::{
-        KlineField, get_ticker_title,
+        KlineField,
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+    },
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::constraint_array},
+    utils::{financial::calc_annualized_volatility, math::constraint_array},
 };
 
 pub struct Executor {
@@ -69,8 +71,6 @@ impl RuleExecutor for Executor {
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let date_str = date_to_str(date);
-
             let mut tickers_weight_and_inverse_vols: HashMap<Ticker, (f64, f64)> = HashMap::new();
             for (ticker, (weight, _)) in &tickers_map {
                 if context.portfolio.reserved_cash.contains_key(ticker) {
@@ -125,26 +125,23 @@ impl RuleExecutor for Executor {
                 .map(|(k, v)| (k.clone(), *v))
                 .collect();
 
+            notify_tickers_indicator(
+                event_sender.clone(),
+                date,
+                rule_name,
+                &tickers_inverse_vol_weight_adj
+                    .iter()
+                    .map(|(t, v)| (t.clone(), format!("{v:.4}")))
+                    .collect::<Vec<_>>(),
+                &[],
+            )
+            .await?;
+
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
             for (ticker, inverse_vol_weight) in &tickers_inverse_vol_weight_adj {
                 if let Some((origin_weight, _)) = tickers_weight_and_inverse_vols.get(ticker) {
                     targets_weight.push((ticker.clone(), (*origin_weight) * (*inverse_vol_weight)));
                 }
-            }
-
-            {
-                let mut tickers_strs: Vec<String> = vec![];
-                for (ticker, weight) in &targets_weight {
-                    let ticker_title = get_ticker_title(ticker).await.unwrap_or_default();
-                    tickers_strs.push(format!("{ticker}({ticker_title})={weight:.4}"));
-                }
-
-                let tickers_str = tickers_strs.join(" ");
-                let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [{rule_name}] {tickers_str}"
-                    )))
-                    .await;
             }
 
             context

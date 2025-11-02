@@ -5,7 +5,10 @@ use chrono::NaiveDate;
 use crate::{
     error::VfResult,
     financial::{
-        bond::{fetch_conv_bond_detail, fetch_conv_bond_kline},
+        bond::{
+            ConvBondAnalysisField, fetch_conv_bond_analysis, fetch_conv_bond_detail,
+            fetch_conv_bond_kline,
+        },
         stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
     },
     ticker::{Ticker, TickerType},
@@ -48,7 +51,7 @@ pub async fn get_ticker_price(
     include_today: bool,
     price_bias: i32, // >0 is high price, <0 is low price, =0 is close price
 ) -> VfResult<Option<f64>> {
-    let field = if price_bias > 0 {
+    let kline_field = if price_bias > 0 {
         KlineField::High
     } else if price_bias < 0 {
         KlineField::Low
@@ -58,15 +61,25 @@ pub async fn get_ticker_price(
 
     match ticker.r#type {
         TickerType::ConvBond => {
-            let kline = fetch_conv_bond_kline(ticker).await?;
-            Ok(kline
-                .get_latest_value::<f64>(date, include_today, &field.to_string())
-                .map(|(_, price)| price))
+            if let Ok(kline) = fetch_conv_bond_kline(ticker).await {
+                Ok(kline
+                    .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
+                    .map(|(_, price)| price))
+            } else {
+                let analysis = fetch_conv_bond_analysis(ticker).await?;
+                Ok(analysis
+                    .get_latest_value::<f64>(
+                        date,
+                        include_today,
+                        &ConvBondAnalysisField::Price.to_string(),
+                    )
+                    .map(|(_, price)| price))
+            }
         }
         TickerType::Stock => {
             let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
             Ok(kline
-                .get_latest_value::<f64>(date, include_today, &field.to_string())
+                .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
                 .map(|(_, price)| price))
         }
     }
