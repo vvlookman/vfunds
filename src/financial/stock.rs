@@ -13,7 +13,7 @@ use crate::{
     utils::datetime::date_from_str,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct StockDetail {
     pub title: String,
@@ -39,6 +39,10 @@ pub enum StockDividendAdjust {
 #[strum(ascii_case_insensitive)]
 pub enum StockDividendField {
     Interest,
+    StockBonus,
+    StockGift,
+    AllotNum,
+    AllotPrice,
     PriceAdjustmentFactor,
 }
 
@@ -125,6 +129,22 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
     fields.insert(
         StockDividendField::Interest.to_string(),
         "interest".to_string(),
+    );
+    fields.insert(
+        StockDividendField::StockBonus.to_string(),
+        "stockBonus".to_string(),
+    );
+    fields.insert(
+        StockDividendField::StockGift.to_string(),
+        "stockGift".to_string(),
+    );
+    fields.insert(
+        StockDividendField::AllotNum.to_string(),
+        "allotNum".to_string(),
+    );
+    fields.insert(
+        StockDividendField::AllotPrice.to_string(),
+        "allotPrice".to_string(),
     );
     fields.insert(
         StockDividendField::PriceAdjustmentFactor.to_string(),

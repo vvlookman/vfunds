@@ -42,31 +42,31 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let filter_max_conversion_premium = self
-            .options
-            .get("filter_max_conversion_premium")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let filter_min_remaining_days = self
-            .options
-            .get("filter_min_remaining_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(30);
-        let issue_size_quantile_floor = self
-            .options
-            .get("issue_size_quantile_floor")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.05);
         let limit = self
             .options
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
+        let max_conversion_premium = self
+            .options
+            .get("max_conversion_premium")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let max_tenor_months = self
             .options
             .get("max_tenor_months")
             .and_then(|v| v.as_u64())
             .unwrap_or(72);
+        let min_issue_size_quantile = self
+            .options
+            .get("min_issue_size_quantile")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.05);
+        let min_remaining_days = self
+            .options
+            .get("min_remaining_days")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(30);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -82,14 +82,13 @@ impl RuleExecutor for Executor {
             let date_str = date_to_str(date);
 
             let filter_analysis_date = *date - Days::new(7);
-            let filter_expire_date = *date + Days::new(filter_min_remaining_days);
+            let filter_expire_date = *date + Days::new(min_remaining_days);
 
             let conv_bonds_issue_size = conv_bonds
                 .iter()
                 .filter_map(|b| b.issue_size)
                 .collect::<Vec<_>>();
-            let filter_issue_size_floor =
-                quantile(&conv_bonds_issue_size, issue_size_quantile_floor);
+            let min_issue_size = quantile(&conv_bonds_issue_size, min_issue_size_quantile);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             {
@@ -101,8 +100,8 @@ impl RuleExecutor for Executor {
                     }
 
                     if let Some(issue_size) = conv_bond.issue_size {
-                        if let Some(filter_issue_size_floor) = filter_issue_size_floor {
-                            if issue_size < filter_issue_size_floor {
+                        if let Some(min_issue_size) = min_issue_size {
+                            if issue_size < min_issue_size {
                                 continue;
                             }
                         }
@@ -126,7 +125,7 @@ impl RuleExecutor for Executor {
                                 )
                             {
                                 if price > 0.0
-                                    && conversion_premium <= filter_max_conversion_premium
+                                    && conversion_premium <= max_conversion_premium
                                     && latest_date >= filter_analysis_date
                                 {
                                     let indicator = 100.0 / (100.0 + conversion_premium);

@@ -84,6 +84,7 @@ pub async fn get_ticker_price(
         }
     }
 }
+
 pub async fn get_ticker_title(ticker: &Ticker) -> VfResult<String> {
     match ticker.r#type {
         TickerType::ConvBond => Ok(fetch_conv_bond_detail(ticker).await?.title),

@@ -70,7 +70,7 @@ pub async fn call_api(
                     (now + Duration::days(expire_days)).naive_local()
                 } else {
                     if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
-                        let today = now.naive_local().date();
+                        let today = now.date_naive();
                         let today_close = today.and_time(market_close_time);
 
                         if now.time() < today_close.time() {

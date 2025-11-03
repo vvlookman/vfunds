@@ -43,40 +43,41 @@ pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<V
     Ok(tickers)
 }
 
-pub async fn fetch_csindex_tickers(symbol: &str) -> VfResult<Vec<Ticker>> {
-    let cache_key = symbol.to_string();
-    if let Some(result) = CSINDEX_TICKERS_CACHE.get(&cache_key) {
-        return Ok(result.clone());
-    }
+pub async fn fetch_csindex_tickers(_symbol: &str, _dafte: &NaiveDate) -> VfResult<Vec<Ticker>> {
+    unimplemented!("Unsupported get history tickers of csindex yet");
+    // let cache_key = symbol.to_string();
+    // if let Some(result) = CSINDEX_TICKERS_CACHE.get(&cache_key) {
+    //     return Ok(result.clone());
+    // }
 
-    let json = aktools::call_api(
-        "/index_stock_cons_weight_csindex",
-        &json!({
-            "symbol": symbol, // 通过 /index_stock_info 查询
-        }),
-        Some(30),
-        None,
-    )
-    .await?;
+    // let json = aktools::call_api(
+    //     "/index_stock_cons_weight_csindex",
+    //     &json!({
+    //         "symbol": symbol, // 通过 /index_stock_info 查询
+    //     }),
+    //     Some(30),
+    //     None,
+    // )
+    // .await?;
 
-    let mut tickers: Vec<Ticker> = vec![];
+    // let mut tickers: Vec<Ticker> = vec![];
 
-    if let Some(array) = json.as_array() {
-        for item in array {
-            if let Some(obj) = item.as_object() {
-                if let Some(ticker_str) = obj["成分券代码"].as_str() {
-                    if let Ok(ticker) = Ticker::from_str(ticker_str) {
-                        tickers.push(ticker);
-                    }
-                }
-            }
-        }
-    }
+    // if let Some(array) = json.as_array() {
+    //     for item in array {
+    //         if let Some(obj) = item.as_object() {
+    //             if let Some(ticker_str) = obj["成分券代码"].as_str() {
+    //                 if let Ok(ticker) = Ticker::from_str(ticker_str) {
+    //                     tickers.push(ticker);
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
-    CSINDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
+    // CSINDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
 
-    Ok(tickers)
+    // Ok(tickers)
 }
 
 static CNINDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
-static CSINDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
+// static CSINDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);

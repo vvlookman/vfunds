@@ -70,6 +70,37 @@ impl Display for Ticker {
 }
 
 impl Ticker {
+    pub fn from_qmt_str(s: &str) -> Option<Self> {
+        let s = s.trim();
+
+        if is_ascii_digits(s) {
+            let exchange = detect_ticker_exchange(s);
+            exchange.map(|exchange| Self {
+                exchange: exchange.to_string(),
+                symbol: s.to_uppercase().to_string(),
+                r#type: detect_ticker_type(s),
+            })
+        } else {
+            if let Some((symbol, qmt_exchange)) = s.rsplit_once('.') {
+                let exchange = match qmt_exchange {
+                    "SH" => "XSHG",
+                    "SZ" => "XSHE",
+                    "BJ" => "BSE",
+                    "HK" => "XHKG",
+                    _ => qmt_exchange,
+                };
+
+                Some(Self {
+                    exchange: exchange.trim().to_uppercase().to_string(),
+                    symbol: symbol.trim().to_uppercase().to_string(),
+                    r#type: detect_ticker_type(symbol),
+                })
+            } else {
+                None
+            }
+        }
+    }
+
     pub fn to_qmt_code(&self) -> String {
         let suffix = match self.exchange.as_str() {
             "XSHG" => "SH",
@@ -122,7 +153,7 @@ impl TickersIndex {
     pub async fn all_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
         let tickers = match self.provider.as_str() {
             "CNI" | "CNINDEX" => fetch_cnindex_tickers(&self.symbol, date).await?,
-            "CSI" | "CSINDEX" => fetch_csindex_tickers(&self.symbol).await?,
+            "CSI" | "CSINDEX" => fetch_csindex_tickers(&self.symbol, date).await?,
             _ => {
                 return Err(VfError::Invalid {
                     code: "UNSUPPORTED_TICKERS_INDEX",

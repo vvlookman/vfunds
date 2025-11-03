@@ -113,7 +113,13 @@ impl RuleExecutor for Executor {
                         let report_income = fetch_stock_report_income(ticker).await?;
                         let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                        if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
+                        if let (
+                            Some((_, price)),
+                            Some((_, total_captical)),
+                            revenues,
+                            epss,
+                            Some((_, bps)),
+                        ) = (
                             kline.get_latest_value::<f64>(
                                 date,
                                 false,
@@ -137,6 +143,11 @@ impl RuleExecutor for Executor {
                                 &StockReportPershareField::Eps.to_string(),
                                 &StockReportIncomeField::ReportDate.to_string(),
                                 5,
+                            ),
+                            report_pershare.get_latest_value::<f64>(
+                                date,
+                                false,
+                                &StockReportPershareField::Bps.to_string(),
                             ),
                         ) {
                             let mut fiscal_epss: Vec<(FiscalQuarter, f64)> = vec![];
@@ -224,8 +235,9 @@ impl RuleExecutor for Executor {
 
                                 let _pe_ttm = price / eps_ttm;
                                 let ps_ttm = price * total_captical / revenue_ttm;
+                                let pb = price / bps;
 
-                                let indicator = arr / ps_ttm;
+                                let indicator = arr / pb;
                                 debug!("[{date_str}] [{rule_name}] {ticker}={indicator:.4}");
 
                                 indicators.push((ticker.clone(), indicator));

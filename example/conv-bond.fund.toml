@@ -6,14 +6,14 @@ name = "hold_top_conv_bond"
 frequency = "6w"
 
 [rules.options]
-filter_max_conversion_premium = 0
-filter_min_remaining_days = 60
-issue_size_quantile_floor = 0.2
 limit = 2
+max_conversion_premium = 0
+min_issue_size_quantile = 0.2
+min_remaining_days = 60
 
 [rules.search]
 frequency = ["1w", "2w", "3w", "4w", "5w", "6w", "7w", "8w"]
-filter_max_conversion_premium = [-0.2, -0.1, 0, 0.1, 0.2]
-filter_min_remaining_days = [30, 60, 90]
-issue_size_quantile_floor = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
 limit = [2, 3, 4, 5]
+max_conversion_premium = [-0.2, -0.1, 0, 0.1, 0.2]
+min_issue_size_quantile = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+min_remaining_days = [30, 60, 90]

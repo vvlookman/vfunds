@@ -62,24 +62,24 @@ impl RuleExecutor for Executor {
             .get("lookback_years")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
-        let pe_quantile_ceil = self
+        let max_pe_quantile = self
             .options
-            .get("pe_quantile_ceil")
+            .get("max_pe_quantile")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8);
-        let pe_quantile_floor = self
+        let min_pe_quantile = self
             .options
-            .get("pe_quantile_floor")
+            .get("min_pe_quantile")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.4);
-        let ps_quantile_ceil = self
+        let max_ps_quantile = self
             .options
-            .get("ps_quantile_ceil")
+            .get("max_ps_quantile")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8);
-        let ps_quantile_floor = self
+        let min_ps_quantile = self
             .options
-            .get("ps_quantile_floor")
+            .get("min_ps_quantile")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.4);
         let ticker_watch_index = self
@@ -100,28 +100,28 @@ impl RuleExecutor for Executor {
                 panic!("lookback_years must > 0");
             }
 
-            if !(0.0..=1.0).contains(&pe_quantile_ceil) {
-                panic!("pe_quantile_ceil must >= 0 and <= 1");
+            if !(0.0..=1.0).contains(&max_pe_quantile) {
+                panic!("max_pe_quantile must >= 0 and <= 1");
             }
 
-            if !(0.0..=1.0).contains(&pe_quantile_floor) {
-                panic!("pe_quantile_floor must >= 0 and <= 1");
+            if !(0.0..=1.0).contains(&min_pe_quantile) {
+                panic!("min_pe_quantile must >= 0 and <= 1");
             }
 
-            if pe_quantile_ceil < pe_quantile_floor {
-                panic!("pe_quantile_ceil must >= pe_quantile_floor");
+            if max_pe_quantile < min_pe_quantile {
+                panic!("max_pe_quantile must >= min_pe_quantile");
             }
 
-            if !(0.0..=1.0).contains(&ps_quantile_ceil) {
-                panic!("ps_quantile_ceil must >= 0 and <= 1");
+            if !(0.0..=1.0).contains(&max_ps_quantile) {
+                panic!("max_ps_quantile must >= 0 and <= 1");
             }
 
-            if !(0.0..=1.0).contains(&ps_quantile_floor) {
-                panic!("ps_quantile_floor must >= 0 and <= 1");
+            if !(0.0..=1.0).contains(&min_ps_quantile) {
+                panic!("min_ps_quantile must >= 0 and <= 1");
             }
 
-            if ps_quantile_ceil < ps_quantile_floor {
-                panic!("ps_quantile_ceil must >= ps_quantile_floor");
+            if max_ps_quantile < min_ps_quantile {
+                panic!("max_ps_quantile must >= min_ps_quantile");
             }
 
             if watch_period_days == 0 {
@@ -213,11 +213,11 @@ impl RuleExecutor for Executor {
                             Some(ps_sell),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_ceil - 0.1).max(0.0)),
-                            quantile(&pe_values, pe_quantile_ceil),
+                            quantile(&pe_values, (max_pe_quantile - 0.1).max(0.0)),
+                            quantile(&pe_values, max_pe_quantile),
                             ps_values.last(),
-                            quantile(&ps_values, (ps_quantile_ceil - 0.1).max(0.0)),
-                            quantile(&ps_values, ps_quantile_ceil),
+                            quantile(&ps_values, (max_ps_quantile - 0.1).max(0.0)),
+                            quantile(&ps_values, max_ps_quantile),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2} ps={ps:.2}  ps_overvalued={ps_overvalued:.2} ps_sell={ps_sell:.2}"
@@ -261,11 +261,11 @@ impl RuleExecutor for Executor {
                             Some(ps_buy),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_floor + 0.1).min(1.0)),
-                            quantile(&pe_values, pe_quantile_floor),
+                            quantile(&pe_values, (min_pe_quantile + 0.1).min(1.0)),
+                            quantile(&pe_values, min_pe_quantile),
                             ps_values.last(),
-                            quantile(&ps_values, (ps_quantile_floor + 0.1).min(1.0)),
-                            quantile(&ps_values, ps_quantile_floor),
+                            quantile(&ps_values, (min_ps_quantile + 0.1).min(1.0)),
+                            quantile(&ps_values, min_ps_quantile),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2} ps={ps:.2} ps_undervalued={ps_undervalued:.2} ps_buy={ps_buy:.2}"

@@ -45,14 +45,14 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(126);
-        let weight_scale_max = self
+        let max_weight_scale = self
             .options
-            .get("weight_scale_max")
+            .get("max_weight_scale")
             .and_then(|v| v.as_f64())
             .unwrap_or(4.0);
-        let weight_scale_min = self
+        let min_weight_scale = self
             .options
-            .get("weight_scale_min")
+            .get("min_weight_scale")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.25);
         {
@@ -60,12 +60,12 @@ impl RuleExecutor for Executor {
                 panic!("lookback_trade_days must > 0");
             }
 
-            if weight_scale_max < 1.0 {
-                panic!("weight_scale_max must >= 1.0");
+            if max_weight_scale < 1.0 {
+                panic!("max_weight_scale must >= 1.0");
             }
 
-            if weight_scale_min > 1.0 {
-                panic!("weight_scale_min must <= 1.0");
+            if min_weight_scale > 1.0 {
+                panic!("min_weight_scale must <= 1.0");
             }
         }
 
@@ -106,8 +106,8 @@ impl RuleExecutor for Executor {
                 .collect();
 
             let inverse_vol_weight_baseline = 1.0 / tickers_inverse_vol_weight.len() as f64;
-            let inverse_vol_weight_min = inverse_vol_weight_baseline * weight_scale_min;
-            let inverse_vol_weight_max = inverse_vol_weight_baseline * weight_scale_max;
+            let inverse_vol_weight_min = inverse_vol_weight_baseline * min_weight_scale;
+            let inverse_vol_weight_max = inverse_vol_weight_baseline * max_weight_scale;
 
             let (tickers, inverse_vol_weights): (Vec<Ticker>, Vec<f64>) =
                 tickers_inverse_vol_weight

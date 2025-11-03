@@ -1,4 +1,4 @@
-use std::{collections::HashMap, str::FromStr, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
 use dashmap::DashMap;
 use serde_json::json;
@@ -22,7 +22,7 @@ pub async fn fetch_sector_tickers(sector_prefix: &str) -> VfResult<HashMap<Ticke
 
     if let Some(obj) = json.as_object() {
         for (ticker_str, sector) in obj {
-            if let Ok(ticker) = Ticker::from_str(ticker_str) {
+            if let Some(ticker) = Ticker::from_qmt_str(ticker_str) {
                 tickers_sector.insert(ticker, sector.to_string());
             }
         }
