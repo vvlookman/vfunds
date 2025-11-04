@@ -109,6 +109,13 @@ pub struct BacktestCommand {
     output_dir: Option<PathBuf>,
 
     #[arg(
+        short = 'n',
+        long = "number",
+        help = "Specify the tranche number of funds, useful for running multiple funds with the same configuration but different time windows"
+    )]
+    tranche_number: Option<u64>,
+
+    #[arg(
         short = 'S',
         long = "cv-search",
         group = "cv",
@@ -198,6 +205,10 @@ impl BacktestCommand {
                     "Sortino".to_string(),
                 ]];
                 for (vfund_name, mut stream) in streams {
+                    let vfund_name = self
+                        .tranche_number
+                        .map_or(vfund_name.clone(), |n| format!("{vfund_name}_{n}"));
+
                     while let Some(event) = stream.next().await {
                         match event {
                             BacktestEvent::Buy(s) => {
