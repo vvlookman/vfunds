@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CONFIG, CONFIG_PATH, Config, WORKSPACE, backtest,
+    CONFIG, CONFIG_PATH, Config, VERSION, WORKSPACE, backtest,
     error::*,
     spec::{FofDefinition, FundDefinition},
     utils,
@@ -31,6 +31,9 @@ pub struct BacktestOutputResult {
 
     #[serde(default)]
     pub order_dates: Vec<NaiveDate>,
+
+    #[serde(default)]
+    pub version: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -257,6 +260,7 @@ pub async fn output_backtest_result(
             },
             metrics: backtest_result.metrics.clone(),
             order_dates: backtest_result.order_dates.clone(),
+            version: VERSION.to_string(),
         };
 
         let path = output_dir.join(format!("{vfund_name}.backtest.json"));

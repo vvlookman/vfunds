@@ -135,7 +135,7 @@ impl RuleExecutor for Executor {
                     .collect::<Vec<_>>(),
                 &[],
             )
-            .await?;
+            .await;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
             for (ticker, inverse_vol_weight) in &tickers_inverse_vol_weight_adj {

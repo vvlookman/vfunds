@@ -14,7 +14,7 @@ pub async fn fetch_sector_tickers(sector_prefix: &str) -> VfResult<HashMap<Ticke
     let json = qmt::call_api(
         "/stocks_sector",
         &json!({"sector_prefix": sector_prefix}),
-        Some(30),
+        30,
     )
     .await?;
 

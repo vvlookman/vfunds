@@ -16,7 +16,7 @@ pub mod hold_risk_parity;
 pub mod hold_top_conv_bond;
 pub mod hold_top_dividend;
 pub mod hold_top_factors_score;
-pub mod hold_top_return_pe_ratio;
+pub mod hold_top_return_px_ratio;
 pub mod hold_top_trend;
 pub mod size_by_macd_crossover;
 pub mod size_by_valuation;
@@ -48,8 +48,8 @@ impl Rule {
             "hold_top_conv_bond" => Box::new(hold_top_conv_bond::Executor::new(definition)),
             "hold_top_dividend" => Box::new(hold_top_dividend::Executor::new(definition)),
             "hold_top_factors_score" => Box::new(hold_top_factors_score::Executor::new(definition)),
-            "hold_top_return_pe_ratio" => {
-                Box::new(hold_top_return_pe_ratio::Executor::new(definition))
+            "hold_top_return_px_ratio" => {
+                Box::new(hold_top_return_px_ratio::Executor::new(definition))
             }
             "hold_top_trend" => Box::new(hold_top_trend::Executor::new(definition)),
             "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
@@ -73,13 +73,34 @@ impl Rule {
     }
 }
 
+async fn notify_calc_progress(
+    event_sender: Sender<BacktestEvent>,
+    date: &NaiveDate,
+    rule_name: &str,
+    progress_pct: f64,
+) {
+    let date_str = date_to_str(date);
+
+    let message = if progress_pct < 100.0 {
+        format!("{progress_pct:.2}% ...")
+    } else {
+        "100%".to_string()
+    };
+
+    let _ = event_sender
+        .send(BacktestEvent::Toast(format!(
+            "[{date_str}] [{rule_name}] Σ {message}"
+        )))
+        .await;
+}
+
 async fn notify_tickers_indicator(
     event_sender: Sender<BacktestEvent>,
     date: &NaiveDate,
     rule_name: &str,
     tickers_indicator: &[(Ticker, String)],
     candidates: &[(Ticker, String)],
-) -> VfResult<()> {
+) {
     if !tickers_indicator.is_empty() {
         let mut strs: Vec<String> = vec![];
         for (ticker, indicator) in tickers_indicator.iter() {
@@ -114,6 +135,4 @@ async fn notify_tickers_indicator(
             )))
             .await;
     }
-
-    Ok(())
 }

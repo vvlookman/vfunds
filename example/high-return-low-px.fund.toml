@@ -1,0 +1,25 @@
+title = "高收益PE比"
+description = "持有国证300中全收益与PX比值最高的股票"
+
+[[ticker_sources]]
+source = "399312.CNI"
+source_type = "index"
+
+[[rules]]
+name = "hold_top_return_px_ratio"
+frequency = "1y"
+
+[rules.options]
+limit = 3
+lookback_years = 2
+min_trade_days = 126
+px = "pe"
+skip_same_sector = true
+
+[rules.search]
+frequency = ["6m", "1y", "18m", "2y"]
+limit = [3, 4, 5, 10]
+lookback_years = [1, 2, 3]
+min_trade_days = [21, 63, 126]
+px = ["pe", "ps", "pb"]
+skip_same_sector = [true, false]

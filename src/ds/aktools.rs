@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use chrono::{Datelike, Duration, Local, NaiveTime, Weekday};
 use fake_user_agent::get_rua;
 use rand::Rng;
 use serde_json::Value;
@@ -9,6 +8,7 @@ use tokio::time::sleep;
 use crate::{
     CACHE_ONLY, CONFIG, cache,
     error::{VfError, VfResult},
+    market::next_data_expire_in_china,
     utils::{
         compress,
         net::{http_get, join_url},
@@ -18,7 +18,7 @@ use crate::{
 pub async fn call_api(
     path: &str,
     params: &serde_json::Value,
-    expire_days: Option<i64>,
+    expire_days: i64,
     request_referer: Option<&str>,
 ) -> VfResult<serde_json::Value> {
     let aktools_api = { &CONFIG.read().await.aktools_api };
@@ -80,30 +80,8 @@ pub async fn call_api(
             let bytes = http_get(&api_url, Some(path), &query, &headers, 30, 3).await?;
 
             {
-                let now = Local::now();
-                let expire = if let Some(expire_days) = expire_days {
-                    (now + Duration::days(expire_days)).naive_local()
-                } else {
-                    if let Some(market_close_time) = NaiveTime::from_hms_opt(15, 0, 0) {
-                        let today = now.date_naive();
-                        let today_close = today.and_time(market_close_time);
-
-                        if now.time() < today_close.time() {
-                            today_close
-                        } else {
-                            let mut next_day = today + Duration::days(1);
-                            while matches!(next_day.weekday(), Weekday::Sat | Weekday::Sun) {
-                                next_day += Duration::days(1);
-                            }
-
-                            next_day.and_time(market_close_time)
-                        }
-                    } else {
-                        (now + Duration::days(1)).naive_local()
-                    }
-                };
-
                 let data = compress::encode(&bytes)?;
+                let expire = next_data_expire_in_china(expire_days);
                 let _ = cache::upsert(&cache_key, &data, &expire).await;
             }
 

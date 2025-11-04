@@ -44,7 +44,7 @@ pub async fn fetch_conv_bond_analysis(ticker: &Ticker) -> VfResult<DailyDataset>
         &json!({
             "symbol": ticker.symbol,
         }),
-        None,
+        0,
         None,
     )
     .await?;
@@ -88,7 +88,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
         &json!({
             "symbol": ticker.symbol,
         }),
-        Some(30),
+        30,
         None,
     )
     .await?;
@@ -127,7 +127,7 @@ pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailyDataset> {
         &json!({
             "symbol": ticker.to_sina_code(),
         }),
-        None,
+        0,
         None,
     )
     .await?;
@@ -160,7 +160,7 @@ pub async fn fetch_conv_bonds(
             "start_date": (*date - Months::new(lookback_months)).format("%Y%m%d").to_string(),
             "end_date": date.format("%Y%m%d").to_string(),
         }),
-        Some(30),
+        30,
         None,
     )
     .await?;

@@ -61,6 +61,7 @@ mod cache;
 mod data;
 mod ds;
 mod financial;
+mod market;
 mod rule;
 mod ticker;
 

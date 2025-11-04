@@ -11,18 +11,17 @@ use crate::{
     financial::{
         KlineField, get_ticker_title,
         stock::{
-            StockDividendAdjust, StockReportCapitalField, StockReportIncomeField,
-            StockReportPershareField, fetch_stock_kline, fetch_stock_report_capital,
-            fetch_stock_report_income, fetch_stock_report_pershare,
+            StockDividendAdjust, StockReportCapitalField, fetch_stock_kline,
+            fetch_stock_report_capital,
         },
+        tool::{calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
+    },
     spec::TickerSourceType,
     ticker::{Ticker, TickersIndex},
-    utils::{
-        datetime::{FiscalQuarter, date_from_str, date_to_fiscal_quarter, date_to_str},
-        stats::quantile,
-    },
+    utils::{datetime::date_to_str, stats::quantile},
 };
 
 pub struct Executor {
@@ -299,23 +298,19 @@ impl RuleExecutor for Executor {
                 calc_count += 1;
 
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                    let calc_progress_pct =
-                        calc_count as f64 / watching_tickers.len() as f64 * 100.0;
-                    let _ = event_sender
-                        .send(BacktestEvent::Toast(format!(
-                            "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
-                        )))
-                        .await;
+                    notify_calc_progress(
+                        event_sender.clone(),
+                        date,
+                        rule_name,
+                        calc_count as f64 / watching_tickers.len() as f64 * 100.0,
+                    )
+                    .await;
 
                     last_time = Instant::now();
                 }
             }
 
-            let _ = event_sender
-                .send(BacktestEvent::Toast(format!(
-                    "[{date_str}] [{rule_name}] Σ 100%"
-                )))
-                .await;
+            notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
         }
 
         Ok(())
@@ -363,10 +358,8 @@ impl Executor {
             for ticker in &tickers {
                 let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                 let report_capital = fetch_stock_report_capital(ticker).await?;
-                let report_income = fetch_stock_report_income(ticker).await?;
-                let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                if let (Some((_, price)), Some((_, total_captical)), revenues, epss) = (
+                if let (Some((_, price)), Some((_, total_captical))) = (
                     kline.get_latest_value::<f64>(
                         &watch_date,
                         false,
@@ -377,97 +370,16 @@ impl Executor {
                         false,
                         &StockReportCapitalField::Total.to_string(),
                     ),
-                    report_income.get_latest_values_with_label::<f64>(
-                        &watch_date,
-                        false,
-                        &StockReportIncomeField::Revenue.to_string(),
-                        &StockReportIncomeField::ReportDate.to_string(),
-                        5,
-                    ),
-                    report_pershare.get_latest_values_with_label::<f64>(
-                        &watch_date,
-                        false,
-                        &StockReportPershareField::Eps.to_string(),
-                        &StockReportIncomeField::ReportDate.to_string(),
-                        5,
-                    ),
                 ) {
-                    let mut fiscal_epss: Vec<(FiscalQuarter, f64)> = vec![];
-                    {
-                        let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
-                        for (_, eps, report_date_label) in epss {
-                            if let Some(report_date_label_str) = report_date_label {
-                                if let Ok(report_date) = date_from_str(&report_date_label_str) {
-                                    let fiscal_quarter = date_to_fiscal_quarter(&report_date);
+                    if let (Some(pe_ttm), Some(ps_ttm)) = (
+                        calc_stock_pe_ttm(ticker, &watch_date).await?,
+                        calc_stock_ps_ttm(ticker, &watch_date).await?,
+                    ) {
+                        let market_cap = price * total_captical;
 
-                                    if let Some(current_fiscal_quarter) = current_fiscal_quarter {
-                                        if fiscal_quarter.prev() != current_fiscal_quarter {
-                                            // Reports must be consistent
-                                            break;
-                                        }
-                                    }
-
-                                    current_fiscal_quarter = Some(fiscal_quarter.clone());
-                                    fiscal_epss.push((fiscal_quarter, eps));
-                                }
-                            }
-                        }
-                    }
-
-                    let mut fiscal_revenues: Vec<(FiscalQuarter, f64)> = vec![];
-                    {
-                        let mut current_fiscal_quarter: Option<FiscalQuarter> = None;
-                        for (_, revenue, report_date_label) in revenues {
-                            if let Some(report_date_label_str) = report_date_label {
-                                if let Ok(report_date) = date_from_str(&report_date_label_str) {
-                                    let fiscal_quarter = date_to_fiscal_quarter(&report_date);
-
-                                    if let Some(current_fiscal_quarter) = current_fiscal_quarter {
-                                        if fiscal_quarter.prev() != current_fiscal_quarter {
-                                            // Reports must be consistent
-                                            break;
-                                        }
-                                    }
-
-                                    current_fiscal_quarter = Some(fiscal_quarter.clone());
-                                    fiscal_revenues.push((fiscal_quarter, revenue));
-                                }
-                            }
-                        }
-                    }
-
-                    if fiscal_epss.len() == 5 && fiscal_revenues.len() == 5 {
-                        let mut eps_ttm = 0.0;
-                        for i in 1..5 {
-                            let (_, prev_eps) = &fiscal_epss[i - 1];
-                            let (fiscal_quarter, eps) = &fiscal_epss[i];
-
-                            let quarter_eps: f64 = if fiscal_quarter.quarter == 1 {
-                                *eps
-                            } else {
-                                eps - prev_eps
-                            };
-
-                            eps_ttm += quarter_eps;
-                        }
-
-                        let mut revenue_ttm = 0.0;
-                        for i in 1..5 {
-                            let (_, prev_revenue) = &fiscal_revenues[i - 1];
-                            let (fiscal_quarter, revenue) = &fiscal_revenues[i];
-
-                            let quarter_revenue: f64 = if fiscal_quarter.quarter == 1 {
-                                *revenue
-                            } else {
-                                revenue - prev_revenue
-                            };
-
-                            revenue_ttm += quarter_revenue;
-                        }
-
-                        market_cap_sum += price * total_captical;
-                        earning_ttm_sum += eps_ttm * total_captical;
-                        revenue_ttm_sum += revenue_ttm;
+                        market_cap_sum += market_cap;
+                        earning_ttm_sum += market_cap / pe_ttm;
+                        revenue_ttm_sum += market_cap / ps_ttm;
                     }
                 }
 

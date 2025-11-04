@@ -85,7 +85,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let json = qmt::call_api(
         &format!("/stock_detail/{}", ticker.to_qmt_code()),
         &json!({}),
-        Some(30),
+        30,
     )
     .await?;
 
@@ -121,7 +121,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
     let json = qmt::call_api(
         &format!("/stock_dividend/{}", ticker.to_qmt_code()),
         &json!({}),
-        None,
+        0,
     )
     .await?;
 
@@ -179,7 +179,7 @@ pub async fn fetch_stock_kline(
         &json!({
             "dividend_type": param_dividend_type,
         }),
-        None,
+        0,
     )
     .await?;
 
@@ -207,7 +207,7 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailyDatase
         &json!({
             "table": "Capital",
         }),
-        None,
+        0,
     )
     .await?;
 
@@ -246,7 +246,7 @@ pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailyDataset
         &json!({
             "table": "Income",
         }),
-        None,
+        0,
     )
     .await?;
 
@@ -285,7 +285,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
         &json!({
             "table": "PershareIndex",
         }),
-        None,
+        0,
     )
     .await?;
 

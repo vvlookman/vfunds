@@ -13,7 +13,8 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
+        notify_tickers_indicator,
     },
     ticker::Ticker,
     utils::{
@@ -135,23 +136,19 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        let calc_progress_pct =
-                            calc_count as f64 / tickers_map.len() as f64 * 100.0;
-                        let _ = event_sender
-                            .send(BacktestEvent::Toast(format!(
-                                "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
-                            )))
-                            .await;
+                        notify_calc_progress(
+                            event_sender.clone(),
+                            date,
+                            rule_name,
+                            calc_count as f64 / tickers_map.len() as f64 * 100.0,
+                        )
+                        .await;
 
                         last_time = Instant::now();
                     }
                 }
 
-                let _ = event_sender
-                    .send(BacktestEvent::Toast(format!(
-                        "[{date_str}] [{rule_name}] Σ 100%"
-                    )))
-                    .await;
+                notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
             }
 
             let mut normalized_factor_values: Vec<Vec<f64>> = vec![];
@@ -199,7 +196,7 @@ impl RuleExecutor for Executor {
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
             )
-            .await?;
+            .await;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
             for (ticker, indicator) in &targets_indicator {

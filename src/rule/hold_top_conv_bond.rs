@@ -13,7 +13,8 @@ use crate::{
         get_ticker_price,
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
+        notify_tickers_indicator,
     },
     ticker::Ticker,
     utils::{datetime::date_to_str, stats::quantile},
@@ -142,22 +143,19 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        let calc_progress_pct = calc_count as f64 / conv_bonds.len() as f64 * 100.0;
-                        let _ = event_sender
-                            .send(BacktestEvent::Toast(format!(
-                                "[{date_str}] [{rule_name}] Σ {calc_progress_pct:.2}% ..."
-                            )))
-                            .await;
+                        notify_calc_progress(
+                            event_sender.clone(),
+                            date,
+                            rule_name,
+                            calc_count as f64 / conv_bonds.len() as f64 * 100.0,
+                        )
+                        .await;
 
                         last_time = Instant::now();
                     }
                 }
 
-                let _ = event_sender
-                    .send(BacktestEvent::Toast(format!(
-                        "[{date_str}] [{rule_name}] Σ 100%"
-                    )))
-                    .await;
+                notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
             }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
@@ -178,7 +176,7 @@ impl RuleExecutor for Executor {
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
             )
-            .await?;
+            .await;
 
             let targets_weight = targets_indicator
                 .iter()
