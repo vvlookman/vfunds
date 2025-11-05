@@ -193,24 +193,25 @@ impl RuleExecutor for Executor {
                             {
                                 if let Ok(y_pred) = model.predict(&x_test) {
                                     let r2_score = r2(&y_test, &y_pred);
-                                    let r2_normal = r2_score.max(0.0);
 
-                                    let emas_fast = calc_ema(&prices, ma_period_fast as usize);
-                                    let emas_slow = calc_ema(&prices, ma_period_slow as usize);
-                                    let ema_ratio = if let (Some(ema_fast), Some(ema_slow)) =
-                                        (emas_fast.last(), emas_slow.last())
-                                    {
-                                        (ema_slow / ema_fast).powi(ma_exp as i32)
-                                    } else {
-                                        0.0
-                                    };
+                                    if r2_score > 0.0 {
+                                        let emas_fast = calc_ema(&prices, ma_period_fast as usize);
+                                        let emas_slow = calc_ema(&prices, ma_period_slow as usize);
+                                        let ema_ratio = if let (Some(ema_fast), Some(ema_slow)) =
+                                            (emas_fast.last(), emas_slow.last())
+                                        {
+                                            (ema_slow / ema_fast).powi(ma_exp as i32)
+                                        } else {
+                                            0.0
+                                        };
 
-                                    let indicator = arr * r2_normal * ema_ratio;
-                                    debug!(
-                                        "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_normal:.4} EMA_RATIO={ema_ratio:.4})"
-                                    );
+                                        let indicator = arr * r2_score * ema_ratio;
+                                        debug!(
+                                            "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_score:.4} EMA_RATIO={ema_ratio:.4})"
+                                        );
 
-                                    indicators.push((ticker.clone(), indicator));
+                                        indicators.push((ticker.clone(), indicator));
+                                    }
                                 }
                             }
                         }

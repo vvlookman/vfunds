@@ -14,16 +14,16 @@ limit = 3
 lookback_years = 4
 min_div_count_per_year = 1
 min_roe = 0.01
-skip_same_sector = false
-weight_allot = 0
+skip_same_sector = true
+weight_allot = -0.5
 weight_bonus_gift = -1
 
 [rules.search]
 frequency = ["6m", "1y", "18m", "2y"]
 limit = [3, 4, 5, 10]
-lookback_years = [3, 4, 5]
+lookback_years = [2, 3, 4, 5]
 # min_div_count_per_year = [0.5, 0.7, 1, 1.2]
 # min_roe = [0.0, 0.01, 0.02, 0.04, 0.1]
 # skip_same_sector = [true, false]
-# weight_allot = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1]
-# weight_bonus_gift = [-1, -0.5, -0.25, 0, 0.25, 0.5, 1]
+# weight_allot = [-2, -1, -0.5, 0, 0.5, 1, 2]
+# weight_bonus_gift = [-2, -1, -0.5, 0, 0.5, 1, 2]

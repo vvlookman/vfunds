@@ -183,7 +183,9 @@ impl RuleExecutor for Executor {
                                                 total_income += shares * price * weight_bonus_gift;
                                             }
 
-                                            total_count += 1;
+                                            if weight_bonus_gift > 0.0 {
+                                                total_count += 1;
+                                            }
                                         }
                                     }
                                 }
@@ -227,7 +229,9 @@ impl RuleExecutor for Executor {
                                                 }
                                             }
 
-                                            total_count += 1;
+                                            if weight_allot > 0.0 {
+                                                total_count += 1;
+                                            }
                                         }
                                     }
                                 }
@@ -237,7 +241,9 @@ impl RuleExecutor for Executor {
                                         >= min_div_count_per_year
                                 {
                                     let indicator = total_income / price;
-                                    debug!("[{date_str}] [{rule_name}] {ticker}={indicator:.4}");
+                                    debug!(
+                                        "[{date_str}] [{rule_name}] {ticker}={indicator:.4}({total_count})"
+                                    );
 
                                     indicators.push((ticker.clone(), indicator));
                                 }
