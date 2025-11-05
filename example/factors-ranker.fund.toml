@@ -26,6 +26,7 @@ frequency = "6m"
 [rules.options]
 limit = 2
 lookback_trade_days = 126
+rebalance_with_indicator = true
 weight_max_drawdown = 0
 weight_momentum = 1
 weight_sharpe = 1
@@ -35,6 +36,7 @@ weight_volatility = 0
 frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
 limit = [2, 3, 4, 5]
 lookback_trade_days = [21, 63, 126, 189, 252]
+rebalance_with_indicator = [true, false]
 # weight_max_drawdown = [0, 1, 2]
 # weight_momentum = [0, 1, 2]
 # weight_sharpe = [0, 1, 2]

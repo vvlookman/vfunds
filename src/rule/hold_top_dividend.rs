@@ -67,6 +67,11 @@ impl RuleExecutor for Executor {
             .get("min_roe")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
+        let rebalance_with_indicator = self
+            .options
+            .get("rebalance_with_indicator")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -325,9 +330,17 @@ impl RuleExecutor for Executor {
             .await;
 
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, _) in &targets_indicator {
+            for (ticker, indicator) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((ticker.clone(), *weight));
+                    targets_weight.push((
+                        ticker.clone(),
+                        (*weight)
+                            * if rebalance_with_indicator {
+                                *indicator
+                            } else {
+                                1.0
+                            },
+                    ));
                 }
             }
 

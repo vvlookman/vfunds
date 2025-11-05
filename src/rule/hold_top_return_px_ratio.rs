@@ -63,6 +63,11 @@ impl RuleExecutor for Executor {
             .get("px")
             .and_then(|v| v.as_str())
             .unwrap_or("pe");
+        let rebalance_with_indicator = self
+            .options
+            .get("rebalance_with_indicator")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -192,7 +197,15 @@ impl RuleExecutor for Executor {
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
             for (ticker, indicator) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((ticker.clone(), (*weight) * (*indicator)));
+                    targets_weight.push((
+                        ticker.clone(),
+                        (*weight)
+                            * if rebalance_with_indicator {
+                                *indicator
+                            } else {
+                                1.0
+                            },
+                    ));
                 }
             }
 

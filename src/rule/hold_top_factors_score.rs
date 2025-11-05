@@ -60,6 +60,11 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
+        let rebalance_with_indicator = self
+            .options
+            .get("rebalance_with_indicator")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let weight_sharpe = self
             .options
             .get("weight_sharpe")
@@ -201,7 +206,15 @@ impl RuleExecutor for Executor {
             let mut targets_weight: Vec<(Ticker, f64)> = vec![];
             for (ticker, indicator) in &targets_indicator {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((ticker.clone(), (*weight) * (*indicator)));
+                    targets_weight.push((
+                        ticker.clone(),
+                        (*weight)
+                            * if rebalance_with_indicator {
+                                *indicator
+                            } else {
+                                1.0
+                            },
+                    ));
                 }
             }
 

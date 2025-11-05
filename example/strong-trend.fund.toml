@@ -29,6 +29,7 @@ lookback_trade_days = 66
 ma_exp = 20
 ma_period_fast = 5
 ma_period_slow = 20
+rebalance_with_indicator = true
 regression_alpha = 8
 regression_test = 0.3
 
@@ -37,5 +38,6 @@ frequency = ["1w", "2w", "4w", "8w"]
 limit = [1, 2, 3, 4, 5]
 lookback_trade_days = [44, 66, 88]
 ma_exp = [10, 20, 25]
+rebalance_with_indicator = [true, false]
 regression_alpha = [1, 2, 4, 8, 16]
 regression_test = [0.2, 0.3, 0.4]

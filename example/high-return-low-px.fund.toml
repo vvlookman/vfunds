@@ -14,6 +14,7 @@ limit = 3
 lookback_years = 2
 min_trade_days = 126
 px = "pe"
+rebalance_with_indicator = true
 skip_same_sector = true
 
 [rules.search]
@@ -22,4 +23,5 @@ limit = [3, 4, 5, 10]
 lookback_years = [1, 2, 3]
 min_trade_days = [21, 63, 126]
 px = ["pe", "ps", "pb"]
+rebalance_with_indicator = [true, false]
 skip_same_sector = [true, false]
