@@ -119,7 +119,7 @@ impl RuleExecutor for Executor {
                         .iter()
                         .map(|&(_, v)| v)
                         .collect();
-                    if prices.len() < lookback_trade_days as usize {
+                    if prices.len() < (lookback_trade_days as f64 * 0.95).round() as usize {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(
                                 "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
