@@ -47,6 +47,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let enable_indicator_weighting = self
+            .options
+            .get("enable_indicator_weighting")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let limit = self
             .options
             .get("limit")
@@ -67,11 +72,6 @@ impl RuleExecutor for Executor {
             .get("min_roe")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
-        let rebalance_with_indicator = self
-            .options
-            .get("rebalance_with_indicator")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -335,7 +335,7 @@ impl RuleExecutor for Executor {
                     targets_weight.push((
                         ticker.clone(),
                         (*weight)
-                            * if rebalance_with_indicator {
+                            * if enable_indicator_weighting {
                                 *indicator
                             } else {
                                 1.0

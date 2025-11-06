@@ -10,22 +10,22 @@ name = "hold_top_dividend"
 frequency = "1y"
 
 [rules.options]
+enable_indicator_weighting = false
 limit = 3
 lookback_years = 4
 min_div_count_per_year = 1
 min_roe = 0.01
-rebalance_with_indicator = false
 skip_same_sector = true
 weight_allot = -0.5
 weight_bonus_gift = -1
 
 [rules.search]
 frequency = ["6m", "1y", "18m", "2y"]
+enable_indicator_weighting = [true, false]
 limit = [3, 4, 5, 10]
 lookback_years = [3, 4, 5]
 # min_div_count_per_year = [0.6, 0.8, 1, 1.2, 1.4, 1.6]
 # min_roe = [0.0, 0.01, 0.02, 0.04, 0.1]
-rebalance_with_indicator = [true, false]
 skip_same_sector = [true, false]
 # weight_allot = [-2, -1, -0.5, 0, 0.5, 1, 2]
 # weight_bonus_gift = [-2, -1, -0.5, 0, 0.5, 1, 2]

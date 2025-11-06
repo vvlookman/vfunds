@@ -10,18 +10,18 @@ name = "hold_top_return_px_ratio"
 frequency = "1y"
 
 [rules.options]
+enable_indicator_weighting = true
 limit = 3
 lookback_years = 2
 min_trade_days = 126
 px = "pe"
-rebalance_with_indicator = true
 skip_same_sector = true
 
 [rules.search]
 frequency = ["6m", "1y", "18m", "2y"]
+enable_indicator_weighting = [true, false]
 limit = [3, 4, 5, 10]
 lookback_years = [1, 2, 3]
 min_trade_days = [21, 63, 126]
 px = ["pe", "ps", "pb"]
-rebalance_with_indicator = [true, false]
 skip_same_sector = [true, false]

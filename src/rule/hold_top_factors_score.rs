@@ -50,6 +50,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let enable_indicator_weighting = self
+            .options
+            .get("enable_indicator_weighting")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let limit = self
             .options
             .get("limit")
@@ -60,11 +65,6 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
-        let rebalance_with_indicator = self
-            .options
-            .get("rebalance_with_indicator")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
         let weight_sharpe = self
             .options
             .get("weight_sharpe")
@@ -209,7 +209,7 @@ impl RuleExecutor for Executor {
                     targets_weight.push((
                         ticker.clone(),
                         (*weight)
-                            * if rebalance_with_indicator {
+                            * if enable_indicator_weighting {
                                 *indicator
                             } else {
                                 1.0
