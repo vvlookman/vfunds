@@ -290,7 +290,7 @@ impl RuleExecutor for Executor {
 
             let top_indicators = indicators
                 .iter()
-                .take(2 * limit as usize)
+                .take(3 * limit as usize)
                 .collect::<Vec<_>>();
 
             let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
