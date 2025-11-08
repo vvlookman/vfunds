@@ -258,12 +258,14 @@ impl RuleExecutor for Executor {
                                 && (total_count as f64 / lookback_years as f64)
                                     >= min_div_count_per_year
                             {
-                                let indicator = total_income / price;
+                                let indicator = total_income / lookback_years as f64 / price;
                                 debug!(
                                     "[{date_str}] [{rule_name}] {ticker}={indicator:.4}({total_count})"
                                 );
 
-                                indicators.push((ticker.clone(), indicator));
+                                if indicator.is_finite() {
+                                    indicators.push((ticker.clone(), indicator));
+                                }
                             }
                         }
                     }

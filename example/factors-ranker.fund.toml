@@ -20,7 +20,7 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_top_factors_score"
+name = "hold_by_factors_score"
 frequency = "6m"
 
 [rules.options]

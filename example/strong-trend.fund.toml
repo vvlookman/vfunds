@@ -20,7 +20,7 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_top_trend"
+name = "hold_by_trend"
 frequency = "1w"
 
 [rules.options]

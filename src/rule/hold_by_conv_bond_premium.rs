@@ -134,7 +134,9 @@ impl RuleExecutor for Executor {
                                         "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
                                     );
 
-                                    indicators.push((ticker, indicator));
+                                    if indicator.is_finite() {
+                                        indicators.push((ticker, indicator));
+                                    }
                                 }
                             }
                         }
@@ -178,7 +180,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let targets_weight = targets_indicator
+            let targets_weight: Vec<(Ticker, f64)> = targets_indicator
                 .iter()
                 .map(|(t, _)| (t.clone(), 1.0))
                 .collect();

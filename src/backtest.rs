@@ -959,10 +959,16 @@ impl FundBacktestContext<'_> {
 
     pub async fn rebalance(
         &mut self,
-        targets_weight: &Vec<(Ticker, f64)>,
+        targets_weight: &[(Ticker, f64)],
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        // Make sure weight is valid
+        let targets_weight: Vec<&(Ticker, f64)> = targets_weight
+            .iter()
+            .filter(|(_, weight)| weight.is_finite())
+            .collect();
+
         // Exit unneeded positions and reserved cash
         {
             let position_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();

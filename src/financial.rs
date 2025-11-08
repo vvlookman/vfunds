@@ -64,7 +64,7 @@ pub async fn get_ticker_price(
             if let Ok(kline) = fetch_conv_bond_kline(ticker).await {
                 Ok(kline
                     .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
-                    .map(|(_, price)| price))
+                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
             } else {
                 let analysis = fetch_conv_bond_analysis(ticker).await?;
                 Ok(analysis
@@ -73,14 +73,14 @@ pub async fn get_ticker_price(
                         include_today,
                         &ConvBondAnalysisField::Price.to_string(),
                     )
-                    .map(|(_, price)| price))
+                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
             }
         }
         TickerType::Stock => {
             let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
             Ok(kline
                 .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
-                .map(|(_, price)| price))
+                .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
         }
     }
 }

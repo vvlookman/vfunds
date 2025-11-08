@@ -1,12 +1,12 @@
 title = "高收益PX比"
-description = "持有国证300中全收益与PX比值最高的股票"
+description = "持有国证300中全收益与PE/PS/PB比值最高的股票"
 
 [[ticker_sources]]
 source = "399312.CNI"
 source_type = "index"
 
 [[rules]]
-name = "hold_top_return_px_ratio"
+name = "hold_by_return_px_ratio"
 frequency = "1y"
 
 [rules.options]

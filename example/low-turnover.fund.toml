@@ -1,0 +1,21 @@
+title = "低换手率"
+description = "持有国证300中换手率低的股票"
+
+[[ticker_sources]]
+source = "399312.CNI"
+source_type = "index"
+
+[[rules]]
+name = "hold_by_turnover"
+frequency = "6m"
+
+[rules.options]
+enable_indicator_weighting = false
+limit = 5
+lookback_trade_days = 189
+
+[rules.search]
+frequency = ["1m", "3m", "6m", "9m", "1y"]
+# enable_indicator_weighting = [true, false]
+limit = [3, 4, 5, 10]
+lookback_trade_days = [21, 63, 126, 189, 252]

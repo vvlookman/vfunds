@@ -6,7 +6,7 @@ source = "399312.CNI"
 source_type = "index"
 
 [[rules]]
-name = "hold_top_dividend"
+name = "hold_by_dividend"
 frequency = "1y"
 
 [rules.options]

@@ -12,12 +12,13 @@ use crate::{
 };
 
 pub mod hold;
-pub mod hold_risk_parity;
-pub mod hold_top_conv_bond;
-pub mod hold_top_dividend;
-pub mod hold_top_factors_score;
-pub mod hold_top_return_px_ratio;
-pub mod hold_top_trend;
+pub mod hold_by_conv_bond_premium;
+pub mod hold_by_dividend;
+pub mod hold_by_factors_score;
+pub mod hold_by_return_px_ratio;
+pub mod hold_by_risk_parity;
+pub mod hold_by_trend;
+pub mod hold_by_turnover;
 pub mod size_by_macd_crossover;
 pub mod size_by_valuation;
 
@@ -44,14 +45,17 @@ impl Rule {
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "hold" => Box::new(hold::Executor::new(definition)),
-            "hold_risk_parity" => Box::new(hold_risk_parity::Executor::new(definition)),
-            "hold_top_conv_bond" => Box::new(hold_top_conv_bond::Executor::new(definition)),
-            "hold_top_dividend" => Box::new(hold_top_dividend::Executor::new(definition)),
-            "hold_top_factors_score" => Box::new(hold_top_factors_score::Executor::new(definition)),
-            "hold_top_return_px_ratio" => {
-                Box::new(hold_top_return_px_ratio::Executor::new(definition))
+            "hold_by_conv_bond_premium" => {
+                Box::new(hold_by_conv_bond_premium::Executor::new(definition))
             }
-            "hold_top_trend" => Box::new(hold_top_trend::Executor::new(definition)),
+            "hold_by_dividend" => Box::new(hold_by_dividend::Executor::new(definition)),
+            "hold_by_factors_score" => Box::new(hold_by_factors_score::Executor::new(definition)),
+            "hold_by_return_px_ratio" => {
+                Box::new(hold_by_return_px_ratio::Executor::new(definition))
+            }
+            "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
+            "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
+            "hold_by_turnover" => Box::new(hold_by_turnover::Executor::new(definition)),
             "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
             "size_by_valuation" => Box::new(size_by_valuation::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),

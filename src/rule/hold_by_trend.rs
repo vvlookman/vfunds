@@ -215,7 +215,9 @@ impl RuleExecutor for Executor {
                                             "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_score:.4} EMA_RATIO={ema_ratio:.4})"
                                         );
 
-                                        indicators.push((ticker.clone(), indicator));
+                                        if indicator.is_finite() {
+                                            indicators.push((ticker.clone(), indicator));
+                                        }
                                     }
                                 }
                             }

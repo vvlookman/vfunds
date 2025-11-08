@@ -10,7 +10,7 @@ description = "根据风险平价理论对持有的股票、债券、黄金进�
 "518880" = 10  # 黄金ETF
 
 [[rules]]
-name = "hold_risk_parity"
+name = "hold_by_risk_parity"
 frequency = "1m"
 
 [rules.options]

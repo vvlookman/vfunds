@@ -7,6 +7,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     error::VfResult,
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    ticker::Ticker,
 };
 
 pub struct Executor {
@@ -32,7 +33,7 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let targets_weight = tickers_map
+            let targets_weight: Vec<(Ticker, f64)> = tickers_map
                 .iter()
                 .map(|(ticker, (weight, _))| (ticker.clone(), *weight))
                 .collect();

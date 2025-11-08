@@ -165,7 +165,7 @@ impl RuleExecutor for Executor {
             let mut indicators: Vec<(Ticker, f64)> = factors
                 .iter()
                 .enumerate()
-                .map(|(i, x)| {
+                .filter_map(|(i, x)| {
                     let ticker = &x.0;
 
                     let sharpe = normalized_factor_values[0][i];
@@ -179,7 +179,11 @@ impl RuleExecutor for Executor {
                         + weight_momentum * (1.0 + momentum.tanh());
                     debug!("[{date_str}] {ticker}={indicator:.4} (Sharpe={sharpe:.4} Vol={volatility:.4} MDD={max_drawdown:.4} Momentum={momentum:.4}");
 
-                    (ticker.clone(), indicator)
+                    if indicator.is_finite() {
+                        Some((ticker.clone(), indicator))
+                    } else {
+                        None
+                    }
                 })
                 .collect();
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));

@@ -20,9 +20,9 @@ pub fn calc_annualized_return_rate(start_value: f64, end_value: f64, days: u64) 
 
 pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
-        let daily_return = stats::pct_change(daily_values);
+        let daily_changes = stats::pct_change(daily_values);
 
-        if let Some(return_std) = stats::std(&daily_return) {
+        if let Some(return_std) = stats::std(&daily_changes) {
             return Some(return_std * (TRADE_DAYS_PER_YEAR).sqrt());
         }
     }
