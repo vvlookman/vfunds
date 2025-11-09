@@ -14,7 +14,7 @@ use crate::{
 pub mod hold;
 pub mod hold_by_conv_bond_premium;
 pub mod hold_by_dividend;
-pub mod hold_by_factors_score;
+pub mod hold_by_momentum_sharpe;
 pub mod hold_by_return_px_ratio;
 pub mod hold_by_risk_parity;
 pub mod hold_by_stablity;
@@ -49,7 +49,9 @@ impl Rule {
                 Box::new(hold_by_conv_bond_premium::Executor::new(definition))
             }
             "hold_by_dividend" => Box::new(hold_by_dividend::Executor::new(definition)),
-            "hold_by_factors_score" => Box::new(hold_by_factors_score::Executor::new(definition)),
+            "hold_by_momentum_sharpe" => {
+                Box::new(hold_by_momentum_sharpe::Executor::new(definition))
+            }
             "hold_by_return_px_ratio" => {
                 Box::new(hold_by_return_px_ratio::Executor::new(definition))
             }

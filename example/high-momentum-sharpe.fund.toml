@@ -1,5 +1,5 @@
-title = "多因子评分"
-description = "持有多因子评分最高的ETF"
+title = "高动量夏普"
+description = "持有动量和夏普综合评分最高的ETF"
 
 tickers = [
   "510300", # 沪深300ETF
@@ -20,24 +20,20 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_by_factors_score"
+name = "hold_by_momentum_sharpe"
 frequency = "6m"
 
 [rules.options]
 enable_indicator_weighting = false
 limit = 2
 lookback_trade_days = 126
-weight_max_drawdown = 0
-weight_momentum = 1
+weight_momentum = 2
 weight_sharpe = 1
-weight_volatility = 0
 
 [rules.search]
-frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
-enable_indicator_weighting = [true, false]
-limit = [2, 3, 4, 5]
-lookback_trade_days = [21, 42, 63, 126, 189, 252]
-# weight_max_drawdown = [0, 1]
-# weight_momentum = [0, 1]
-# weight_sharpe = [0, 1]
-# weight_volatility = [0, 1]
+# frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
+# enable_indicator_weighting = [true, false]
+# limit = [2, 3, 4, 5]
+# lookback_trade_days = [21, 42, 63, 126, 189, 252]
+weight_momentum = [0, 1, 2, 3, 5]
+weight_sharpe = [0, 1, 2, 3, 5]

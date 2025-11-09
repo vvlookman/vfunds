@@ -3,12 +3,12 @@ description = "基金按权重进行组合"
 
 [funds]
 conv-bond = 1
-factors-ranker = 1
 high-dividend = 1
+high-momentum-sharpe = 1
 risk-parity = 1
 
 [search]
-conv-bond = [1, 2, 4]
-factors-ranker = [1, 2, 4]
-high-dividend = [1, 2, 4]
-risk-parity = [1, 2, 4]
+conv-bond = [1, 2, 3]
+high-dividend = [1, 2, 3]
+high-momentum-sharpe = [1, 2, 3]
+risk-parity = [1, 2, 3]
