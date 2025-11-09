@@ -95,6 +95,7 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
+
                 for conv_bond in &conv_bonds {
                     if conv_bond.title.ends_with("退") {
                         continue;

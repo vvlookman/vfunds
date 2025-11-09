@@ -129,6 +129,7 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
+
                 for ticker in tickers_map.keys() {
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;

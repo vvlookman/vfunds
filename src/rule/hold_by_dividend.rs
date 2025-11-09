@@ -124,7 +124,12 @@ impl RuleExecutor for Executor {
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
+
                 for ticker in tickers_map.keys() {
+                    if context.portfolio.reserved_cash.contains_key(ticker) {
+                        continue;
+                    }
+
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(

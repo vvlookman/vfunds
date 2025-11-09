@@ -72,6 +72,7 @@ impl RuleExecutor for Executor {
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
             let mut tickers_weight_and_inverse_vols: HashMap<Ticker, (f64, f64)> = HashMap::new();
+
             for (ticker, (weight, _)) in &tickers_map {
                 if context.portfolio.reserved_cash.contains_key(ticker) {
                     continue;

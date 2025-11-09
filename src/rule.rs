@@ -17,8 +17,8 @@ pub mod hold_by_dividend;
 pub mod hold_by_factors_score;
 pub mod hold_by_return_px_ratio;
 pub mod hold_by_risk_parity;
+pub mod hold_by_stablity;
 pub mod hold_by_trend;
-pub mod hold_by_turnover;
 pub mod size_by_macd_crossover;
 pub mod size_by_valuation;
 
@@ -54,8 +54,8 @@ impl Rule {
                 Box::new(hold_by_return_px_ratio::Executor::new(definition))
             }
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
+            "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
             "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
-            "hold_by_turnover" => Box::new(hold_by_turnover::Executor::new(definition)),
             "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
             "size_by_valuation" => Box::new(size_by_valuation::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
