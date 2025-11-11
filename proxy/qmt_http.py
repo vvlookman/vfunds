@@ -43,7 +43,7 @@ def stock_dividend(stock: str):
 
 @app.get("/stock_kline/{stock}")
 def stock_kline(stock: str, period: str = '1d', dividend_type: str = 'none'):
-    xtdata.download_history_data2(stock, period)
+    xtdata.download_history_data2(stock_list=[stock], period=period)
     data = xtdata.get_market_data_ex(
         stock_list=[stock], dividend_type=dividend_type)
 
