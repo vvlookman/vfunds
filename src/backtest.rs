@@ -22,8 +22,9 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
-            calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio, calc_win_rate,
+            calc_annualized_return_rate_by_start_end, calc_annualized_volatility,
+            calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio,
+            calc_win_rate,
         },
         math::normalize_zscore,
         stats::mean,
@@ -519,16 +520,48 @@ pub async fn backtest_fund(
 
             let mut trade_dates_value: Vec<(NaiveDate, f64)> = vec![];
 
-            let mut rule_executed_date: HashMap<usize, NaiveDate> = HashMap::new();
+            let mut rules_period_start_date: HashMap<usize, NaiveDate> = HashMap::new();
             let trade_dates = fetch_trade_dates().await?;
             for date in options.start_date.iter_days().take(days as usize) {
                 if trade_dates.contains(&date) {
                     for (rule_index, rule) in rules.iter_mut().enumerate() {
-                        if let Some(executed_date) = rule_executed_date.get(&rule_index) {
-                            let executed_days = (date - *executed_date).num_days();
-                            let frequency_days = rule.definition().frequency.days;
-                            if frequency_days > 0 {
-                                if executed_days < frequency_days {
+                        if let Some(period_start_date) = rules_period_start_date.get(&rule_index) {
+                            let frequency_take_profit_pct =
+                                rule.definition().frequency_take_profit_pct;
+                            if frequency_take_profit_pct > 0 {
+                                for ticker in context
+                                    .portfolio
+                                    .positions
+                                    .keys()
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                                {
+                                    if let (Some(price_period_start), Some(price)) = (
+                                        get_ticker_price(&ticker, period_start_date, true, 0)
+                                            .await?,
+                                        get_ticker_price(&ticker, &date, true, 0).await?,
+                                    ) {
+                                        let period_profit_pct = 100.0
+                                            * (price - price_period_start)
+                                            / price_period_start;
+                                        if period_profit_pct > frequency_take_profit_pct as f64 {
+                                            context
+                                                .position_exit(
+                                                    &ticker,
+                                                    false,
+                                                    &date,
+                                                    sender.clone(),
+                                                )
+                                                .await?;
+                                        }
+                                    }
+                                }
+                            }
+
+                            let days = (date - *period_start_date).num_days();
+                            let period_days = rule.definition().frequency.days;
+                            if period_days > 0 {
+                                if days < period_days {
                                     continue;
                                 }
                             } else {
@@ -537,7 +570,7 @@ pub async fn backtest_fund(
                         }
 
                         rule.exec(&mut context, &date, sender.clone()).await?;
-                        rule_executed_date.insert(rule_index, date);
+                        rules_period_start_date.insert(rule_index, date);
                     }
 
                     if let Ok(total_value) = context.calc_total_value(&date).await {
@@ -601,7 +634,7 @@ pub async fn backtest_fund(
                     .iter()
                     .map(|(_, _, v)| v.as_array().map(|array| array.len()).unwrap_or(0))
                     .product::<usize>();
-                for (i, rule_option_values) in all_search
+                for (i, search_option_values) in all_search
                     .iter()
                     .filter_map(|(rule_name, option_name, value)| {
                         value.as_array().map(|array| {
@@ -622,22 +655,29 @@ pub async fn backtest_fund(
                 {
                     let mut fund_definition = fund_definition.clone();
 
-                    for (rule_name, option_name, option_value) in &rule_option_values {
+                    for (rule_name, search_name, search_option_value) in &search_option_values {
                         if let Some(rule_definition) = fund_definition
                             .rules
                             .iter_mut()
                             .find(|r| r.name == *rule_name)
                         {
-                            if option_name == "frequency" {
-                                if let Ok(frequency) =
-                                    Frequency::from_str(option_value.as_str().unwrap_or_default())
-                                {
+                            if search_name == "frequency" {
+                                if let Ok(frequency) = Frequency::from_str(
+                                    search_option_value.as_str().unwrap_or_default(),
+                                ) {
                                     rule_definition.frequency = frequency;
+                                }
+                            } else if search_name == "frequency_take_profit_pct" {
+                                if let Some(frequency_take_profit_pct) =
+                                    search_option_value.as_u64().map(|v| v as u32)
+                                {
+                                    rule_definition.frequency_take_profit_pct =
+                                        frequency_take_profit_pct
                                 }
                             } else {
                                 rule_definition
                                     .options
-                                    .insert(option_name.to_string(), option_value.clone());
+                                    .insert(search_name.to_string(), search_option_value.clone());
                             }
                         }
                     }
@@ -658,7 +698,7 @@ pub async fn backtest_fund(
                                 .sharpe_ratio
                                 .map(|v| format!("{v:.3}"))
                                 .unwrap_or("-".to_string()),
-                            rule_option_values
+                            search_option_values
                                 .iter()
                                 .map(|(_, option_name, option_value)| {
                                     format!("{option_name}={option_value}")
@@ -668,7 +708,7 @@ pub async fn backtest_fund(
                         )))
                         .await;
 
-                    cv_results.push((rule_option_values.clone(), result));
+                    cv_results.push((search_option_values.clone(), result));
                 }
 
                 if !cv_results.is_empty() {
@@ -1301,7 +1341,7 @@ impl BacktestMetrics {
             .map(|(_, v)| *v)
             .unwrap_or(options.init_cash);
         let total_return = final_value - options.init_cash;
-        let annualized_return_rate = calc_annualized_return_rate(
+        let annualized_return_rate = calc_annualized_return_rate_by_start_end(
             options.init_cash,
             final_value,
             (options.end_date - options.start_date).num_days() as u64 + 1,

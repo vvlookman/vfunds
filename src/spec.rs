@@ -50,6 +50,9 @@ pub struct RuleDefinition {
     pub frequency: Frequency,
 
     #[serde(default)]
+    pub frequency_take_profit_pct: u32,
+
+    #[serde(default)]
     pub options: HashMap<String, serde_json::Value>,
 
     #[serde(default)]

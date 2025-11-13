@@ -4,16 +4,18 @@ description = "持有满足一定条件且最有性价比的可转债"
 [[rules]]
 name = "hold_by_conv_bond_premium"
 frequency = "6w"
+frequency_take_profit_pct = 0
 
 [rules.options]
 limit = 2
 max_conversion_premium = 0
 min_issue_size_quantile = 0.2
-min_remaining_days = 60
+min_remaining_days = 60       # 注意，不要小于 frequency 的期限，防止未及时操作到期强制赎回
 
 [rules.search]
-frequency = ["1w", "2w", "3w", "4w", "5w", "6w", "7w", "8w"]
-limit = [2, 3, 4, 5]
-max_conversion_premium = [-0.2, -0.1, 0, 0.1, 0.2]
-min_issue_size_quantile = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
-min_remaining_days = [30, 60, 90]
+frequency = ["4w", "6w", "8w", "10w", "12w"]
+# frequency_take_profit_pct = [0, 100, 200, 300, 400, 500]
+# limit = [2, 3, 4, 5]
+max_conversion_premium = [-0.04, -0.03, -0.02, -0.01, 0, 0.01, 0.02, 0.03, 0.04]
+# min_issue_size_quantile = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+# min_remaining_days = [30, 60, 90]
