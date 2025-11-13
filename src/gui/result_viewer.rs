@@ -10,11 +10,13 @@ use egui_plot::{Corner, Legend, Line, Plot, Points};
 use tokio::sync::mpsc;
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT, api, api::BacktestOutputResult, error::VfError,
+    CHANNEL_BUFFER_DEFAULT, api, api::BacktestOutputResult, error::VfError, gui::GuiEvent,
     utils::datetime::date_to_str,
 };
 
 pub struct ResultViewer {
+    gui_event_sender: mpsc::Sender<GuiEvent>,
+
     result_dir: PathBuf,
     vfund_names: Vec<String>,
 
@@ -38,7 +40,12 @@ enum LoadEvent {
 }
 
 impl ResultViewer {
-    pub fn new(cc: &eframe::CreationContext, result_dir: &Path, vfund_names: &[String]) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext,
+        gui_event_sender: mpsc::Sender<GuiEvent>,
+        result_dir: &Path,
+        vfund_names: &[String],
+    ) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         {
             let font_name = "Noto Sans Mono";
@@ -71,6 +78,8 @@ impl ResultViewer {
             mpsc::channel::<LoadEvent>(CHANNEL_BUFFER_DEFAULT);
 
         let mut app = Self {
+            gui_event_sender,
+
             result_dir: result_dir.to_path_buf(),
             vfund_names: vfund_names.to_vec(),
 
@@ -197,6 +206,12 @@ impl eframe::App for ResultViewer {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("↻ Refresh").clicked() {
                                 self.load_results();
+
+                                // Notify CLI
+                                let gui_event_sender = self.gui_event_sender.clone();
+                                tokio::spawn(async move {
+                                    let _ = gui_event_sender.send(GuiEvent::Refresh).await;
+                                });
                             }
                         });
                     });
