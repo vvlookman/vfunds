@@ -172,9 +172,11 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
 pub fn calc_win_rate(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
         let daily_return = stats::pct_change(daily_values);
-        let wins = daily_return.iter().filter(|&v| *v > 0.0).count();
 
-        return Some(wins as f64 / daily_return.len() as f64);
+        let win_count = daily_return.iter().filter(|&v| *v > 0.0).count();
+        let loss_count = daily_return.iter().filter(|&v| *v < 0.0).count();
+
+        return Some(win_count as f64 / (win_count + loss_count) as f64);
     }
 
     None
