@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{Days, NaiveDate};
 use eframe::egui;
-use egui_plot::{Corner, Legend, Line, Plot, Points};
+use egui_plot::{Corner, Legend, Line, LineStyle, Plot, Points};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -25,10 +25,13 @@ pub struct ResultViewer {
     results: Vec<(String, BacktestOutputResult, BacktestDailyValues)>,
 
     plot_start_date: Option<NaiveDate>,
+    plot_end_date: Option<NaiveDate>,
     plot_values_points: HashMap<String, Vec<[f64; 2]>>,
     plot_orders_points: HashMap<String, Vec<[f64; 2]>>,
+    plot_zero_points: Vec<[f64; 2]>,
 
     show_orders: bool,
+    show_zero: bool,
     warning_message: Option<String>,
 }
 
@@ -88,10 +91,13 @@ impl ResultViewer {
             results: vec![],
 
             plot_start_date: None,
+            plot_end_date: None,
             plot_values_points: HashMap::new(),
             plot_orders_points: HashMap::new(),
+            plot_zero_points: vec![],
 
             show_orders: true,
+            show_zero: false,
             warning_message: None,
         };
 
@@ -99,6 +105,12 @@ impl ResultViewer {
             if let Some(show_orders_str) = storage.get_string("show_orders") {
                 if let Ok(v) = show_orders_str.parse() {
                     app.show_orders = v;
+                }
+            }
+
+            if let Some(show_zero_str) = storage.get_string("show_zero") {
+                if let Ok(v) = show_zero_str.parse() {
+                    app.show_zero = v;
                 }
             }
         }
@@ -111,6 +123,7 @@ impl ResultViewer {
 
         self.plot_values_points.clear();
         self.plot_orders_points.clear();
+        self.plot_zero_points.clear();
 
         let result_dir = self.result_dir.clone();
         let vfund_names = self.vfund_names.clone();
@@ -149,8 +162,14 @@ impl ResultViewer {
                     .iter()
                     .map(|(_, output_result, _)| output_result.options.start_date)
                     .min();
+                self.plot_end_date = results
+                    .iter()
+                    .filter_map(|(_, output_result, _)| output_result.metrics.last_trade_date)
+                    .max();
 
-                if let Some(plot_start_date) = self.plot_start_date {
+                if let (Some(plot_start_date), Some(plot_end_date)) =
+                    (self.plot_start_date, self.plot_end_date)
+                {
                     for (vfund_name, output_result, daily_values) in &results {
                         let mut values_points: Vec<[f64; 2]> = vec![];
                         let mut orders_points: Vec<[f64; 2]> = vec![];
@@ -170,6 +189,11 @@ impl ResultViewer {
                         self.plot_orders_points
                             .insert(vfund_name.to_string(), orders_points);
                     }
+
+                    self.plot_zero_points = vec![
+                        [0.0, 100.0],
+                        [(plot_end_date - plot_start_date).num_days() as f64, 100.0],
+                    ];
                 }
 
                 self.results = results;
@@ -202,6 +226,7 @@ impl eframe::App for ResultViewer {
                 .show_inside(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         ui.checkbox(&mut self.show_orders, "Show Orders");
+                        ui.checkbox(&mut self.show_zero, "Show Zero");
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("↻ Refresh").clicked() {
@@ -274,6 +299,15 @@ impl eframe::App for ResultViewer {
                         .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
                         .legend(Legend::default().position(Corner::LeftTop))
                         .show(ui, |plot_ui| {
+                            if self.show_zero {
+                                plot_ui.line(
+                                    Line::new("", self.plot_zero_points.clone())
+                                        .width(0.8)
+                                        .style(LineStyle::dashed_dense())
+                                        .color(egui::Color32::DARK_GRAY),
+                                );
+                            }
+
                             for (vfund_name, points) in &self.plot_values_points {
                                 let name = if let Some(Some(title)) = self
                                     .results
@@ -310,6 +344,7 @@ impl eframe::App for ResultViewer {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("show_orders", self.show_orders.to_string());
+        storage.set_string("show_zero", self.show_zero.to_string());
         storage.flush();
     }
 }
