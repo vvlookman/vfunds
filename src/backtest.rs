@@ -564,7 +564,7 @@ pub async fn backtest_fund(
                             let days = (date - *period_start_date).num_days();
                             let period_days = rule.definition().frequency.days;
                             if period_days > 0 {
-                                if days < period_days {
+                                if days < period_days as i64 {
                                     continue;
                                 }
                             } else {

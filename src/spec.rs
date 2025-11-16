@@ -38,7 +38,7 @@ pub struct FundDefinition {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Frequency {
-    pub days: i64,
+    pub days: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -82,17 +82,17 @@ pub enum TickerSourceType {
 impl FromStr for Frequency {
     type Err = ParseIntError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let days: i64 = if let Some(stripped) = s.strip_suffix("d") {
+        let days: u64 = if let Some(stripped) = s.strip_suffix("d") {
             stripped.parse()?
         } else if let Some(stripped) = s.strip_suffix("w") {
-            let weeks: i64 = stripped.parse()?;
+            let weeks: u64 = stripped.parse()?;
             7 * weeks
         } else if let Some(stripped) = s.strip_suffix("m") {
-            let months: i64 = stripped.parse()?;
-            (30.4375 * months as f64).round() as i64
+            let months: u64 = stripped.parse()?;
+            (30.4375 * months as f64).round() as u64
         } else if let Some(stripped) = s.strip_suffix("y") {
-            let years: i64 = stripped.parse()?;
-            (365.25 * years as f64).round() as i64
+            let years: u64 = stripped.parse()?;
+            (365.25 * years as f64).round() as u64
         } else {
             0
         };
