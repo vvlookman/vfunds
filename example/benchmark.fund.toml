@@ -1,5 +1,5 @@
 title = "沪深300"
-description = "用于作为基准的沪深300基金"
+description = "用作基准的沪深300基金"
 
 tickers = ["510300"]
 

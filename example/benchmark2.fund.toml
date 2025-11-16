@@ -1,0 +1,7 @@
+title = "红利低波50"
+description = "用作红利基准的标普中国A股大盘红利低波50基金"
+
+tickers = ["515450"]
+
+[[rules]]
+name = "hold"
