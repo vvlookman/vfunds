@@ -118,6 +118,7 @@ async fn load_backtest_results_as_table(
         "Max Drawdown".to_string(),
         "Ann Volatility".to_string(),
         "+Years".to_string(),
+        "Wait+".to_string(),
         "Win Rate".to_string(),
         "Profit Factor".to_string(),
         "Sharpe".to_string(),
@@ -159,6 +160,17 @@ async fn load_backtest_results_as_table(
                 metrics.calendar_year_returns.len()
             ),
             metrics
+                .unbroken_date
+                .map(|v| {
+                    format!(
+                        "{:.2}%",
+                        (v - options.start_date).num_days() as f64
+                            / ((options.end_date - options.start_date).num_days() + 1) as f64
+                            * 100.0
+                    )
+                })
+                .unwrap_or("-".to_string()),
+            metrics
                 .win_rate
                 .map(|v| format!("{:.2}%", v * 100.0))
                 .unwrap_or("-".to_string()),
@@ -185,7 +197,7 @@ async fn load_backtest_results_as_table(
     table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
     table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
     table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
-    table.modify(Columns::new(10..11).not(Rows::first()), Color::FG_CYAN);
+    table.modify(Columns::new(11..12).not(Rows::first()), Color::FG_CYAN);
     table.modify(Columns::new(1..), Alignment::right());
     table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
 

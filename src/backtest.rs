@@ -77,6 +77,9 @@ pub struct BacktestStream {
 pub struct BacktestMetrics {
     #[serde(serialize_with = "serialize_option_date")]
     pub last_trade_date: Option<NaiveDate>,
+    #[serde(serialize_with = "serialize_option_date")]
+    pub unbroken_date: Option<NaiveDate>,
+
     pub trade_days: usize,
     pub total_return: f64,
     #[serde(default)]
@@ -1336,6 +1339,15 @@ impl BacktestMetrics {
             }
         }
 
+        let mut unbroken_date: Option<NaiveDate> = None;
+        for (date, value) in trade_dates_value.iter().rev() {
+            if *value > options.init_cash {
+                unbroken_date = Some(*date);
+            } else {
+                break;
+            }
+        }
+
         let final_value = trade_dates_value
             .last()
             .map(|(_, v)| *v)
@@ -1361,6 +1373,7 @@ impl BacktestMetrics {
 
         Self {
             last_trade_date: trade_dates_value.last().map(|(d, _)| *d),
+            unbroken_date,
             trade_days: trade_dates_value.len(),
             total_return,
             calendar_year_returns,
