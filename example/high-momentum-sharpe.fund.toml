@@ -9,6 +9,7 @@ tickers = [
   "510900", # 恒生H股ETF
   "512090", # MSCI中国A股ETF
   "515180", # 中证红利ETF
+  "515450", # 红利低波50ETF
   "513100", # 纳斯达克100ETF
   "513500", # 标普500ETF
   "518880", # 黄金ETF
@@ -24,16 +25,16 @@ name = "hold_by_momentum_sharpe"
 frequency = "6m"
 
 [rules.options]
-enable_indicator_weighting = false
+factor_momentum_weight = 2
+factor_sharpe_weight = 1
 limit = 2
 lookback_trade_days = 126
-weight_momentum = 2
-weight_sharpe = 1
+weight_exp = 0.0
 
 [rules.search]
-# frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
-# enable_indicator_weighting = [true, false]
-# limit = [2, 3, 4, 5]
-# lookback_trade_days = [21, 42, 63, 126, 189, 252]
-weight_momentum = [0, 1, 2, 3, 5]
-weight_sharpe = [0, 1, 2, 3, 5]
+frequency = ["1w", "2w", "3w", "4w", "6w", "2m", "3m", "4m", "6m", "9m", "1y"]
+# factor_momentum_weight = [0, 1, 2, 3, 5]
+# factor_sharpe_weight = [0, 1, 2, 3, 5]
+limit = [2, 3, 4, 5]
+lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
+# weight_exp = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0]

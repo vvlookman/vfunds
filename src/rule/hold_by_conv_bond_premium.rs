@@ -16,11 +16,14 @@ use crate::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
         notify_tickers_indicator,
     },
+    spec::Frequency,
     ticker::Ticker,
-    utils::{datetime::date_to_str, stats::quantile},
+    utils::{datetime::date_to_str, math::signed_powf, stats::quantile},
 };
 
 pub struct Executor {
+    frequency: Frequency,
+
     #[allow(dead_code)]
     options: HashMap<String, serde_json::Value>,
 }
@@ -28,6 +31,7 @@ pub struct Executor {
 impl Executor {
     pub fn new(definition: &RuleDefinition) -> Self {
         Self {
+            frequency: definition.frequency.clone(),
             options: definition.options.clone(),
         }
     }
@@ -62,12 +66,17 @@ impl RuleExecutor for Executor {
             .options
             .get("min_issue_size_quantile")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.05);
+            .unwrap_or(0.2);
         let min_remaining_days = self
             .options
             .get("min_remaining_days")
             .and_then(|v| v.as_u64())
-            .unwrap_or(30);
+            .unwrap_or(60);
+        let weight_exp = self
+            .options
+            .get("weight_exp")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -83,7 +92,7 @@ impl RuleExecutor for Executor {
             let date_str = date_to_str(date);
 
             let filter_analysis_date = *date - Days::new(7);
-            let filter_expire_date = *date + Days::new(min_remaining_days);
+            let filter_expire_date = *date + Days::new(min_remaining_days.max(self.frequency.days));
 
             let conv_bonds_issue_size = conv_bonds
                 .iter()
@@ -97,6 +106,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for conv_bond in &conv_bonds {
+                    calc_count += 1;
+
                     if conv_bond.title.ends_with("退") {
                         continue;
                     }
@@ -130,7 +141,7 @@ impl RuleExecutor for Executor {
                                     && conversion_premium <= max_conversion_premium
                                     && latest_date >= filter_analysis_date
                                 {
-                                    let indicator = 100.0 / (100.0 + conversion_premium);
+                                    let indicator = 1.0 - conversion_premium;
                                     debug!(
                                         "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
                                     );
@@ -142,8 +153,6 @@ impl RuleExecutor for Executor {
                             }
                         }
                     }
-
-                    calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
@@ -183,7 +192,7 @@ impl RuleExecutor for Executor {
 
             let targets_weight: Vec<(Ticker, f64)> = targets_indicator
                 .iter()
-                .map(|(t, _)| (t.clone(), 1.0))
+                .map(|(ticker, indicator)| (ticker.clone(), signed_powf(*indicator, weight_exp)))
                 .collect();
 
             context

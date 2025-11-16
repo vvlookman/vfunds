@@ -10,7 +10,23 @@ use crate::utils::{stats, stats::slope};
 const DAYS_PER_YEAR: f64 = 365.2425;
 const TRADE_DAYS_PER_YEAR: f64 = 252.0;
 
-pub fn calc_annualized_return_rate(start_value: f64, end_value: f64, days: u64) -> Option<f64> {
+pub fn calc_annualized_return_rate(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let start_value = daily_values[0];
+        let end_value = daily_values[daily_values.len() - 1];
+        let days = daily_values.len() as u64;
+
+        return calc_annualized_return_rate_by_start_end(start_value, end_value, days);
+    }
+
+    None
+}
+
+pub fn calc_annualized_return_rate_by_start_end(
+    start_value: f64,
+    end_value: f64,
+    days: u64,
+) -> Option<f64> {
     if start_value > 0.0 && end_value > 0.0 && days > 0 {
         return Some((end_value / start_value).powf(DAYS_PER_YEAR / days as f64) - 1.0);
     }

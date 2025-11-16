@@ -10,20 +10,20 @@ name = "hold_by_stablity"
 frequency = "3w"
 
 [rules.options]
-enable_indicator_weighting = false
+factor_market_cap_weight = 1
+factor_turnover_ratio_weight = 2
+factor_volatility_weight = 3
 limit = 3
 lookback_trade_days = 126
 skip_same_sector = false
-weight_market_cap = 1
-weight_turnover_ratio = 2
-weight_volatility = 3
+weight_exp = 0.0
 
 [rules.search]
 frequency = ["1w", "2w", "3w", "1m", "3m", "6m", "9m", "1y"]
-# enable_indicator_weighting = [true, false]
+factor_market_cap_weight = [0, 1, 2, 3, 5]
+factor_turnover_ratio_weight = [0, 1, 2, 3, 5]
+factor_volatility_weight = [0, 1, 2, 3, 5]
 limit = [3, 4, 5, 10]
-# lookback_trade_days = [21, 63, 126, 189, 252]
-# skip_same_sector = [true, false]
-# weight_market_cap = [0, 1, 2, 3, 5]
-# weight_turnover_ratio = [0, 1, 2, 3, 5]
-# weight_volatility = [0, 1, 2, 3, 5]
+lookback_trade_days = [21, 63, 126, 189, 252]
+skip_same_sector = [true, false]
+weight_exp = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0]

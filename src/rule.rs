@@ -11,17 +11,6 @@ use crate::{
     utils::datetime::date_to_str,
 };
 
-pub mod hold;
-pub mod hold_by_conv_bond_premium;
-pub mod hold_by_dividend;
-pub mod hold_by_momentum_sharpe;
-pub mod hold_by_return_px_ratio;
-pub mod hold_by_risk_parity;
-pub mod hold_by_stablity;
-pub mod hold_by_trend;
-pub mod size_by_macd_crossover;
-pub mod size_by_valuation;
-
 pub struct Rule {
     executor: Box<dyn RuleExecutor>,
     definition: RuleDefinition,
@@ -49,6 +38,9 @@ impl Rule {
                 Box::new(hold_by_conv_bond_premium::Executor::new(definition))
             }
             "hold_by_dividend" => Box::new(hold_by_dividend::Executor::new(definition)),
+            "hold_by_factors_boosting" => {
+                Box::new(hold_by_factors_boosting::Executor::new(definition))
+            }
             "hold_by_momentum_sharpe" => {
                 Box::new(hold_by_momentum_sharpe::Executor::new(definition))
             }
@@ -78,6 +70,18 @@ impl Rule {
         self.executor.exec(context, date, event_sender).await
     }
 }
+
+mod hold;
+mod hold_by_conv_bond_premium;
+mod hold_by_dividend;
+mod hold_by_factors_boosting;
+mod hold_by_momentum_sharpe;
+mod hold_by_return_px_ratio;
+mod hold_by_risk_parity;
+mod hold_by_stablity;
+mod hold_by_trend;
+mod size_by_macd_crossover;
+mod size_by_valuation;
 
 async fn notify_calc_progress(
     event_sender: Sender<BacktestEvent>,

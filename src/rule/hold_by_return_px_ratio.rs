@@ -17,7 +17,7 @@ use crate::{
         notify_tickers_indicator,
     },
     ticker::Ticker,
-    utils::financial::calc_annualized_return_rate,
+    utils::{financial::calc_annualized_return_rate, math::signed_powf},
 };
 
 pub struct Executor {
@@ -43,11 +43,6 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let enable_indicator_weighting = self
-            .options
-            .get("enable_indicator_weighting")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
         let limit = self
             .options
             .get("limit")
@@ -73,6 +68,11 @@ impl RuleExecutor for Executor {
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let weight_exp = self
+            .options
+            .get("weight_exp")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -91,6 +91,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for ticker in tickers_map.keys() {
+                    calc_count += 1;
+
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;
                     }
@@ -110,11 +112,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if let Some(arr) = calc_annualized_return_rate(
-                        prices[0],
-                        prices[prices.len() - 1],
-                        prices.len() as u64,
-                    ) {
+                    if let Some(arr) = calc_annualized_return_rate(&prices) {
                         if arr > 0.0 {
                             if let Some(indicator) = match px {
                                 "pb" => calc_stock_pb(ticker, date).await?,
@@ -127,8 +125,6 @@ impl RuleExecutor for Executor {
                             }
                         }
                     }
-
-                    calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
@@ -206,12 +202,7 @@ impl RuleExecutor for Executor {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((
                         ticker.clone(),
-                        (*weight)
-                            * if enable_indicator_weighting {
-                                *indicator
-                            } else {
-                                1.0
-                            },
+                        (*weight) * signed_powf(*indicator, weight_exp),
                     ));
                 }
             }

@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate};
 use log::debug;
 use smartcore::{
-    linalg::basic::matrix::DenseMatrix,
+    linalg::basic::{arrays::Array, matrix::DenseMatrix},
     linear::ridge_regression::{RidgeRegression, RidgeRegressionParameters},
-    metrics::r2,
+    metrics::{mean_absolute_error, r2},
 };
 use tokio::{sync::mpsc::Sender, time::Instant};
 
@@ -25,6 +25,7 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{calc_annualized_return_rate, calc_ema},
+        math::signed_powf,
     },
 };
 
@@ -51,11 +52,6 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let enable_indicator_weighting = self
-            .options
-            .get("enable_indicator_weighting")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
         let limit = self
             .options
             .get("limit")
@@ -81,16 +77,21 @@ impl RuleExecutor for Executor {
             .get("ma_period_slow")
             .and_then(|v| v.as_u64())
             .unwrap_or(20);
+        let metric_r2_threshold = self
+            .options
+            .get("metric_r2_threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.8);
         let regression_alpha = self
             .options
             .get("regression_alpha")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let regression_test = self
+        let weight_exp = self
             .options
-            .get("regression_test")
+            .get("weight_exp")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.3);
+            .unwrap_or(0.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -115,10 +116,6 @@ impl RuleExecutor for Executor {
             if regression_alpha < 0.0 {
                 panic!("regression_alpha must >= 0");
             }
-
-            if regression_test <= 0.0 || regression_test >= 1.0 {
-                panic!("regression_test must > 0 and < 1");
-            }
         }
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
@@ -131,6 +128,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for ticker in tickers_map.keys() {
+                    calc_count += 1;
+
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;
                     }
@@ -152,14 +151,7 @@ impl RuleExecutor for Executor {
                     }
 
                     let prices: Vec<f64> = prices_with_date.iter().map(|&(_, v)| v).collect();
-                    if let Some(arr) = calc_annualized_return_rate(
-                        prices[0],
-                        prices[prices.len() - 1],
-                        prices.len() as u64,
-                    ) {
-                        let total_len = prices.len();
-                        let train_len = (total_len as f64 * (1.0 - regression_test)) as usize;
-
+                    if let Some(arr) = calc_annualized_return_rate(&prices) {
                         let features: Vec<Vec<f64>> = prices_with_date
                             .iter()
                             .enumerate()
@@ -172,35 +164,27 @@ impl RuleExecutor for Executor {
                             })
                             .collect();
 
-                        if let (Ok(x_train), Ok(x_test)) = (
-                            DenseMatrix::from_2d_array(
-                                &features
-                                    .iter()
-                                    .take(train_len)
-                                    .map(|v| v.as_slice())
-                                    .collect::<Vec<&[f64]>>(),
-                            ),
-                            DenseMatrix::from_2d_array(
-                                &features
-                                    .iter()
-                                    .skip(train_len)
-                                    .map(|v| v.as_slice())
-                                    .collect::<Vec<&[f64]>>(),
-                            ),
+                        if let Ok(x_train) = DenseMatrix::from_2d_array(
+                            &features
+                                .iter()
+                                .map(|v| v.as_slice())
+                                .collect::<Vec<&[f64]>>(),
                         ) {
-                            let y_train: Vec<f64> =
-                                prices.iter().take(train_len).map(|&v| v.ln()).collect();
-                            let y_test: Vec<f64> =
-                                prices.iter().skip(train_len).map(|&v| v.ln()).collect();
+                            let y_train: Vec<f64> = prices.iter().map(|&v| v.ln()).collect();
 
                             let parameters =
                                 RidgeRegressionParameters::default().with_alpha(regression_alpha);
                             if let Ok(model) = RidgeRegression::fit(&x_train, &y_train, parameters)
                             {
-                                if let Ok(y_pred) = model.predict(&x_test) {
-                                    let r2_score = r2(&y_test, &y_pred);
+                                if let Ok(y_train_pred) = model.predict(&x_train) {
+                                    let r2_score = r2(&y_train, &y_train_pred);
+                                    debug!(
+                                        "[{date_str}] R2={r2_score:.4} MAE={:.4} SHAPE={:?}",
+                                        mean_absolute_error(&y_train, &y_train_pred),
+                                        x_train.shape(),
+                                    );
 
-                                    if r2_score > 0.0 {
+                                    if r2_score > metric_r2_threshold && r2_score < 1.0 - 1e-8 {
                                         let emas_fast = calc_ema(&prices, ma_period_fast as usize);
                                         let emas_slow = calc_ema(&prices, ma_period_slow as usize);
                                         let ema_ratio = if let (Some(ema_fast), Some(ema_slow)) =
@@ -216,7 +200,7 @@ impl RuleExecutor for Executor {
                                             "[{date_str}] [{rule_name}] {ticker} = {indicator:.4} (ARR={arr:.4} R2={r2_score:.4} EMA_RATIO={ema_ratio:.4})"
                                         );
 
-                                        if indicator.is_finite() {
+                                        if indicator > 0.0 {
                                             indicators.push((ticker.clone(), indicator));
                                         }
                                     }
@@ -224,8 +208,6 @@ impl RuleExecutor for Executor {
                             }
                         }
                     }
-
-                    calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
@@ -274,12 +256,7 @@ impl RuleExecutor for Executor {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((
                         ticker.clone(),
-                        (*weight)
-                            * if enable_indicator_weighting {
-                                *indicator
-                            } else {
-                                1.0
-                            },
+                        (*weight) * signed_powf(*indicator, weight_exp),
                     ));
                 }
             }

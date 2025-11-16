@@ -2,16 +2,16 @@ title = "简易永久组合"
 description = "按固定比例持有股票、债券、黄金"
 
 [tickers]
-"515180" = 7.5 # 中证红利ETF
+"515450" = 7.5 # 红利低波50ETF
 "159949" = 7.5 # 创业板50ETF
 "513100" = 7.5 # 纳斯达克100ETF
 "513500" = 7.5 # 标普500ETF
-"511260" = 50  # 十年国债ETF
-"518880" = 20  # 黄金ETF
+"511260" = 55  # 十年国债ETF
+"518880" = 15  # 黄金ETF
 
 [[rules]]
 name = "hold"
-frequency = "2m"
+frequency = "1y"
 
 [rules.search]
 frequency = ["1m", "2m", "3m", "6m", "1y"]

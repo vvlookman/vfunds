@@ -165,6 +165,8 @@ impl RuleExecutor for Executor {
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
             for ticker in &watching_tickers {
+                calc_count += 1;
+
                 let watch_index: Option<TickersIndex> =
                     if let Some(index) = ticker_watch_index_map.get(ticker) {
                         Some(index.clone())
@@ -295,8 +297,6 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                calc_count += 1;
-
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                     notify_calc_progress(
                         event_sender.clone(),
@@ -356,6 +356,8 @@ impl Executor {
             let mut earning_ttm_sum = 0.0;
             let mut revenue_ttm_sum = 0.0;
             for ticker in &tickers {
+                calc_count += 1;
+
                 let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                 let report_capital = fetch_stock_report_capital(ticker).await?;
 
@@ -382,8 +384,6 @@ impl Executor {
                         revenue_ttm_sum += market_cap / ps_ttm;
                     }
                 }
-
-                calc_count += 1;
 
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                     let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;

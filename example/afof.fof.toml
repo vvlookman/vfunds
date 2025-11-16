@@ -3,12 +3,13 @@ description = "基金按权重进行组合"
 
 [funds]
 conv-bond = 1
-high-dividend = 1
-high-momentum-sharpe = 1
-risk-parity = 1
+high-dividend = 5
+high-momentum-sharpe = 5
+permanent = 1
 
+# 交叉验证偏重夏普，指定参数 -A 0.3
 [search]
-conv-bond = [1, 2, 3]
-high-dividend = [1, 2, 3]
-high-momentum-sharpe = [1, 2, 3]
-risk-parity = [1, 2, 3]
+conv-bond = [1, 2, 3, 5]
+high-dividend = [1, 2, 3, 5]
+high-momentum-sharpe = [1, 2, 3, 5]
+permanent = [1, 2, 3, 5]

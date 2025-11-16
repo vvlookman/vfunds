@@ -20,7 +20,7 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{calc_regression_momentum, calc_sharpe_ratio},
-        math::normalize_zscore,
+        math::{normalize_zscore, signed_powf},
     },
 };
 
@@ -47,11 +47,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let enable_indicator_weighting = self
+        let factor_momentum_weight = self
             .options
-            .get("enable_indicator_weighting")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .get("factor_momentum_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let factor_sharpe_weight = self
+            .options
+            .get("factor_sharpe_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let limit = self
             .options
             .get("limit")
@@ -62,16 +67,11 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
-        let weight_momentum = self
+        let weight_exp = self
             .options
-            .get("weight_momentum")
+            .get("weight_exp")
             .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let weight_sharpe = self
-            .options
-            .get("weight_sharpe")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
+            .unwrap_or(0.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -92,6 +92,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for ticker in tickers_map.keys() {
+                    calc_count += 1;
+
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;
                     }
@@ -123,8 +125,6 @@ impl RuleExecutor for Executor {
                         factors.push((ticker.clone(), momentum, sharpe));
                     }
 
-                    calc_count += 1;
-
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
                             event_sender.clone(),
@@ -155,7 +155,7 @@ impl RuleExecutor for Executor {
                     let momentum = normalized_momentum_values[i];
                     let sharpe = normalized_sharpe_values[i];
 
-                    let indicator = weight_momentum * (1.0 + momentum.tanh()) + weight_sharpe * (1.0 + sharpe.tanh());
+                    let indicator = factor_momentum_weight * (1.0 + momentum.tanh()) + factor_sharpe_weight * (1.0 + sharpe.tanh());
                     debug!("[{date_str}] {ticker}={indicator:.4} (Momentum={momentum:.4} Sharpe={sharpe:.4}");
 
                     if indicator.is_finite() {
@@ -191,12 +191,7 @@ impl RuleExecutor for Executor {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((
                         ticker.clone(),
-                        (*weight)
-                            * if enable_indicator_weighting {
-                                *indicator
-                            } else {
-                                1.0
-                            },
+                        (*weight) * signed_powf(*indicator, weight_exp),
                     ));
                 }
             }

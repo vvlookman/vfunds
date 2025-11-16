@@ -21,7 +21,7 @@ use crate::{
         notify_tickers_indicator,
     },
     ticker::Ticker,
-    utils::datetime::date_to_str,
+    utils::{datetime::date_to_str, math::signed_powf},
 };
 
 pub struct Executor {
@@ -47,11 +47,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let enable_indicator_weighting = self
+        let div_allot_weight = self
             .options
-            .get("enable_indicator_weighting")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .get("div_allot_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let div_bonus_gift_weight = self
+            .options
+            .get("div_bonus_gift_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let limit = self
             .options
             .get("limit")
@@ -82,14 +87,9 @@ impl RuleExecutor for Executor {
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let weight_allot = self
+        let weight_exp = self
             .options
-            .get("weight_allot")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let weight_bonus_gift = self
-            .options
-            .get("weight_bonus_gift")
+            .get("weight_exp")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         {
@@ -126,6 +126,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for ticker in tickers_map.keys() {
+                    calc_count += 1;
+
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;
                     }
@@ -175,7 +177,7 @@ impl RuleExecutor for Executor {
                             let mut total_count =
                                 interest_values.iter().filter(|(_, v)| *v > 0.0).count();
 
-                            if weight_bonus_gift != 0.0 {
+                            if div_bonus_gift_weight != 0.0 {
                                 let mut free_shares_map: HashMap<NaiveDate, f64> = HashMap::new();
 
                                 for (div_date, stock_bonus) in dividends.get_values::<f64>(
@@ -207,17 +209,17 @@ impl RuleExecutor for Executor {
                                             true,
                                             &KlineField::Close.to_string(),
                                         ) {
-                                            total_income += shares * price * weight_bonus_gift;
+                                            total_income += shares * price * div_bonus_gift_weight;
                                         }
 
-                                        if weight_bonus_gift > 0.0 {
+                                        if div_bonus_gift_weight > 0.0 {
                                             total_count += 1;
                                         }
                                     }
                                 }
                             }
 
-                            if weight_allot != 0.0 {
+                            if div_allot_weight != 0.0 {
                                 let allot_num_map = dividends
                                     .get_values::<f64>(
                                         &date_from,
@@ -248,11 +250,11 @@ impl RuleExecutor for Executor {
                                             ) {
                                                 total_income += allot_num
                                                     * (price - allot_price)
-                                                    * weight_allot;
+                                                    * div_allot_weight;
                                             }
                                         }
 
-                                        if weight_allot > 0.0 {
+                                        if div_allot_weight > 0.0 {
                                             total_count += 1;
                                         }
                                     }
@@ -274,8 +276,6 @@ impl RuleExecutor for Executor {
                             }
                         }
                     }
-
-                    calc_count += 1;
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
@@ -353,12 +353,7 @@ impl RuleExecutor for Executor {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((
                         ticker.clone(),
-                        (*weight)
-                            * if enable_indicator_weighting {
-                                *indicator
-                            } else {
-                                1.0
-                            },
+                        (*weight) * signed_powf(*indicator, weight_exp),
                     ));
                 }
             }

@@ -20,7 +20,11 @@ use crate::{
         notify_tickers_indicator,
     },
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::normalize_zscore},
+    utils::{
+        datetime::date_to_str,
+        financial::calc_annualized_volatility,
+        math::{normalize_zscore, signed_powf},
+    },
 };
 
 pub struct Executor {
@@ -46,11 +50,21 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let enable_indicator_weighting = self
+        let factor_market_cap_weight = self
             .options
-            .get("enable_indicator_weighting")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+            .get("factor_market_cap_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let factor_turnover_ratio_weight = self
+            .options
+            .get("factor_turnover_ratio_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let factor_volatility_weight = self
+            .options
+            .get("factor_volatility_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let limit = self
             .options
             .get("limit")
@@ -66,21 +80,11 @@ impl RuleExecutor for Executor {
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let weight_market_cap = self
+        let weight_exp = self
             .options
-            .get("weight_market_cap")
+            .get("weight_exp")
             .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let weight_turnover_ratio = self
-            .options
-            .get("weight_turnover_ratio")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let weight_volatility = self
-            .options
-            .get("weight_volatility")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
+            .unwrap_or(0.0);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -101,6 +105,8 @@ impl RuleExecutor for Executor {
                 let mut calc_count: usize = 0;
 
                 for ticker in tickers_map.keys() {
+                    calc_count += 1;
+
                     if context.portfolio.reserved_cash.contains_key(ticker) {
                         continue;
                     }
@@ -164,8 +170,6 @@ impl RuleExecutor for Executor {
                         factors.push((ticker.clone(), turnover_ratio, market_cap, volatility));
                     }
 
-                    calc_count += 1;
-
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         notify_calc_progress(
                             event_sender.clone(),
@@ -199,9 +203,9 @@ impl RuleExecutor for Executor {
                     let market_cap = normalized_market_cap_values[i];
                     let volatility = normalized_volatility_values[i];
 
-                    let indicator = weight_turnover_ratio * (1.0 - turnover_ratio.tanh())
-                        + weight_market_cap * (1.0 + market_cap.tanh())
-                        + weight_volatility * (1.0 - volatility.tanh());
+                    let indicator = factor_turnover_ratio_weight * (1.0 - turnover_ratio.tanh())
+                        + factor_market_cap_weight * (1.0 + market_cap.tanh())
+                        + factor_volatility_weight * (1.0 - volatility.tanh());
                     debug!("[{date_str}] {ticker}={indicator:.4} (Turnover={turnover_ratio:.4} MarketCap={market_cap:.4} Vol={volatility:.4})");
 
                     if indicator.is_finite() {
@@ -272,12 +276,7 @@ impl RuleExecutor for Executor {
                 if let Some((weight, _)) = tickers_map.get(ticker) {
                     targets_weight.push((
                         ticker.clone(),
-                        (*weight)
-                            * if enable_indicator_weighting {
-                                *indicator
-                            } else {
-                                1.0
-                            },
+                        (*weight) * signed_powf(*indicator, weight_exp),
                     ));
                 }
             }

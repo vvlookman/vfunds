@@ -97,6 +97,14 @@ pub fn normalize_zscore(values: &[f64]) -> Vec<f64> {
     }
 }
 
+pub fn signed_powf(x: f64, y: f64) -> f64 {
+    if x.is_sign_negative() {
+        -x.abs().powf(y)
+    } else {
+        x.powf(y)
+    }
+}
+
 pub fn transpose(mat: &[Vec<f64>]) -> Vec<Vec<f64>> {
     if mat.is_empty() || mat[0].is_empty() {
         return vec![];
@@ -143,6 +151,11 @@ mod tests {
         assert!(result[3].abs() < 1e-10);
         assert!((result[4] - 1.5_f64.sqrt()).abs() < 1e-10);
         assert_eq!(result[5], f64::INFINITY);
+    }
+
+    #[test]
+    fn test_signed_powf() {
+        assert!((signed_powf(-4.0, 0.5) - (-2.0)).abs() < 1e-10);
     }
 
     #[test]
