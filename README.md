@@ -18,6 +18,7 @@ vfunds config set qmt_api http://192.168.0.222:9000 # Set configuration
 vfunds list -w ~/vfunds/example # List all virtual funds
 vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2019-08-08 # Run backtest
 vfunds result -o ~/vfunds/output -g # Show backtest result with GUI chart
+CACHE_NO_EXPIRE=true vfunds backtest -s 2019-08-08 @permanent -S -p # Run cross-validation backtests, ignoring cache expiration
 ```
 
 ## Develop

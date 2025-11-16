@@ -65,8 +65,8 @@ mod market;
 mod rule;
 mod ticker;
 
-static CACHE_ONLY: LazyLock<bool> = LazyLock::new(|| {
-    let v = env::var("CACHE_ONLY")
+static CACHE_NO_EXPIRE: LazyLock<bool> = LazyLock::new(|| {
+    let v = env::var("CACHE_NO_EXPIRE")
         .as_deref()
         .unwrap_or_default()
         .to_lowercase();

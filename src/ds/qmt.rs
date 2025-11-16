@@ -4,8 +4,8 @@ use serde_json::Value;
 use tokio::time::sleep;
 
 use crate::{
-    CACHE_ONLY, CONFIG, cache,
-    error::{VfError, VfResult},
+    CACHE_NO_EXPIRE, CONFIG, cache,
+    error::VfResult,
     market::next_data_expire_in_china,
     utils::{compress, net::http_get},
 };
@@ -20,17 +20,8 @@ pub async fn call_api(
 
     let cache_key = format!("qmt:{path}?{params}");
 
-    let bytes: VfResult<Vec<u8>> = if *CACHE_ONLY {
-        if let Some(data) = cache::get(&cache_key, true).await? {
-            Ok(compress::decode(&data)?)
-        } else {
-            Err(VfError::NoData {
-                code: "NO_CACHE_DATA",
-                message: format!("Cache with key '{cache_key}' not exists"),
-            })
-        }
-    } else {
-        if let Some(data) = cache::get(&cache_key, false).await? {
+    let bytes: VfResult<Vec<u8>> =
+        if let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
             Ok(compress::decode(&data)?)
         } else {
             let mut query = HashMap::new();
@@ -71,8 +62,7 @@ pub async fn call_api(
             }
 
             Ok(bytes)
-        }
-    };
+        };
 
     let json: serde_json::Value = serde_json::from_slice(&bytes?)?;
 
