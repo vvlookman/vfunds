@@ -72,16 +72,16 @@ impl RuleExecutor for Executor {
             .get("min_div_count_per_year")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let min_roe = self
-            .options
-            .get("min_roe")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let price_avg_count = self
             .options
             .get("price_avg_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
+        let roe_lower = self
+            .options
+            .get("roe_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -109,8 +109,8 @@ impl RuleExecutor for Executor {
                 panic!("min_div_count_per_year must > 0");
             }
 
-            if min_roe < 0.0 {
-                panic!("min_roe must >= 0");
+            if roe_lower < 0.0 {
+                panic!("roe_lower must >= 0");
             }
         }
 
@@ -146,7 +146,7 @@ impl RuleExecutor for Executor {
 
                     let price = prices.iter().sum::<f64>() / prices.len() as f64;
                     if price > 0.0 {
-                        let filter_roe = if min_roe > 0.0 {
+                        let filter_roe = if roe_lower > 0.0 {
                             let report_pershare = fetch_stock_report_pershare(ticker).await?;
                             let roe = report_pershare
                                 .get_latest_value::<f64>(
@@ -158,7 +158,7 @@ impl RuleExecutor for Executor {
                                 .unwrap_or(0.0)
                                 / 100.0;
 
-                            roe > min_roe
+                            roe > roe_lower
                         } else {
                             true
                         };
@@ -267,7 +267,7 @@ impl RuleExecutor for Executor {
                             {
                                 let indicator = total_income / lookback_years as f64 / price;
                                 debug!(
-                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}({total_count})"
+                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(COUNT={total_count})"
                                 );
 
                                 if indicator.is_finite() {
