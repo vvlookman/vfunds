@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap, HashSet},
     str::FromStr,
+    time::Instant,
 };
 
 use chrono::{Datelike, Duration, NaiveDate};
@@ -20,7 +21,7 @@ use crate::{
     spec::{FofDefinition, Frequency, FundDefinition, TickerSourceDefinition},
     ticker::Ticker,
     utils::{
-        datetime::date_to_str,
+        datetime::{date_to_str, secs_to_human_str},
         financial::{
             calc_annualized_return_rate_by_start_end, calc_annualized_volatility,
             calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio,
@@ -260,6 +261,7 @@ pub async fn backtest_fof(
                     .into_iter()
                     .collect::<Vec<_>>();
 
+                let cv_start = Instant::now();
                 let mut cv_results: Vec<(Vec<(String, f64)>, BacktestResult)> = vec![];
                 let cv_count = all_search.iter().map(|(_, v)| v.len()).product::<usize>();
                 for (i, funds_weight) in all_search
@@ -282,8 +284,9 @@ pub async fn backtest_fof(
 
                     let _ = sender
                         .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({})",
+                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({})",
                             i + 1,
+                            secs_to_human_str(cv_start.elapsed().as_secs()),
                             result
                                 .metrics
                                 .annualized_return_rate
@@ -370,6 +373,7 @@ pub async fn backtest_fof(
                     }
                 }
 
+                let cv_start = Instant::now();
                 let mut cv_results: Vec<(DateRange, BacktestResult)> = vec![];
                 let cv_count = windows.len();
                 for (i, (window_start, window_end)) in windows.iter().enumerate() {
@@ -381,8 +385,9 @@ pub async fn backtest_fof(
 
                     let _ = sender
                         .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({}-{})",
+                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({}-{})",
                             i + 1,
+                            secs_to_human_str(cv_start.elapsed().as_secs()),
                             result
                                 .metrics
                                 .annualized_return_rate
@@ -632,6 +637,7 @@ pub async fn backtest_fund(
                     }
                 }
 
+                let cv_start = Instant::now();
                 let mut cv_results: Vec<(Vec<RuleOptionValue>, BacktestResult)> = vec![];
                 let cv_count = all_search
                     .iter()
@@ -689,8 +695,9 @@ pub async fn backtest_fund(
 
                     let _ = sender
                         .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({})",
+                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({})",
                             i + 1,
+                            secs_to_human_str(cv_start.elapsed().as_secs()),
                             result
                                 .metrics
                                 .annualized_return_rate
@@ -781,6 +788,7 @@ pub async fn backtest_fund(
                     }
                 }
 
+                let cv_start = Instant::now();
                 let mut cv_results: Vec<(DateRange, BacktestResult)> = vec![];
                 let cv_count = windows.len();
                 for (i, (window_start, window_end)) in windows.iter().enumerate() {
@@ -792,8 +800,9 @@ pub async fn backtest_fund(
 
                     let _ = sender
                         .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count}] ARR={} Sharpe={} ({}-{})",
+                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({}-{})",
                             i + 1,
+                            secs_to_human_str(cv_start.elapsed().as_secs()),
                             result
                                 .metrics
                                 .annualized_return_rate

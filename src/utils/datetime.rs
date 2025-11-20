@@ -52,6 +52,20 @@ pub fn date_to_str(date: &NaiveDate) -> String {
     date.format("%Y-%m-%d").to_string()
 }
 
+pub fn secs_to_human_str(secs: u64) -> String {
+    let h = secs / 3600;
+    let m = (secs % 3600) / 60;
+    let s = secs % 60;
+
+    if h > 0 {
+        format!("{}h{}m{}s", h, m, s)
+    } else if m > 0 {
+        format!("{}m{}s", m, s)
+    } else {
+        format!("{}s", s)
+    }
+}
+
 impl FiscalQuarter {
     pub fn new(year: i32, quarter: u8) -> Self {
         Self {
