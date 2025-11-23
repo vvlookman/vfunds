@@ -152,7 +152,7 @@ impl RuleExecutor for Executor {
                                 .get_latest_value::<f64>(
                                     date,
                                     false,
-                                    &StockReportPershareField::RoeRate.to_string(),
+                                    &StockReportPershareField::Roe.to_string(),
                                 )
                                 .map(|(_, v)| v)
                                 .unwrap_or(0.0)

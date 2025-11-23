@@ -124,7 +124,7 @@ impl RuleExecutor for Executor {
                         .await;
 
                     context
-                        .position_exit(&ticker, !allow_short, date, event_sender.clone())
+                        .position_close(&ticker, !allow_short, date, event_sender.clone())
                         .await?;
 
                     if !allow_short {
@@ -174,7 +174,7 @@ impl RuleExecutor for Executor {
                         .await;
 
                     context
-                        .position_init_reserved(&ticker, date, event_sender.clone())
+                        .position_open_reserved(&ticker, date, event_sender.clone())
                         .await?;
                 }
             }

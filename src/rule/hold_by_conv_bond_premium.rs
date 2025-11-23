@@ -47,6 +47,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let issue_size_quantile_lower = self
+            .options
+            .get("issue_size_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.2);
         let limit = self
             .options
             .get("limit")
@@ -62,11 +67,6 @@ impl RuleExecutor for Executor {
             .get("max_tenor_months")
             .and_then(|v| v.as_u64())
             .unwrap_or(72);
-        let min_issue_size_quantile = self
-            .options
-            .get("min_issue_size_quantile")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.2);
         let min_remaining_days = self
             .options
             .get("min_remaining_days")
@@ -98,7 +98,7 @@ impl RuleExecutor for Executor {
                 .iter()
                 .filter_map(|b| b.issue_size)
                 .collect::<Vec<_>>();
-            let min_issue_size = quantile(&conv_bonds_issue_size, min_issue_size_quantile);
+            let min_issue_size = quantile(&conv_bonds_issue_size, issue_size_quantile_lower);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             {

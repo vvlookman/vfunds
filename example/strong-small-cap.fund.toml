@@ -1,0 +1,39 @@
+title = "小盘股优选"
+description = "持有中小板指中基本面较好的低市值股票"
+
+[[ticker_sources]]
+source = "399101.CNI"
+source_type = "index"
+
+[[rules]]
+name = "hold_by_small_cap"
+frequency = "4w"
+
+[rules.options]
+limit = 5
+lookback_trade_days = 21
+momentum_quantile_lower = 0
+momentum_quantile_upper = 1
+pb_quantile_lower = 0
+pb_quantile_upper = 1
+profit_rate_lower = -100
+revenue_rate_lower = -100
+skip_same_sector = false
+volatility_quantile_lower = 0
+volatility_quantile_upper = 1
+weight_exp = 0
+
+[rules.search]
+# frequency = ["1w", "2w", "4w", "8w"]
+# limit = [3, 5, 10, 15, 20]
+lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
+# momentum_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+# momentum_quantile_upper = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+# pb_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+# pb_quantile_upper = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+# profit_rate_lower = [-100, -50, -20, 0, 20, 50, 100]
+# revenue_rate_lower = [-100, -50, -20, 0, 20, 50, 100]
+# skip_same_sector = [true, false]
+volatility_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+volatility_quantile_upper = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+# weight_exp = [0, 0.25, 0.5, 1, 2, 4]

@@ -48,6 +48,7 @@ impl Rule {
                 Box::new(hold_by_return_px_ratio::Executor::new(definition))
             }
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
+            "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
             "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
             "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
@@ -78,6 +79,7 @@ mod hold_by_factors_boosting;
 mod hold_by_momentum_sharpe;
 mod hold_by_return_px_ratio;
 mod hold_by_risk_parity;
+mod hold_by_small_cap;
 mod hold_by_stablity;
 mod hold_by_trend;
 mod size_by_macd_crossover;

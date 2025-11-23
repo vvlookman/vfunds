@@ -22,10 +22,10 @@ frequency = "4w"
 [rules.options]
 allow_short = false
 lookback_years = 6
-max_pe_quantile = 0.9
-min_pe_quantile = 0.5
-max_ps_quantile = 0.8
-min_ps_quantile = 0.2
+pe_quantile_lower = 0.5
+pe_quantile_upper = 0.9
+ps_quantile_lower = 0.2
+ps_quantile_upper = 0.8
 ticker_watch_index = { "510300" = "000300.CSI", "159949" = "399673.CNI", "515180" = "000922.CSI" }
 watch_period_days = 28
 
@@ -33,5 +33,7 @@ watch_period_days = 28
 frequency = ["1w", "2w", "4w", "8w"]
 allow_short = [true, false]
 lookback_years = [5, 6]
-max_ps_quantile = [0.7, 0.8]
-min_ps_quantile = [0.2, 0.3]
+pe_quantile_lower = [0.4, 0.5]
+pe_quantile_upper = [0.8, 0.9]
+ps_quantile_lower = [0.2, 0.3]
+ps_quantile_upper = [0.7, 0.8]

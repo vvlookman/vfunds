@@ -6,7 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -86,7 +86,7 @@ impl RuleExecutor for Executor {
         if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
 
-            let mut factors: Vec<(Ticker, f64, f64)> = vec![];
+            let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -109,7 +109,9 @@ impl RuleExecutor for Executor {
                         .iter()
                         .map(|&(_, v)| v)
                         .collect();
-                    if prices.len() < (lookback_trade_days as f64 * 0.95).round() as usize {
+                    if prices.len()
+                        < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
+                    {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(
                                 "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
@@ -122,7 +124,7 @@ impl RuleExecutor for Executor {
                         calc_regression_momentum(&prices),
                         calc_sharpe_ratio(&prices, 0.0),
                     ) {
-                        factors.push((ticker.clone(), momentum, sharpe));
+                        tickers_factors.push((ticker.clone(), Factors { momentum, sharpe }));
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
@@ -141,12 +143,20 @@ impl RuleExecutor for Executor {
                 notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
             }
 
-            let normalized_momentum_values =
-                normalize_zscore(&factors.iter().map(|x| x.1).collect::<Vec<f64>>());
-            let normalized_sharpe_values =
-                normalize_zscore(&factors.iter().map(|x| x.2).collect::<Vec<f64>>());
+            let normalized_momentum_values = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.momentum)
+                    .collect::<Vec<f64>>(),
+            );
+            let normalized_sharpe_values = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.sharpe)
+                    .collect::<Vec<f64>>(),
+            );
 
-            let mut indicators: Vec<(Ticker, f64)> = factors
+            let mut indicators: Vec<(Ticker, f64)> = tickers_factors
                 .iter()
                 .enumerate()
                 .filter_map(|(i, x)| {
@@ -203,4 +213,10 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    momentum: f64,
+    sharpe: f64,
 }

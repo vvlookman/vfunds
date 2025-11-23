@@ -27,6 +27,9 @@ pub struct FundDefinition {
     pub description: Option<String>,
 
     #[serde(default)]
+    pub options: FundOptions,
+
+    #[serde(default)]
     pub tickers: TickersDefinition,
 
     #[serde(default)]
@@ -39,6 +42,11 @@ pub struct FundDefinition {
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Frequency {
     pub days: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct FundOptions {
+    pub suspend_months: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

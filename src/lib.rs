@@ -56,6 +56,9 @@ macro_rules! mod_name {
     };
 }
 
+const POSITION_TOLERANCE: f64 = 0.02;
+const REQUIRED_DATA_COMPLETENESS: f64 = 0.9;
+
 mod backtest;
 mod cache;
 mod data;

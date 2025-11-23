@@ -18,7 +18,7 @@ min_div_count_per_year = 0.8
 price_avg_count = 5
 roe_lower = 0.02
 skip_same_sector = false
-weight_exp = 0.0
+weight_exp = 0
 
 [rules.search]
 frequency = ["3m", "6m", "9m", "1y", "18m", "2y"]
@@ -28,6 +28,6 @@ frequency = ["3m", "6m", "9m", "1y", "18m", "2y"]
 lookback_years = [3, 4, 5]
 # min_div_count_per_year = [0.6, 0.8, 1, 1.2, 1.4]
 # price_avg_count = [1, 3, 5, 10, 20]
-roe_lower = [0.0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
+roe_lower = [0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1]
 skip_same_sector = [true, false]
-# weight_exp = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0]
+# weight_exp = [0, 0.25, 0.5, 1, 2, 4]

@@ -14,7 +14,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT, WORKSPACE,
+    CHANNEL_BUFFER_DEFAULT, POSITION_TOLERANCE, WORKSPACE,
     error::*,
     financial::{Portfolio, get_ticker_price, get_ticker_title, tool::fetch_trade_dates},
     rule::Rule,
@@ -111,6 +111,8 @@ pub struct FundBacktestContext<'a> {
     pub fund_definition: &'a FundDefinition,
     pub portfolio: &'a mut Portfolio,
     pub order_dates: &'a mut HashSet<NaiveDate>,
+
+    suspended_cash: Option<HashMap<Ticker, f64>>,
 }
 
 pub async fn backtest_fof(
@@ -516,6 +518,8 @@ pub async fn backtest_fund(
                 options,
                 portfolio: &mut Portfolio::new(options.init_cash),
                 order_dates: &mut HashSet::new(),
+
+                suspended_cash: None,
             };
 
             let mut rules = fund_definition
@@ -532,8 +536,27 @@ pub async fn backtest_fund(
             let trade_dates = fetch_trade_dates().await?;
             for date in options.start_date.iter_days().take(days as usize) {
                 if trade_dates.contains(&date) {
+                    // Check suspend, when suspended, keep empty positions
+                    if fund_definition
+                        .options
+                        .suspend_months
+                        .contains(&date.month())
+                    {
+                        if !context.is_suspended() {
+                            context.suspend(&date, sender.clone()).await?;
+                        }
+
+                        continue;
+                    } else {
+                        if context.is_suspended() {
+                            context.resume(&date, sender.clone()).await?;
+                        }
+                    }
+
+                    // Excute rules
                     for (rule_index, rule) in rules.iter_mut().enumerate() {
                         if let Some(period_start_date) = rules_period_start_date.get(&rule_index) {
+                            // Check taking profit
                             let frequency_take_profit_pct =
                                 rule.definition().frequency_take_profit_pct;
                             if frequency_take_profit_pct > 0 {
@@ -554,7 +577,7 @@ pub async fn backtest_fund(
                                             / price_period_start;
                                         if period_profit_pct > frequency_take_profit_pct as f64 {
                                             context
-                                                .position_exit(
+                                                .position_close(
                                                     &ticker,
                                                     false,
                                                     &date,
@@ -566,6 +589,7 @@ pub async fn backtest_fund(
                                 }
                             }
 
+                            // Check frequency
                             let days = (date - *period_start_date).num_days();
                             let period_days = rule.definition().frequency.days;
                             if period_days > 0 {
@@ -997,7 +1021,7 @@ impl FundBacktestContext<'_> {
                                 )
                                 .await?;
                             } else {
-                                self.position_exit(ticker, false, date, event_sender.clone())
+                                self.position_close(ticker, false, date, event_sender.clone())
                                     .await?;
                             }
                         }
@@ -1007,6 +1031,10 @@ impl FundBacktestContext<'_> {
         }
 
         Ok(())
+    }
+
+    pub fn is_suspended(&self) -> bool {
+        self.suspended_cash.is_some()
     }
 
     pub async fn rebalance(
@@ -1021,12 +1049,12 @@ impl FundBacktestContext<'_> {
             .filter(|(_, weight)| weight.is_finite())
             .collect();
 
-        // Exit unneeded positions and reserved cash
+        // Close unneeded positions and reserved cash
         {
             let position_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
             for ticker in &position_tickers {
                 if !targets_weight.iter().any(|(t, _)| t == ticker) {
-                    self.position_exit(ticker, false, date, event_sender.clone())
+                    self.position_close(ticker, false, date, event_sender.clone())
                         .await?;
                 }
             }
@@ -1110,7 +1138,52 @@ impl FundBacktestContext<'_> {
         Ok(())
     }
 
-    pub async fn position_init_reserved(
+    pub async fn position_open(
+        &mut self,
+        ticker: &Ticker,
+        cash: f64,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let date_str = date_to_str(date);
+        let ticker_title = get_ticker_title(ticker).await?;
+
+        let price_bias = if self.options.pessimistic { 1 } else { 0 };
+        if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
+            let delta_value = cash - calc_buy_fee(cash, self.options);
+
+            let buy_units = (delta_value / price).floor();
+            if buy_units > 0.0 {
+                let value = buy_units * price;
+                let fee = calc_buy_fee(value, self.options);
+                let cost = value + fee;
+
+                self.portfolio.free_cash -= cost;
+                self.portfolio
+                    .positions
+                    .entry(ticker.clone())
+                    .and_modify(|v| *v += buy_units as u64)
+                    .or_insert(buy_units as u64);
+
+                self.order_dates.insert(*date);
+                let _ = event_sender
+                                .send(BacktestEvent::Buy(format!(
+                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
+                                )))
+                                .await;
+            }
+        } else {
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!(
+                    "[{date_str}] [!] Price of '{ticker}' not exists"
+                )))
+                .await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn position_open_reserved(
         &mut self,
         ticker: &Ticker,
         date: &NaiveDate,
@@ -1158,15 +1231,15 @@ impl FundBacktestContext<'_> {
         Ok(())
     }
 
-    pub async fn position_exit(
+    pub async fn position_close(
         &mut self,
         ticker: &Ticker,
         make_reserved: bool,
         date: &NaiveDate,
         event_sender: Sender<BacktestEvent>,
-    ) -> VfResult<()> {
+    ) -> VfResult<f64> {
         let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-        if position_units > 0 {
+        let cash = if position_units > 0 {
             let date_str = date_to_str(date);
             let ticker_title = get_ticker_title(ticker).await?;
 
@@ -1194,13 +1267,64 @@ impl FundBacktestContext<'_> {
                                     "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
                                 )))
                                 .await;
+
+                cash
             } else {
                 let _ = event_sender
                     .send(BacktestEvent::Info(format!(
                         "[{date_str}] [!] Price of '{ticker}' not exists"
                     )))
                     .await;
+
+                0.0
             }
+        } else {
+            0.0
+        };
+
+        Ok(cash)
+    }
+
+    pub async fn resume(
+        &mut self,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        if let Some(suspended_cash) = &self.suspended_cash.clone() {
+            for (ticker, cash) in suspended_cash {
+                self.position_open(ticker, *cash, date, event_sender.clone())
+                    .await?;
+            }
+            self.suspended_cash = None;
+
+            let date_str = date_to_str(date);
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!("[{date_str}] Resumed")))
+                .await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn suspend(
+        &mut self,
+        date: &NaiveDate,
+        event_sender: Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        if self.suspended_cash.is_none() {
+            let mut suspended_cash: HashMap<Ticker, f64> = HashMap::new();
+            for ticker in self.portfolio.positions.keys().cloned().collect::<Vec<_>>() {
+                let cash = self
+                    .position_close(&ticker, false, date, event_sender.clone())
+                    .await?;
+                suspended_cash.insert(ticker.clone(), cash);
+            }
+            self.suspended_cash = Some(suspended_cash);
+
+            let date_str = date_to_str(date);
+            let _ = event_sender
+                .send(BacktestEvent::Info(format!("[{date_str}] Suspended")))
+                .await;
         }
 
         Ok(())
@@ -1266,6 +1390,9 @@ impl FundBacktestContext<'_> {
             let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
             let position_value = position_units as f64 * price;
             let delta_value = ticker_value - position_value;
+            if delta_value.abs() < position_value * POSITION_TOLERANCE {
+                return Ok(());
+            }
 
             if delta_value > 0.0 {
                 let buy_units = (delta_value / price).floor();

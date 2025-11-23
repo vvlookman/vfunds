@@ -32,7 +32,7 @@ ma_period_fast = 5
 ma_period_slow = 20
 metric_r2_threshold = 0.7
 regression_alpha = 8
-weight_exp = 0.0
+weight_exp = 0
 
 [rules.search]
 # frequency = ["1w", "2w", "3w", "1m", "2m", "3m", "4m"]
@@ -41,4 +41,4 @@ weight_exp = 0.0
 ma_exp = [0, 1, 2, 3, 5, 10]
 # metric_r2_threshold = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
 # regression_alpha = [1, 2, 4, 8, 16]
-weight_exp = [0.0, 0.25, 0.5, 1.0, 2.0, 4.0]
+weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]

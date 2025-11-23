@@ -7,8 +7,8 @@ use ta::{
 
 use crate::utils::{stats, stats::slope};
 
-const DAYS_PER_YEAR: f64 = 365.2425;
-const TRADE_DAYS_PER_YEAR: f64 = 252.0;
+pub const DAYS_PER_YEAR: f64 = 365.2425;
+pub const TRADE_DAYS_PER_YEAR: f64 = 252.0;
 
 pub fn calc_annualized_return_rate(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
@@ -39,7 +39,9 @@ pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
         let daily_changes = stats::pct_change(daily_values);
 
         if let Some(return_std) = stats::std(&daily_changes) {
-            return Some(return_std * (TRADE_DAYS_PER_YEAR).sqrt());
+            if return_std.is_finite() {
+                return Some(return_std * (TRADE_DAYS_PER_YEAR).sqrt());
+            }
         }
     }
 
@@ -101,7 +103,7 @@ pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
 
 pub fn calc_regression_momentum(daily_values: &[f64]) -> Option<f64> {
     let ln_values: Vec<f64> = daily_values.iter().map(|&v| v.ln()).collect();
-    slope(&ln_values)
+    slope(&ln_values).map(|v| if v.is_finite() { Some(v) } else { None })?
 }
 
 pub fn calc_profit_factor(daily_values: &[f64]) -> Option<f64> {
@@ -192,7 +194,10 @@ pub fn calc_win_rate(daily_values: &[f64]) -> Option<f64> {
         let win_count = daily_return.iter().filter(|&v| *v > 0.0).count();
         let loss_count = daily_return.iter().filter(|&v| *v < 0.0).count();
 
-        return Some(win_count as f64 / (win_count + loss_count) as f64);
+        let win_rate = win_count as f64 / (win_count + loss_count) as f64;
+        if win_rate.is_finite() {
+            return Some(win_rate);
+        }
     }
 
     None

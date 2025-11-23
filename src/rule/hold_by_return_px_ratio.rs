@@ -17,7 +17,10 @@ use crate::{
         notify_tickers_indicator,
     },
     ticker::Ticker,
-    utils::{financial::calc_annualized_return_rate, math::signed_powf},
+    utils::{
+        financial::{TRADE_DAYS_PER_YEAR, calc_annualized_return_rate},
+        math::signed_powf,
+    },
 };
 
 pub struct Executor {
@@ -103,7 +106,7 @@ impl RuleExecutor for Executor {
                             date,
                             false,
                             &KlineField::Close.to_string(),
-                            lookback_years as u32 * 252,
+                            (lookback_years as f64 * TRADE_DAYS_PER_YEAR) as u32,
                         )
                         .iter()
                         .map(|&(_, v)| v)

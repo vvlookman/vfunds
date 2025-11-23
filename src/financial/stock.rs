@@ -68,12 +68,14 @@ pub enum StockReportIncomeField {
 #[strum(ascii_case_insensitive)]
 pub enum StockReportPershareField {
     ReportDate,
+    AdjustedNetProfitRate,
     Bps,
     Cfps,
     Eps,
-    GrossProfitRate,
-    NetProfitRate,
-    RoeRate,
+    GrossProfit,
+    IncRevenueRate,
+    NetProfit,
+    Roe,
 }
 
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
@@ -295,6 +297,10 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
         "m_timetag".to_string(),
     );
     fields.insert(
+        StockReportPershareField::AdjustedNetProfitRate.to_string(),
+        "adjusted_net_profit_rate".to_string(),
+    );
+    fields.insert(
         StockReportPershareField::Bps.to_string(),
         "s_fa_bps".to_string(),
     );
@@ -307,15 +313,19 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
         "s_fa_eps_basic".to_string(),
     );
     fields.insert(
-        StockReportPershareField::GrossProfitRate.to_string(),
+        StockReportPershareField::GrossProfit.to_string(),
         "gross_profit".to_string(),
     );
     fields.insert(
-        StockReportPershareField::NetProfitRate.to_string(),
+        StockReportPershareField::IncRevenueRate.to_string(),
+        "inc_revenue_rate".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::NetProfit.to_string(),
         "net_profit".to_string(),
     );
     fields.insert(
-        StockReportPershareField::RoeRate.to_string(),
+        StockReportPershareField::Roe.to_string(),
         "equity_roe".to_string(),
     );
 

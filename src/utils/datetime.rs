@@ -58,11 +58,11 @@ pub fn secs_to_human_str(secs: u64) -> String {
     let s = secs % 60;
 
     if h > 0 {
-        format!("{}h{}m{}s", h, m, s)
+        format!("{h}h{m}m{s}s")
     } else if m > 0 {
-        format!("{}m{}s", m, s)
+        format!("{m}m{s}s")
     } else {
-        format!("{}s", s)
+        format!("{s}s")
     }
 }
 

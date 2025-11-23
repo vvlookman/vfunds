@@ -6,7 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -99,7 +99,7 @@ impl RuleExecutor for Executor {
         if !tickers_map.is_empty() {
             let date_str = date_to_str(date);
 
-            let mut factors: Vec<(Ticker, f64, f64, f64)> = vec![];
+            let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -122,7 +122,9 @@ impl RuleExecutor for Executor {
                         .iter()
                         .map(|&(_, v)| v)
                         .collect();
-                    if volumes.len() < (lookback_trade_days as f64 * 0.95).round() as usize {
+                    if volumes.len()
+                        < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
+                    {
                         let _ = event_sender
                             .send(BacktestEvent::Info(format!(
                                 "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
@@ -162,12 +164,19 @@ impl RuleExecutor for Executor {
                         ),
                         calc_annualized_volatility(&prices),
                     ) {
+                        let market_cap = price * total_capital;
+
                         let volumes_avg = volumes.iter().sum::<f64>() / volumes.len() as f64;
                         let turnover_ratio = 100.0 * volumes_avg / circulating_capital;
 
-                        let market_cap = price * total_capital;
-
-                        factors.push((ticker.clone(), turnover_ratio, market_cap, volatility));
+                        tickers_factors.push((
+                            ticker.clone(),
+                            Factors {
+                                market_cap,
+                                turnover_ratio,
+                                volatility,
+                            },
+                        ));
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
@@ -186,21 +195,33 @@ impl RuleExecutor for Executor {
                 notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
             }
 
-            let normalized_turnover_ratio_values =
-                normalize_zscore(&factors.iter().map(|x| x.1).collect::<Vec<f64>>());
-            let normalized_market_cap_values =
-                normalize_zscore(&factors.iter().map(|x| x.2).collect::<Vec<f64>>());
-            let normalized_volatility_values =
-                normalize_zscore(&factors.iter().map(|x| x.3).collect::<Vec<f64>>());
+            let normalized_market_cap_values = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.market_cap)
+                    .collect::<Vec<f64>>(),
+            );
+            let normalized_turnover_ratio_values = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.turnover_ratio)
+                    .collect::<Vec<f64>>(),
+            );
+            let normalized_volatility_values = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.volatility)
+                    .collect::<Vec<f64>>(),
+            );
 
-            let mut indicators: Vec<(Ticker, f64)> = factors
+            let mut indicators: Vec<(Ticker, f64)> = tickers_factors
                 .iter()
                 .enumerate()
                 .filter_map(|(i, x)| {
                     let ticker = &x.0;
 
-                    let turnover_ratio = normalized_turnover_ratio_values[i];
                     let market_cap = normalized_market_cap_values[i];
+                    let turnover_ratio = normalized_turnover_ratio_values[i];
                     let volatility = normalized_volatility_values[i];
 
                     let indicator = factor_turnover_ratio_weight * (1.0 - turnover_ratio.tanh())
@@ -288,4 +309,11 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    market_cap: f64,
+    turnover_ratio: f64,
+    volatility: f64,
 }
