@@ -9,11 +9,8 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField,
-        stock::{
-            StockDetail, StockDividendAdjust, StockReportPershareField, fetch_stock_detail,
-            fetch_stock_kline, fetch_stock_report_pershare,
-        },
-        tool::{calc_stock_market_cap, calc_stock_pb, calc_stock_pe_ttm},
+        stock::{StockDetail, StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
+        tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
@@ -21,9 +18,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        datetime::date_to_str,
-        financial::{calc_annualized_volatility, calc_regression_momentum},
-        math::signed_powf,
+        datetime::date_to_str, financial::calc_annualized_volatility, math::signed_powf,
         stats::quantile,
     },
 };
@@ -61,56 +56,6 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(126);
-        let market_cap_quantile_lower = self
-            .options
-            .get("market_cap_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let market_cap_quantile_upper = self
-            .options
-            .get("market_cap_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let momentum_quantile_lower = self
-            .options
-            .get("momentum_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let momentum_quantile_upper = self
-            .options
-            .get("momentum_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let pb_quantile_lower = self
-            .options
-            .get("pb_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let pb_quantile_upper = self
-            .options
-            .get("pb_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let pe_quantile_lower = self
-            .options
-            .get("pe_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let pe_quantile_upper = self
-            .options
-            .get("pe_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let profit_rate_lower = self
-            .options
-            .get("profit_rate_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let revenue_rate_lower = self
-            .options
-            .get("revenue_rate_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -179,41 +124,14 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    // let report_pershare = fetch_stock_report_pershare(ticker).await?;
-                    if let (
-                        Some(market_cap),
-                        // Some(momentum),
-                        // Some(pb),
-                        // Some(pe),
-                        // Some((_, profit_rate)),
-                        // Some((_, revenue_rate)),
-                        Some(volatility),
-                    ) = (
+                    if let (Some(market_cap), Some(volatility)) = (
                         calc_stock_market_cap(ticker, date).await?,
-                        // calc_regression_momentum(&prices),
-                        // calc_stock_pb(ticker, date).await?,
-                        // calc_stock_pe_ttm(ticker, date).await?,
-                        // report_pershare.get_latest_value::<f64>(
-                        //     date,
-                        //     false,
-                        //     &StockReportPershareField::AdjustedNetProfitRate.to_string(),
-                        // ),
-                        // report_pershare.get_latest_value::<f64>(
-                        //     date,
-                        //     false,
-                        //     &StockReportPershareField::IncRevenueRate.to_string(),
-                        // ),
                         calc_annualized_volatility(&prices),
                     ) {
                         tickers_factors.push((
                             ticker.clone(),
                             Factors {
                                 market_cap,
-                                // momentum,
-                                // pb,
-                                // pe,
-                                // profit_rate,
-                                // revenue_rate,
                                 volatility,
                             },
                         ));
@@ -235,34 +153,6 @@ impl RuleExecutor for Executor {
                 notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
             }
 
-            let factors_market_cap = tickers_factors
-                .iter()
-                .map(|(_, f)| f.market_cap)
-                .collect::<Vec<f64>>();
-            let market_cap_lower = quantile(&factors_market_cap, market_cap_quantile_lower);
-            let market_cap_upper = quantile(&factors_market_cap, market_cap_quantile_upper);
-
-            // let factors_momentum = tickers_factors
-            //     .iter()
-            //     .map(|(_, f)| f.momentum)
-            //     .collect::<Vec<f64>>();
-            // let momentum_lower = quantile(&factors_momentum, momentum_quantile_lower);
-            // let momentum_upper = quantile(&factors_momentum, momentum_quantile_upper);
-
-            // let factors_pb = tickers_factors
-            //     .iter()
-            //     .map(|(_, f)| f.pb)
-            //     .collect::<Vec<f64>>();
-            // let pb_lower = quantile(&factors_pb, pb_quantile_lower);
-            // let pb_upper = quantile(&factors_pb, pb_quantile_upper);
-
-            // let factors_pe = tickers_factors
-            //     .iter()
-            //     .map(|(_, f)| f.pe)
-            //     .collect::<Vec<f64>>();
-            // let pe_lower = quantile(&factors_pe, pe_quantile_lower);
-            // let pe_upper = quantile(&factors_pe, pe_quantile_upper);
-
             let factors_volatility = tickers_factors
                 .iter()
                 .map(|(_, f)| f.volatility)
@@ -272,54 +162,6 @@ impl RuleExecutor for Executor {
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
-                if let Some(market_cap_lower) = market_cap_lower {
-                    if factors.market_cap < market_cap_lower {
-                        continue;
-                    }
-                }
-
-                if let Some(market_cap_upper) = market_cap_upper {
-                    if factors.market_cap > market_cap_upper {
-                        continue;
-                    }
-                }
-
-                // if let Some(momentum_lower) = momentum_lower {
-                //     if factors.momentum < momentum_lower {
-                //         continue;
-                //     }
-                // }
-
-                // if let Some(momentum_upper) = momentum_upper {
-                //     if factors.momentum > momentum_upper {
-                //         continue;
-                //     }
-                // }
-
-                // if let Some(pb_lower) = pb_lower {
-                //     if factors.pb < pb_lower {
-                //         continue;
-                //     }
-                // }
-
-                // if let Some(pb_upper) = pb_upper {
-                //     if factors.pb > pb_upper {
-                //         continue;
-                //     }
-                // }
-
-                // if let Some(pe_lower) = pe_lower {
-                //     if factors.pe < pe_lower {
-                //         continue;
-                //     }
-                // }
-
-                // if let Some(pe_upper) = pe_upper {
-                //     if factors.pe > pe_upper {
-                //         continue;
-                //     }
-                // }
-
                 if let Some(volatility_lower) = volatility_lower {
                     if factors.volatility < volatility_lower {
                         continue;
@@ -332,8 +174,6 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                // if factors.profit_rate >= profit_rate_lower
-                //     && factors.revenue_rate >= revenue_rate_lower
                 if factors.market_cap > 0.0 {
                     indicators.push((ticker, 1e8 / factors.market_cap));
                 }
@@ -415,10 +255,5 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     market_cap: f64,
-    // momentum: f64,
-    // pb: f64,
-    // pe: f64,
-    // profit_rate: f64,
-    // revenue_rate: f64,
     volatility: f64,
 }

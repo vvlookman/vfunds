@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use serde_json::json;
 
 use crate::{
-    data::daily::*,
+    data::series::*,
     ds::qmt,
     error::*,
     financial::{KlineField, sector::fetch_sector_tickers},
@@ -114,7 +114,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     Ok(result)
 }
 
-pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_DIVIDENDS_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -153,7 +153,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
         "dr".to_string(),
     );
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     STOCK_DIVIDENDS_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -162,7 +162,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailyDataset> {
 pub async fn fetch_stock_kline(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
-) -> VfResult<DailyDataset> {
+) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}/{adjust}");
     if let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -192,13 +192,13 @@ pub async fn fetch_stock_kline(
     fields.insert(KlineField::Low.to_string(), "low".to_string());
     fields.insert(KlineField::Volume.to_string(), "volume".to_string());
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     STOCK_KLINE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
 
-pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_REPORT_CAPITAL_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -231,13 +231,13 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailyDatase
         "freeFloatCapital".to_string(),
     );
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     STOCK_REPORT_CAPITAL_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
 
-pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_REPORT_INCOME_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -270,13 +270,13 @@ pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailyDataset
         "tot_profit".to_string(),
     );
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
 
-pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_REPORT_PERSHARE_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -329,20 +329,20 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailyDatas
         "equity_roe".to_string(),
     );
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
 
 static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
-static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
-static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
-static STOCK_REPORT_CAPITAL_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
+static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
+static STOCK_REPORT_CAPITAL_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
-static STOCK_REPORT_INCOME_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+static STOCK_REPORT_INCOME_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
-static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
 
 #[cfg(test)]

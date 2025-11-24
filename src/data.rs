@@ -1,2 +1,2 @@
-pub mod daily;
+pub mod series;
 pub mod stock;

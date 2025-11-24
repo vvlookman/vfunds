@@ -1,11 +1,11 @@
 use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::data::daily::DailyDataset;
+use crate::data::series::*;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct StockDailyData {
-    pub daily_valuations: DailyDataset,
+    pub daily_valuations: DailySeries,
 }
 
 #[derive(Clone, Debug, Serialize)]

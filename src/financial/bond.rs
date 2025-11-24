@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use serde_json::json;
 
 use crate::{
-    data::daily::DailyDataset,
+    data::series::*,
     ds::aktools,
     error::*,
     financial::KlineField,
@@ -33,7 +33,7 @@ pub enum ConvBondAnalysisField {
     ConversionPremium,
 }
 
-pub async fn fetch_conv_bond_analysis(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_conv_bond_analysis(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = CONV_BOND_ANALYSIS_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -71,7 +71,7 @@ pub async fn fetch_conv_bond_analysis(ticker: &Ticker) -> VfResult<DailyDataset>
         "转股溢价率".to_string(),
     );
 
-    let result = DailyDataset::from_json(&json, "日期", &fields)?;
+    let result = DailySeries::from_json(&json, "日期", &fields)?;
     CONV_BOND_ANALYSIS_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -116,7 +116,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
     Ok(result)
 }
 
-pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailyDataset> {
+pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
     if let Some(result) = CONV_BOND_KLINE_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -139,7 +139,7 @@ pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailyDataset> {
     fields.insert(KlineField::Low.to_string(), "low".to_string());
     fields.insert(KlineField::Volume.to_string(), "volume".to_string());
 
-    let result = DailyDataset::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_json(&json, "date", &fields)?;
     CONV_BOND_KLINE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -194,11 +194,11 @@ pub async fn fetch_conv_bonds(
     Ok(result)
 }
 
-static CONV_BOND_ANALYSIS_CACHE: LazyLock<DashMap<String, DailyDataset>> =
+static CONV_BOND_ANALYSIS_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
 static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
     LazyLock::new(DashMap::new);
-static CONV_BOND_KLINE_CACHE: LazyLock<DashMap<String, DailyDataset>> = LazyLock::new(DashMap::new);
+static CONV_BOND_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondDetail>>> =
     LazyLock::new(DashMap::new);
 

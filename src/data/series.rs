@@ -9,14 +9,14 @@ use serde_json::Value;
 use crate::error::{VfError, VfResult};
 
 #[derive(Clone, Debug, Serialize)]
-pub struct DailyDataset {
+pub struct DailySeries {
     df: DataFrame,
 
     date_field_name: String,
     value_field_names: HashMap<String, String>,
 }
 
-impl DailyDataset {
+impl DailySeries {
     pub fn from_json(
         json: &Value,
         date_field_name: &str,
