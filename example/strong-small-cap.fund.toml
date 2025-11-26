@@ -1,8 +1,6 @@
 title = "小盘股优选"
 description = "优选中小板指的低市值股票"
 
-# options.suspend_months = [1]
-
 [[ticker_sources]]
 source = "399101.CNI"
 source_type = "index"
@@ -13,17 +11,17 @@ frequency = "4w"
 
 [rules.options]
 limit = 5
-lookback_trade_days = 84
+lookback_trade_days = 252
 skip_same_sector = false
 volatility_quantile_lower = 0
-volatility_quantile_upper = 0.8
+volatility_quantile_upper = 0.7
 weight_exp = 0
 
 [rules.search]
 # frequency = ["1w", "2w", "4w", "8w"]
 # limit = [3, 5, 10]
-# lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
-skip_same_sector = [true, false]
+lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
+# skip_same_sector = [true, false]
 # volatility_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4]
-# volatility_quantile_upper = [0.6, 0.7, 0.8, 0.9, 1]
+volatility_quantile_upper = [0.6, 0.7, 0.8, 0.9, 1]
 # weight_exp = [0, 0.25, 0.5, 1, 2, 4]
