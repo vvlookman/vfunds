@@ -11,7 +11,7 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_notify_indicators,
     },
     ticker::Ticker,
     utils::{financial::calc_annualized_volatility, math::constraint_array},
@@ -36,7 +36,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -126,15 +126,15 @@ impl RuleExecutor for Executor {
                 .map(|(k, v)| (k.clone(), *v))
                 .collect();
 
-            notify_tickers_indicator(
-                event_sender.clone(),
-                date,
+            rule_notify_indicators(
                 rule_name,
                 &tickers_inverse_vol_weight_adj
                     .iter()
                     .map(|(t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 &[],
+                date,
+                event_sender,
             )
             .await;
 

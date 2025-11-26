@@ -29,7 +29,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {

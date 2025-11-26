@@ -1,6 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap, HashSet},
+    fmt::{Display, Formatter},
     str::FromStr,
     time::Instant,
 };
@@ -33,10 +34,35 @@ use crate::{
 };
 
 pub enum BacktestEvent {
-    Buy(String),
-    Sell(String),
-    Info(String),
-    Toast(String),
+    Buy {
+        title: String,
+        amount: f64,
+        price: f64,
+        units: u64,
+        date: NaiveDate,
+    },
+    Sell {
+        title: String,
+        amount: f64,
+        price: f64,
+        units: u64,
+        date: NaiveDate,
+    },
+    Info {
+        title: String,
+        message: String,
+        date: Option<NaiveDate>,
+    },
+    Warning {
+        title: String,
+        message: String,
+        date: Option<NaiveDate>,
+    },
+    Toast {
+        title: String,
+        message: String,
+        date: Option<NaiveDate>,
+    },
     Result(Box<BacktestResult>),
     Error(VfError),
 }
@@ -150,24 +176,77 @@ pub async fn backtest_fof(
 
                     while let Some(event) = stream.next().await {
                         match event {
-                            BacktestEvent::Buy(s) => {
+                            BacktestEvent::Buy {
+                                title,
+                                amount,
+                                price,
+                                units,
+                                date,
+                            } => {
                                 let _ = sender
-                                    .send(BacktestEvent::Buy(format!("[{fund_name}] {s}")))
+                                    .send(BacktestEvent::Buy {
+                                        title: format!("[{fund_name}] {title}"),
+                                        amount,
+                                        price,
+                                        units,
+                                        date,
+                                    })
                                     .await;
                             }
-                            BacktestEvent::Sell(s) => {
+                            BacktestEvent::Sell {
+                                title,
+                                amount,
+                                price,
+                                units,
+                                date,
+                            } => {
                                 let _ = sender
-                                    .send(BacktestEvent::Sell(format!("[{fund_name}] {s}")))
+                                    .send(BacktestEvent::Sell {
+                                        title: format!("[{fund_name}] {title}"),
+                                        amount,
+                                        price,
+                                        units,
+                                        date,
+                                    })
                                     .await;
                             }
-                            BacktestEvent::Info(s) => {
+                            BacktestEvent::Info {
+                                title,
+                                message,
+                                date,
+                            } => {
                                 let _ = sender
-                                    .send(BacktestEvent::Info(format!("[{fund_name}] {s}")))
+                                    .send(BacktestEvent::Info {
+                                        title: format!("[{fund_name}] {title}"),
+                                        message,
+                                        date,
+                                    })
                                     .await;
                             }
-                            BacktestEvent::Toast(s) => {
+                            BacktestEvent::Warning {
+                                title,
+                                message,
+                                date,
+                            } => {
                                 let _ = sender
-                                    .send(BacktestEvent::Toast(format!("[{fund_name}] {s}")))
+                                    .send(BacktestEvent::Warning {
+                                        title: format!("[{fund_name}] {title}"),
+                                        message,
+                                        date,
+                                    })
+                                    .await;
+                            }
+                            BacktestEvent::Toast {
+                                title,
+                                message,
+                                date,
+                            } => {
+                                let _ = sender
+                                    .send(BacktestEvent::Toast {
+                                        title: format!("[{fund_name}] {title}"),
+                                        message,
+                                        date,
+                                    })
                                     .await;
                             }
                             BacktestEvent::Result(fund_result) => {
@@ -196,10 +275,11 @@ pub async fn backtest_fof(
                 }
 
                 let _ = notify_portfolio(
-                    sender.clone(),
+                    &sender,
                     &options.end_date,
                     final_cash,
                     &final_positions_value,
+                    options.init_cash,
                 )
                 .await;
 
@@ -285,26 +365,32 @@ pub async fn backtest_fof(
                     let result = single_run(&fof_definition, &options).await?;
 
                     let _ = sender
-                        .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({})",
-                            i + 1,
-                            secs_to_human_str(cv_start.elapsed().as_secs()),
-                            result
-                                .metrics
-                                .annualized_return_rate
-                                .map(|v| format!("{:.2}%", v * 100.0))
-                                .unwrap_or("-".to_string()),
-                            result
-                                .metrics
-                                .sharpe_ratio
-                                .map(|v| format!("{v:.3}"))
-                                .unwrap_or("-".to_string()),
-                            funds_weight
-                                .iter()
-                                .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        )))
+                        .send(BacktestEvent::Info {
+                            title: format!(
+                                "[CV {}/{cv_count} {}]",
+                                i + 1,
+                                secs_to_human_str(cv_start.elapsed().as_secs())
+                            ),
+                            message: format!(
+                                "[ARR={} Sharpe={}] {}",
+                                result
+                                    .metrics
+                                    .annualized_return_rate
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .sharpe_ratio
+                                    .map(|v| format!("{v:.3}"))
+                                    .unwrap_or("-".to_string()),
+                                funds_weight
+                                    .iter()
+                                    .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            ),
+                            date: None,
+                        })
                         .await;
 
                     cv_results.push((funds_weight.clone(), result));
@@ -337,15 +423,21 @@ pub async fn backtest_fof(
                         };
 
                         let _ = sender
-                            .send(BacktestEvent::Info(format!(
-                                "[CV] [{top_str}] [ARR={:.2}% Sharpe={sharpe:.3}] {}",
-                                arr * 100.0,
-                                funds_weight
-                                    .iter()
-                                    .map(|(fund_name, weight)| { format!("{fund_name}={weight}") })
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )))
+                            .send(BacktestEvent::Info {
+                                title: format!("[CV {top_str}]"),
+                                message: format!(
+                                    "[ARR={:.2}% Sharpe={sharpe:.3}] {}",
+                                    arr * 100.0,
+                                    funds_weight
+                                        .iter()
+                                        .map(|(fund_name, weight)| {
+                                            format!("{fund_name}={weight}")
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                ),
+                                date: None,
+                            })
                             .await;
 
                         if top == 0 {
@@ -386,35 +478,14 @@ pub async fn backtest_fof(
                     let result = single_run(&fof_definition, &options).await?;
 
                     let _ = sender
-                        .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({}-{})",
-                            i + 1,
-                            secs_to_human_str(cv_start.elapsed().as_secs()),
-                            result
-                                .metrics
-                                .annualized_return_rate
-                                .map(|v| format!("{:.2}%", v * 100.0))
-                                .unwrap_or("-".to_string()),
-                            result
-                                .metrics
-                                .sharpe_ratio
-                                .map(|v| format!("{v:.3}"))
-                                .unwrap_or("-".to_string()),
-                            date_to_str(window_start),
-                            date_to_str(window_end),
-                        )))
-                        .await;
-
-                    cv_results.push(((*window_start, *window_end), result));
-                }
-
-                if !cv_results.is_empty() {
-                    for ((window_start, window_end), result) in cv_results.iter() {
-                        let _ = sender
-                            .send(BacktestEvent::Info(format!(
-                                "[CV] [{}~{}] ARR={} Sharpe={} MDD={} ({}d)",
-                                date_to_str(window_start),
-                                date_to_str(window_end),
+                        .send(BacktestEvent::Info {
+                            title: format!(
+                                "[CV {}/{cv_count} {}]",
+                                i + 1,
+                                secs_to_human_str(cv_start.elapsed().as_secs()),
+                            ),
+                            message: format!(
+                                "[ARR={} Sharpe={}] {}-{}",
                                 result
                                     .metrics
                                     .annualized_return_rate
@@ -425,13 +496,46 @@ pub async fn backtest_fof(
                                     .sharpe_ratio
                                     .map(|v| format!("{v:.3}"))
                                     .unwrap_or("-".to_string()),
-                                result
-                                    .metrics
-                                    .max_drawdown
-                                    .map(|v| format!("{:.2}%", v * 100.0))
-                                    .unwrap_or("-".to_string()),
-                                (*window_end - *window_start).num_days() + 1
-                            )))
+                                date_to_str(window_start),
+                                date_to_str(window_end),
+                            ),
+                            date: None,
+                        })
+                        .await;
+
+                    cv_results.push(((*window_start, *window_end), result));
+                }
+
+                if !cv_results.is_empty() {
+                    for ((window_start, window_end), result) in cv_results.iter() {
+                        let _ = sender
+                            .send(BacktestEvent::Info {
+                                title: format!(
+                                    "[CV {}~{}]",
+                                    date_to_str(window_start),
+                                    date_to_str(window_end),
+                                ),
+                                message: format!(
+                                    "[ARR={} Sharpe={} MDD={}] {}d",
+                                    result
+                                        .metrics
+                                        .annualized_return_rate
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    result
+                                        .metrics
+                                        .sharpe_ratio
+                                        .map(|v| format!("{v:.3}"))
+                                        .unwrap_or("-".to_string()),
+                                    result
+                                        .metrics
+                                        .max_drawdown
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    (*window_end - *window_start).num_days() + 1
+                                ),
+                                date: None,
+                            })
                             .await;
                     }
 
@@ -448,11 +552,15 @@ pub async fn backtest_fof(
                                     .copied(),
                             ) {
                                 let _ = sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[CV] [ARR Mean={:.2}% Min={:.2}%]",
-                                        arr_mean * 100.0,
-                                        arr_min * 100.0
-                                    )))
+                                    .send(BacktestEvent::Info {
+                                        title: "[CV]".to_string(),
+                                        message: format!(
+                                            "[ARR Mean={:.2}% Min={:.2}%]",
+                                            arr_mean * 100.0,
+                                            arr_min * 100.0
+                                        ),
+                                        date: None,
+                                    })
                                     .await;
                             }
                         }
@@ -470,9 +578,13 @@ pub async fn backtest_fof(
                                     .copied(),
                             ) {
                                 let _ = sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[CV] [Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
-                                    )))
+                                    .send(BacktestEvent::Info {
+                                        title: "[CV]".to_string(),
+                                        message: format!(
+                                            "[Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
+                                        ),
+                                        date: None,
+                                    })
                                     .await;
                             }
                         }
@@ -543,13 +655,13 @@ pub async fn backtest_fund(
                         .contains(&date.month())
                     {
                         if !context.is_suspended() {
-                            context.suspend(&date, sender.clone()).await?;
+                            context.suspend(&date, &sender).await?;
                         }
 
                         continue;
                     } else {
                         if context.is_suspended() {
-                            context.resume(&date, sender.clone()).await?;
+                            context.resume(&date, &sender).await?;
                         }
                     }
 
@@ -577,12 +689,7 @@ pub async fn backtest_fund(
                                             / price_period_start;
                                         if period_profit_pct > frequency_take_profit_pct as f64 {
                                             context
-                                                .position_close(
-                                                    &ticker,
-                                                    false,
-                                                    &date,
-                                                    sender.clone(),
-                                                )
+                                                .position_close(&ticker, false, &date, &sender)
                                                 .await?;
                                         }
                                     }
@@ -601,7 +708,7 @@ pub async fn backtest_fund(
                             }
                         }
 
-                        rule.exec(&mut context, &date, sender.clone()).await?;
+                        rule.exec(&mut context, &date, &sender).await?;
                         rules_period_start_date.insert(rule_index, date);
                     }
 
@@ -625,10 +732,11 @@ pub async fn backtest_fund(
             }
 
             let _ = notify_portfolio(
-                sender.clone(),
+                &sender,
                 &options.end_date,
                 final_cash,
                 &final_positions_value,
+                options.init_cash,
             )
             .await;
 
@@ -718,28 +826,34 @@ pub async fn backtest_fund(
                     let result = single_run(&fund_definition, &options).await?;
 
                     let _ = sender
-                        .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({})",
-                            i + 1,
-                            secs_to_human_str(cv_start.elapsed().as_secs()),
-                            result
-                                .metrics
-                                .annualized_return_rate
-                                .map(|v| format!("{:.2}%", v * 100.0))
-                                .unwrap_or("-".to_string()),
-                            result
-                                .metrics
-                                .sharpe_ratio
-                                .map(|v| format!("{v:.3}"))
-                                .unwrap_or("-".to_string()),
-                            search_option_values
-                                .iter()
-                                .map(|(_, option_name, option_value)| {
-                                    format!("{option_name}={option_value}")
-                                })
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        )))
+                        .send(BacktestEvent::Info {
+                            title: format!(
+                                "[CV {}/{cv_count} {}]",
+                                i + 1,
+                                secs_to_human_str(cv_start.elapsed().as_secs()),
+                            ),
+                            message: format!(
+                                "[ARR={} Sharpe={}] {}",
+                                result
+                                    .metrics
+                                    .annualized_return_rate
+                                    .map(|v| format!("{:.2}%", v * 100.0))
+                                    .unwrap_or("-".to_string()),
+                                result
+                                    .metrics
+                                    .sharpe_ratio
+                                    .map(|v| format!("{v:.3}"))
+                                    .unwrap_or("-".to_string()),
+                                search_option_values
+                                    .iter()
+                                    .map(|(_, option_name, option_value)| {
+                                        format!("{option_name}={option_value}")
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                            ),
+                            date: None,
+                        })
                         .await;
 
                     cv_results.push((search_option_values.clone(), result));
@@ -772,17 +886,21 @@ pub async fn backtest_fund(
                         };
 
                         let _ = sender
-                            .send(BacktestEvent::Info(format!(
-                                "[CV] [{top_str}] [ARR={:.2}% Sharpe={sharpe:.3}] {}",
-                                arr * 100.0,
-                                rule_option_values
-                                    .iter()
-                                    .map(|(_, option_name, option_value)| {
-                                        format!("{option_name}={option_value}")
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )))
+                            .send(BacktestEvent::Info {
+                                title: format!("[CV {top_str}]"),
+                                message: format!(
+                                    "[ARR={:.2}% Sharpe={sharpe:.3}] {}",
+                                    arr * 100.0,
+                                    rule_option_values
+                                        .iter()
+                                        .map(|(_, option_name, option_value)| {
+                                            format!("{option_name}={option_value}")
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                ),
+                                date: None,
+                            })
                             .await;
 
                         if top == 0 {
@@ -823,35 +941,14 @@ pub async fn backtest_fund(
                     let result = single_run(&fund_definition, &options).await?;
 
                     let _ = sender
-                        .send(BacktestEvent::Info(format!(
-                            "[CV {}/{cv_count} {}] ARR={} Sharpe={} ({}-{})",
-                            i + 1,
-                            secs_to_human_str(cv_start.elapsed().as_secs()),
-                            result
-                                .metrics
-                                .annualized_return_rate
-                                .map(|v| format!("{:.2}%", v * 100.0))
-                                .unwrap_or("-".to_string()),
-                            result
-                                .metrics
-                                .sharpe_ratio
-                                .map(|v| format!("{v:.3}"))
-                                .unwrap_or("-".to_string()),
-                            date_to_str(window_start),
-                            date_to_str(window_end),
-                        )))
-                        .await;
-
-                    cv_results.push(((*window_start, *window_end), result));
-                }
-
-                if !cv_results.is_empty() {
-                    for ((window_start, window_end), result) in cv_results.iter() {
-                        let _ = sender
-                            .send(BacktestEvent::Info(format!(
-                                "[CV] [{}~{}] ARR={} Sharpe={} MDD={} ({}d)",
-                                date_to_str(window_start),
-                                date_to_str(window_end),
+                        .send(BacktestEvent::Info {
+                            title: format!(
+                                "[CV {}/{cv_count} {}]",
+                                i + 1,
+                                secs_to_human_str(cv_start.elapsed().as_secs()),
+                            ),
+                            message: format!(
+                                "[ARR={} Sharpe={}] {}-{}",
                                 result
                                     .metrics
                                     .annualized_return_rate
@@ -862,13 +959,46 @@ pub async fn backtest_fund(
                                     .sharpe_ratio
                                     .map(|v| format!("{v:.3}"))
                                     .unwrap_or("-".to_string()),
-                                result
-                                    .metrics
-                                    .max_drawdown
-                                    .map(|v| format!("{:.2}%", v * 100.0))
-                                    .unwrap_or("-".to_string()),
-                                (*window_end - *window_start).num_days() + 1
-                            )))
+                                date_to_str(window_start),
+                                date_to_str(window_end),
+                            ),
+                            date: None,
+                        })
+                        .await;
+
+                    cv_results.push(((*window_start, *window_end), result));
+                }
+
+                if !cv_results.is_empty() {
+                    for ((window_start, window_end), result) in cv_results.iter() {
+                        let _ = sender
+                            .send(BacktestEvent::Info {
+                                title: format!(
+                                    "[CV {}~{}]",
+                                    date_to_str(window_start),
+                                    date_to_str(window_end),
+                                ),
+                                message: format!(
+                                    "[ARR={} Sharpe={} MDD={}] {}d",
+                                    result
+                                        .metrics
+                                        .annualized_return_rate
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    result
+                                        .metrics
+                                        .sharpe_ratio
+                                        .map(|v| format!("{v:.3}"))
+                                        .unwrap_or("-".to_string()),
+                                    result
+                                        .metrics
+                                        .max_drawdown
+                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                        .unwrap_or("-".to_string()),
+                                    (*window_end - *window_start).num_days() + 1
+                                ),
+                                date: None,
+                            })
                             .await;
                     }
 
@@ -885,11 +1015,15 @@ pub async fn backtest_fund(
                                     .copied(),
                             ) {
                                 let _ = sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[CV] [ARR Mean={:.2}% Min={:.2}%]",
-                                        arr_mean * 100.0,
-                                        arr_min * 100.0
-                                    )))
+                                    .send(BacktestEvent::Info {
+                                        title: "[CV]".to_string(),
+                                        message: format!(
+                                            "[ARR Mean={:.2}% Min={:.2}%]",
+                                            arr_mean * 100.0,
+                                            arr_min * 100.0
+                                        ),
+                                        date: None,
+                                    })
                                     .await;
                             }
                         }
@@ -907,9 +1041,13 @@ pub async fn backtest_fund(
                                     .copied(),
                             ) {
                                 let _ = sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[CV] [Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
-                                    )))
+                                    .send(BacktestEvent::Info {
+                                        title: "[CV]".to_string(),
+                                        message: format!(
+                                            "[Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
+                                        ),
+                                        date: None,
+                                    })
                                     .await;
                             }
                         }
@@ -939,7 +1077,7 @@ impl FundBacktestContext<'_> {
     pub async fn cash_deploy_free(
         &mut self,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         if !self.portfolio.positions.is_empty() {
             let position_tickers_map = self.position_tickers_map(date).await?;
@@ -971,7 +1109,7 @@ impl FundBacktestContext<'_> {
                                         ticker_value,
                                         price_bias,
                                         date,
-                                        event_sender.clone(),
+                                        event_sender,
                                     )
                                     .await?;
                                 }
@@ -990,7 +1128,7 @@ impl FundBacktestContext<'_> {
         &mut self,
         cash: f64,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         if !self.portfolio.positions.is_empty() {
             let position_tickers_map = self.position_tickers_map(date).await?;
@@ -1017,11 +1155,11 @@ impl FundBacktestContext<'_> {
                                     ticker_value,
                                     price_bias,
                                     date,
-                                    event_sender.clone(),
+                                    event_sender,
                                 )
                                 .await?;
                             } else {
-                                self.position_close(ticker, false, date, event_sender.clone())
+                                self.position_close(ticker, false, date, event_sender)
                                     .await?;
                             }
                         }
@@ -1041,7 +1179,7 @@ impl FundBacktestContext<'_> {
         &mut self,
         targets_weight: &[(Ticker, f64)],
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         // Make sure weight is valid
         let targets_weight: Vec<&(Ticker, f64)> = targets_weight
@@ -1054,7 +1192,7 @@ impl FundBacktestContext<'_> {
             let position_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
             for ticker in &position_tickers {
                 if !targets_weight.iter().any(|(t, _)| t == ticker) {
-                    self.position_close(ticker, false, date, event_sender.clone())
+                    self.position_close(ticker, false, date, event_sender)
                         .await?;
                 }
             }
@@ -1110,14 +1248,8 @@ impl FundBacktestContext<'_> {
                             }
                         }
 
-                        self.scale_position(
-                            ticker,
-                            ticker_value,
-                            price_bias,
-                            date,
-                            event_sender.clone(),
-                        )
-                        .await?;
+                        self.scale_position(ticker, ticker_value, price_bias, date, event_sender)
+                            .await?;
                     }
                 }
             }
@@ -1133,7 +1265,14 @@ impl FundBacktestContext<'_> {
             }
         }
 
-        let _ = notify_portfolio(event_sender.clone(), date, cash, &positions_value).await;
+        let _ = notify_portfolio(
+            event_sender,
+            date,
+            cash,
+            &positions_value,
+            self.options.init_cash,
+        )
+        .await;
 
         Ok(())
     }
@@ -1143,9 +1282,8 @@ impl FundBacktestContext<'_> {
         ticker: &Ticker,
         cash: f64,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = date_to_str(date);
         let ticker_title = get_ticker_title(ticker).await?;
 
         let price_bias = if self.options.pessimistic { 1 } else { 0 };
@@ -1156,9 +1294,9 @@ impl FundBacktestContext<'_> {
             if buy_units > 0.0 {
                 let value = buy_units * price;
                 let fee = calc_buy_fee(value, self.options);
-                let cost = value + fee;
+                let amount = value + fee;
 
-                self.portfolio.free_cash -= cost;
+                self.portfolio.free_cash -= amount;
                 self.portfolio
                     .positions
                     .entry(ticker.clone())
@@ -1167,16 +1305,22 @@ impl FundBacktestContext<'_> {
 
                 self.order_dates.insert(*date);
                 let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
-                                )))
-                                .await;
+                    .send(BacktestEvent::Buy {
+                        title: format!("{ticker}({ticker_title})"),
+                        amount,
+                        price,
+                        units: buy_units as u64,
+                        date: *date,
+                    })
+                    .await;
             }
         } else {
             let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [!] Price of '{ticker}' not exists"
-                )))
+                .send(BacktestEvent::Warning {
+                    title: "".to_string(),
+                    message: format!("Price of '{ticker}' not exists"),
+                    date: Some(*date),
+                })
                 .await;
         }
 
@@ -1187,10 +1331,9 @@ impl FundBacktestContext<'_> {
         &mut self,
         ticker: &Ticker,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         if let Some(reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
-            let date_str = date_to_str(date);
             let ticker_title = get_ticker_title(ticker).await?;
 
             let price_bias = if self.options.pessimistic { 1 } else { 0 };
@@ -1201,9 +1344,9 @@ impl FundBacktestContext<'_> {
                 if buy_units > 0.0 {
                     let value = buy_units * price;
                     let fee = calc_buy_fee(value, self.options);
-                    let cost = value + fee;
+                    let amount = value + fee;
 
-                    self.portfolio.free_cash += *reserved_cash - cost;
+                    self.portfolio.free_cash += *reserved_cash - amount;
                     self.portfolio.reserved_cash.remove(ticker);
 
                     self.portfolio
@@ -1214,16 +1357,22 @@ impl FundBacktestContext<'_> {
 
                     self.order_dates.insert(*date);
                     let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
-                                )))
-                                .await;
+                        .send(BacktestEvent::Buy {
+                            title: format!("{ticker}({ticker_title})"),
+                            amount,
+                            price,
+                            units: buy_units as u64,
+                            date: *date,
+                        })
+                        .await;
                 }
             } else {
                 let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [!] Price of '{ticker}' not exists"
-                    )))
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
                     .await;
             }
         }
@@ -1236,11 +1385,10 @@ impl FundBacktestContext<'_> {
         ticker: &Ticker,
         make_reserved: bool,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<f64> {
         let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
         let cash = if position_units > 0 {
-            let date_str = date_to_str(date);
             let ticker_title = get_ticker_title(ticker).await?;
 
             let price_bias = if self.options.pessimistic { -1 } else { 0 };
@@ -1248,32 +1396,38 @@ impl FundBacktestContext<'_> {
                 let sell_units = position_units as f64;
                 let value = sell_units * price;
                 let fee = calc_sell_fee(value, self.options);
-                let cash = value - fee;
+                let amount = value - fee;
 
                 if make_reserved {
                     self.portfolio
                         .reserved_cash
                         .entry(ticker.clone())
-                        .and_modify(|v| *v += cash)
-                        .or_insert(cash);
+                        .and_modify(|v| *v += amount)
+                        .or_insert(amount);
                 } else {
-                    self.portfolio.free_cash += cash;
+                    self.portfolio.free_cash += amount;
                 }
                 self.portfolio.positions.remove(ticker);
 
                 self.order_dates.insert(*date);
                 let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
-                                )))
-                                .await;
+                    .send(BacktestEvent::Sell {
+                        title: format!("{ticker}({ticker_title})"),
+                        amount,
+                        price,
+                        units: sell_units as u64,
+                        date: *date,
+                    })
+                    .await;
 
-                cash
+                amount
             } else {
                 let _ = event_sender
-                    .send(BacktestEvent::Info(format!(
-                        "[{date_str}] [!] Price of '{ticker}' not exists"
-                    )))
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
                     .await;
 
                 0.0
@@ -1288,18 +1442,21 @@ impl FundBacktestContext<'_> {
     pub async fn resume(
         &mut self,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         if let Some(suspended_cash) = &self.suspended_cash.clone() {
             for (ticker, cash) in suspended_cash {
-                self.position_open(ticker, *cash, date, event_sender.clone())
+                self.position_open(ticker, *cash, date, event_sender)
                     .await?;
             }
             self.suspended_cash = None;
 
-            let date_str = date_to_str(date);
             let _ = event_sender
-                .send(BacktestEvent::Info(format!("[{date_str}] Resumed")))
+                .send(BacktestEvent::Info {
+                    title: "".to_string(),
+                    message: "Resumed".to_string(),
+                    date: Some(*date),
+                })
                 .await;
         }
 
@@ -1309,21 +1466,24 @@ impl FundBacktestContext<'_> {
     pub async fn suspend(
         &mut self,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         if self.suspended_cash.is_none() {
             let mut suspended_cash: HashMap<Ticker, f64> = HashMap::new();
             for ticker in self.portfolio.positions.keys().cloned().collect::<Vec<_>>() {
                 let cash = self
-                    .position_close(&ticker, false, date, event_sender.clone())
+                    .position_close(&ticker, false, date, event_sender)
                     .await?;
                 suspended_cash.insert(ticker.clone(), cash);
             }
             self.suspended_cash = Some(suspended_cash);
 
-            let date_str = date_to_str(date);
             let _ = event_sender
-                .send(BacktestEvent::Info(format!("[{date_str}] Suspended")))
+                .send(BacktestEvent::Info {
+                    title: "".to_string(),
+                    message: "Suspended".to_string(),
+                    date: Some(*date),
+                })
                 .await;
         }
 
@@ -1381,9 +1541,8 @@ impl FundBacktestContext<'_> {
         ticker_value: f64,
         price_bias: i32,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        let date_str = date_to_str(date);
         let ticker_title = get_ticker_title(ticker).await?;
 
         if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
@@ -1399,9 +1558,9 @@ impl FundBacktestContext<'_> {
                 if buy_units > 0.0 {
                     let value = buy_units * price;
                     let fee = calc_buy_fee(value, self.options);
-                    let cost = value + fee;
+                    let amount = value + fee;
 
-                    self.portfolio.free_cash -= cost;
+                    self.portfolio.free_cash -= amount;
 
                     self.portfolio
                         .positions
@@ -1411,10 +1570,14 @@ impl FundBacktestContext<'_> {
 
                     self.order_dates.insert(*date);
                     let _ = event_sender
-                                .send(BacktestEvent::Buy(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) -${cost:.2} (${price:.2}x{buy_units})"
-                                )))
-                                .await;
+                        .send(BacktestEvent::Buy {
+                            title: format!("{ticker}({ticker_title})"),
+                            amount,
+                            price,
+                            units: buy_units as u64,
+                            date: *date,
+                        })
+                        .await;
                 }
             } else {
                 let sell_value = delta_value.abs();
@@ -1423,9 +1586,9 @@ impl FundBacktestContext<'_> {
                 if sell_units > 0.0 {
                     let value = sell_units * price;
                     let fee = calc_sell_fee(value, self.options);
-                    let cash = value - fee;
+                    let amount = value - fee;
 
-                    self.portfolio.free_cash += cash;
+                    self.portfolio.free_cash += amount;
 
                     if sell_units as u64 == position_units {
                         self.portfolio.positions.remove(ticker);
@@ -1438,21 +1601,127 @@ impl FundBacktestContext<'_> {
 
                     self.order_dates.insert(*date);
                     let _ = event_sender
-                                .send(BacktestEvent::Sell(format!(
-                                    "[{date_str}] {ticker}({ticker_title}) +${cash:.2} (${price:.2}x{sell_units})"
-                                )))
-                                .await;
+                        .send(BacktestEvent::Sell {
+                            title: format!("{ticker}({ticker_title})"),
+                            amount,
+                            price,
+                            units: sell_units as u64,
+                            date: *date,
+                        })
+                        .await;
                 }
             }
         } else {
             let _ = event_sender
-                .send(BacktestEvent::Info(format!(
-                    "[{date_str}] [!] Price of '{ticker}' not exists"
-                )))
+                .send(BacktestEvent::Warning {
+                    title: "".to_string(),
+                    message: format!("Price of '{ticker}' not exists"),
+                    date: Some(*date),
+                })
                 .await;
         }
 
         Ok(())
+    }
+}
+
+impl Display for BacktestEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BacktestEvent::Buy {
+                title,
+                amount,
+                price,
+                units,
+                date,
+            } => {
+                let date_str = date_to_str(date);
+                let mut s = format!("[+] [{date_str}] ");
+                if !title.is_empty() {
+                    s.push_str(title);
+                    s.push(' ');
+                }
+                s.push_str(&format!("-${amount:.2} (${price:.2}x{units})"));
+                s
+            }
+            BacktestEvent::Sell {
+                title,
+                amount,
+                price,
+                units,
+                date,
+            } => {
+                let date_str = date_to_str(date);
+                let mut s = format!("[-] [{date_str}] ");
+                if !title.is_empty() {
+                    s.push_str(title);
+                    s.push(' ');
+                }
+                s.push_str(&format!("+${amount:.2} (${price:.2}x{units})"));
+                s
+            }
+            BacktestEvent::Info {
+                title,
+                message,
+                date,
+            } => {
+                let mut s = "[i] ".to_string();
+                if let Some(date) = date {
+                    s.push_str(&format!("[{}]", date_to_str(date)));
+                    s.push(' ');
+                }
+                if !title.is_empty() {
+                    s.push_str(title);
+                    s.push(' ');
+                }
+                s.push_str(message);
+                s
+            }
+            BacktestEvent::Warning {
+                title,
+                message,
+                date,
+            } => {
+                let mut s = "[!] ".to_string();
+                if let Some(date) = date {
+                    s.push_str(&format!("[{}]", date_to_str(date)));
+                    s.push(' ');
+                }
+                if !title.is_empty() {
+                    s.push_str(title);
+                    s.push(' ');
+                }
+                s.push_str(message);
+                s
+            }
+            BacktestEvent::Toast {
+                title,
+                message,
+                date,
+            } => {
+                let mut s = "[i] ".to_string();
+                if let Some(date) = date {
+                    s.push_str(&format!("[{}]", date_to_str(date)));
+                    s.push(' ');
+                }
+                if !title.is_empty() {
+                    s.push_str(title);
+                    s.push(' ');
+                }
+                s.push_str(message);
+                s
+            }
+            BacktestEvent::Result(fund_result) => fund_result.to_string(),
+            BacktestEvent::Error(err) => err.to_string(),
+        };
+
+        write!(f, "{s}")
+    }
+}
+
+impl Display for BacktestResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
     }
 }
 
@@ -1607,15 +1876,14 @@ fn calc_sell_fee(value: f64, options: &BacktestOptions) -> f64 {
 }
 
 async fn notify_portfolio(
-    event_sender: Sender<BacktestEvent>,
+    event_sender: &Sender<BacktestEvent>,
     date: &NaiveDate,
     cash: f64,
     positions_value: &HashMap<Ticker, f64>,
+    init_cash: f64,
 ) -> VfResult<()> {
-    let date_str = date_to_str(date);
-
     let total_value = cash + positions_value.values().sum::<f64>();
-    if total_value > 0.0 {
+    if total_value > 0.0 && init_cash > 0.0 {
         let mut portfolio_str = String::new();
 
         {
@@ -1634,14 +1902,22 @@ async fn notify_portfolio(
             }
         }
 
+        let total_pct = total_value / init_cash * 100.0;
+
         let _ = event_sender
-            .send(BacktestEvent::Info(format!(
-                "[{date_str}] [${total_value:.2}] {portfolio_str}"
-            )))
+            .send(BacktestEvent::Info {
+                title: format!("[${total_value:.2} {total_pct:.2}%]"),
+                message: portfolio_str,
+                date: Some(*date),
+            })
             .await;
     } else {
         let _ = event_sender
-            .send(BacktestEvent::Info(format!("[{date_str}] [$0]")))
+            .send(BacktestEvent::Info {
+                title: "[$0]".to_string(),
+                message: "".to_string(),
+                date: Some(*date),
+            })
             .await;
     }
 

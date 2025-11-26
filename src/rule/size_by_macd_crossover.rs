@@ -10,9 +10,8 @@ use crate::{
         KlineField, get_ticker_title,
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
-    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
     utils::{
-        datetime::date_to_str,
         financial::{calc_macd, calc_rsi},
         stats::slope,
     },
@@ -37,7 +36,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -82,8 +81,6 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_f64())
             .unwrap_or(70.0);
 
-        let date_str = date_to_str(date);
-
         for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
             let latest_prices: Vec<f64> = kline
@@ -117,18 +114,20 @@ impl RuleExecutor for Executor {
                 if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
                     let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
 
-                    let _ = event_sender
-                        .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{rule_name}] [Sell Signal] {ticker}({ticker_title})"
-                        )))
-                        .await;
+                    rule_send_info(
+                        rule_name,
+                        &format!("[Sell Signal] {ticker}({ticker_title})"),
+                        date,
+                        event_sender,
+                    )
+                    .await;
 
                     context
-                        .position_close(&ticker, !allow_short, date, event_sender.clone())
+                        .position_close(&ticker, !allow_short, date, event_sender)
                         .await?;
 
                     if !allow_short {
-                        context.cash_deploy_free(date, event_sender.clone()).await?;
+                        context.cash_deploy_free(date, event_sender).await?;
                     }
                 }
             }
@@ -167,14 +166,16 @@ impl RuleExecutor for Executor {
                 if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
                     let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
 
-                    let _ = event_sender
-                        .send(BacktestEvent::Info(format!(
-                            "[{date_str}] [{rule_name}] [Buy Signal] {ticker}({ticker_title})"
-                        )))
-                        .await;
+                    rule_send_info(
+                        rule_name,
+                        &format!("[Buy Signal] {ticker}({ticker_title})"),
+                        date,
+                        event_sender,
+                    )
+                    .await;
 
                     context
-                        .position_open_reserved(&ticker, date, event_sender.clone())
+                        .position_open_reserved(&ticker, date, event_sender)
                         .await?;
                 }
             }

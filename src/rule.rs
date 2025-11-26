@@ -8,7 +8,6 @@ use crate::{
     financial::get_ticker_title,
     spec::RuleDefinition,
     ticker::Ticker,
-    utils::datetime::date_to_str,
 };
 
 pub struct Rule {
@@ -22,7 +21,7 @@ pub trait RuleExecutor: Send {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()>;
 }
 
@@ -66,7 +65,7 @@ impl Rule {
         &mut self,
         context: &mut FundBacktestContext<'_>,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         self.executor.exec(context, date, event_sender).await
     }
@@ -85,37 +84,31 @@ mod hold_by_trend;
 mod size_by_macd_crossover;
 mod size_by_valuation;
 
-async fn notify_calc_progress(
-    event_sender: Sender<BacktestEvent>,
-    date: &NaiveDate,
+async fn rule_notify_calc_progress(
     rule_name: &str,
     progress_pct: f64,
+    date: &NaiveDate,
+    event_sender: &Sender<BacktestEvent>,
 ) {
-    let date_str = date_to_str(date);
-
     let message = if progress_pct < 100.0 {
-        format!("{progress_pct:.2}% ...")
+        format!("Σ {progress_pct:.2}% ...")
     } else {
-        "100%".to_string()
+        "Σ 100%".to_string()
     };
 
-    let _ = event_sender
-        .send(BacktestEvent::Toast(format!(
-            "[{date_str}] [{rule_name}] Σ {message}"
-        )))
-        .await;
+    rule_send_toast(rule_name, &message, date, event_sender).await;
 }
 
-async fn notify_tickers_indicator(
-    event_sender: Sender<BacktestEvent>,
-    date: &NaiveDate,
+async fn rule_notify_indicators(
     rule_name: &str,
-    tickers_indicator: &[(Ticker, String)],
+    indicators: &[(Ticker, String)],
     candidates: &[(Ticker, String)],
+    date: &NaiveDate,
+    event_sender: &Sender<BacktestEvent>,
 ) {
-    if !tickers_indicator.is_empty() {
+    if !indicators.is_empty() {
         let mut strs: Vec<String> = vec![];
-        for (ticker, indicator) in tickers_indicator.iter() {
+        for (ticker, indicator) in indicators.iter() {
             if let Ok(ticker_title) = get_ticker_title(ticker).await {
                 strs.push(format!("{ticker}({ticker_title})={indicator}"));
             } else {
@@ -132,19 +125,59 @@ async fn notify_tickers_indicator(
             }
         }
 
-        let mut message_str = String::new();
-        message_str.push_str(&strs.join(" "));
+        let mut message = String::new();
+        message.push_str(&strs.join(" "));
         if !candidate_strs.is_empty() {
-            message_str.push_str(" [[ ");
-            message_str.push_str(&candidate_strs.join(" "));
-            message_str.push_str(" ]]");
+            message.push_str(" [[ ");
+            message.push_str(&candidate_strs.join(" "));
+            message.push_str(" ]]");
         }
 
-        let date_str = date_to_str(date);
-        let _ = event_sender
-            .send(BacktestEvent::Info(format!(
-                "[{date_str}] [{rule_name}] {message_str}"
-            )))
-            .await;
+        rule_send_info(rule_name, &message, date, event_sender).await;
     }
+}
+
+async fn rule_send_info(
+    rule_name: &str,
+    message: &str,
+    date: &NaiveDate,
+    event_sender: &Sender<BacktestEvent>,
+) {
+    let _ = event_sender
+        .send(BacktestEvent::Info {
+            title: format!("[{rule_name}]"),
+            message: message.to_string(),
+            date: Some(*date),
+        })
+        .await;
+}
+
+async fn rule_send_toast(
+    rule_name: &str,
+    message: &str,
+    date: &NaiveDate,
+    event_sender: &Sender<BacktestEvent>,
+) {
+    let _ = event_sender
+        .send(BacktestEvent::Toast {
+            title: format!("[{rule_name}]"),
+            message: message.to_string(),
+            date: Some(*date),
+        })
+        .await;
+}
+
+async fn rule_send_warning(
+    rule_name: &str,
+    message: &str,
+    date: &NaiveDate,
+    event_sender: &Sender<BacktestEvent>,
+) {
+    let _ = event_sender
+        .send(BacktestEvent::Warning {
+            title: format!("[{rule_name}]"),
+            message: message.to_string(),
+            date: Some(*date),
+        })
+        .await;
 }

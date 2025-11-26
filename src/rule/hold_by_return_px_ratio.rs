@@ -13,8 +13,8 @@ use crate::{
         tool::{calc_stock_pb, calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
-        notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
@@ -42,7 +42,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -117,24 +117,32 @@ impl RuleExecutor for Executor {
 
                     if let Some(arr) = calc_annualized_return_rate(&prices) {
                         if arr > 0.0 {
-                            if let Some(indicator) = match px {
+                            if let Some(px) = match px {
                                 "pb" => calc_stock_pb(ticker, date).await?,
                                 "ps" => calc_stock_ps_ttm(ticker, date).await?,
                                 _ => calc_stock_pe_ttm(ticker, date).await?,
                             } {
-                                if indicator.is_finite() {
-                                    indicators.push((ticker.clone(), indicator));
+                                if px > 0.0 {
+                                    indicators.push((ticker.clone(), arr / px));
                                 }
+                            } else {
+                                rule_send_warning(
+                                    rule_name,
+                                    &format!("[Px Calculation Failed] {ticker}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
                             }
                         }
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        notify_calc_progress(
-                            event_sender.clone(),
-                            date,
+                        rule_notify_calc_progress(
                             rule_name,
                             calc_count as f64 / tickers_map.len() as f64 * 100.0,
+                            date,
+                            event_sender,
                         )
                         .await;
 
@@ -142,7 +150,7 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
+                rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
@@ -185,9 +193,7 @@ impl RuleExecutor for Executor {
                 }
             }
 
-            notify_tickers_indicator(
-                event_sender.clone(),
-                date,
+            rule_notify_indicators(
                 rule_name,
                 &targets_indicator
                     .iter()
@@ -197,6 +203,8 @@ impl RuleExecutor for Executor {
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
+                date,
+                event_sender,
             )
             .await;
 

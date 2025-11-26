@@ -17,7 +17,8 @@ use crate::{
         tool::{calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        rule_notify_calc_progress, rule_send_info,
     },
     spec::TickerSourceType,
     ticker::{Ticker, TickersIndex},
@@ -47,7 +48,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -196,7 +197,7 @@ impl RuleExecutor for Executor {
                             &date_from,
                             date,
                             watch_period_days as i64,
-                            event_sender.clone(),
+                            event_sender,
                         )
                         .await?;
                     let pe_values: Vec<f64> =
@@ -228,26 +229,28 @@ impl RuleExecutor for Executor {
                                     get_ticker_title(ticker).await.unwrap_or_default();
 
                                 if *pe > pe_sell || *ps > ps_sell {
-                                    let _ = event_sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Sell Signal] {ticker}({ticker_title}) PE:{pe:.2}>{pe_sell:.2} || PS:{ps:.2}>{ps_sell:.2}"
-                                    )))
+                                    rule_send_info(
+                                        rule_name,
+                                        &format!("[Sell Signal] {ticker}({ticker_title}) PE:{pe:.2}>{pe_sell:.2} || PS:{ps:.2}>{ps_sell:.2}"),
+                                        date,
+                                        event_sender,
+                                    )
                                     .await;
 
                                     context
-                                        .position_close(ticker, true, date, event_sender.clone())
+                                        .position_close(ticker, true, date, event_sender)
                                         .await?;
 
                                     if !allow_short {
-                                        context
-                                            .cash_deploy_free(date, event_sender.clone())
-                                            .await?;
+                                        context.cash_deploy_free(date, event_sender).await?;
                                     }
                                 } else {
-                                    let _ = event_sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Overvalued Warn] {ticker}({ticker_title}) PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"
-                                    )))
+                                    rule_send_info(
+                                        rule_name,
+                                        &format!("[Overvalued Warn] {ticker}({ticker_title}) PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"),
+                                        date,
+                                        event_sender,
+                                        )
                                     .await;
                                 }
                             }
@@ -276,20 +279,24 @@ impl RuleExecutor for Executor {
                                     get_ticker_title(ticker).await.unwrap_or_default();
 
                                 if *pe < pe_buy && *ps < ps_buy {
-                                    let _ = event_sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Buy Signal] {ticker}({ticker_title}) PE:{pe:.2}<{pe_buy:.2} && PS:{ps:.2}<{ps_buy:.2}"
-                                    )))
+                                    rule_send_info(
+                                        rule_name,
+                                        &format!("[Buy Signal] {ticker}({ticker_title}) PE:{pe:.2}<{pe_buy:.2} && PS:{ps:.2}<{ps_buy:.2}"),
+                                        date,
+                                        event_sender,
+                                    )
                                     .await;
 
                                     context
-                                        .position_open_reserved(ticker, date, event_sender.clone())
+                                        .position_open_reserved(ticker, date, event_sender)
                                         .await?;
                                 } else {
-                                    let _ = event_sender
-                                    .send(BacktestEvent::Info(format!(
-                                        "[{date_str}] [{rule_name}] [Undervalued Warn] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"
-                                    )))
+                                    rule_send_info(
+                                        rule_name,
+                                        &format!("[Undervalued Warn] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"),
+                                        date,
+                                        event_sender,
+                                    )
                                     .await;
                                 }
                             }
@@ -298,11 +305,11 @@ impl RuleExecutor for Executor {
                 }
 
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                    notify_calc_progress(
-                        event_sender.clone(),
-                        date,
+                    rule_notify_calc_progress(
                         rule_name,
                         calc_count as f64 / watching_tickers.len() as f64 * 100.0,
+                        date,
+                        event_sender,
                     )
                     .await;
 
@@ -310,7 +317,7 @@ impl RuleExecutor for Executor {
                 }
             }
 
-            notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
+            rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
         }
 
         Ok(())
@@ -324,12 +331,11 @@ impl Executor {
         date_from: &NaiveDate,
         date_to: &NaiveDate,
         watch_period_days: i64,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<Vec<(NaiveDate, f64, f64)>> {
         let mut valuation_indicators: Vec<(NaiveDate, f64, f64)> = vec![];
 
         let rule_name = mod_name!();
-        let date_str = date_to_str(date_to);
 
         let watch_days = date_to.signed_duration_since(*date_from).num_days();
         let period_count = (watch_days as f64 / watch_period_days as f64).ceil() as i64;
@@ -347,7 +353,6 @@ impl Executor {
             }
 
             let tickers = index.all_tickers(&watch_date).await?;
-            let watch_date_str = date_to_str(&watch_date);
 
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
@@ -386,11 +391,12 @@ impl Executor {
                 }
 
                 if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                    let calc_progress_pct = calc_count as f64 / tickers.len() as f64 * 100.0;
-                    let _ = event_sender
-                    .send(BacktestEvent::Toast(format!(
-                        "[{date_str}] [{rule_name}] [{index} {watch_date_str} {i}/{period_count}] Σ {calc_progress_pct:.2}% ..."
-                    )))
+                    rule_notify_calc_progress(
+                        rule_name,
+                        calc_count as f64 / tickers.len() as f64 * 100.0,
+                        &watch_date,
+                        event_sender,
+                    )
                     .await;
 
                     last_time = Instant::now();

@@ -4,8 +4,9 @@ description = "基金按权重进行组合"
 [funds]
 conv-bond = 1
 high-dividend = 5
-high-momentum-sharpe = 5
+high-momentum-sharpe = 1
 permanent = 1
+strong-small-cap = 5
 
 # 交叉验证偏重夏普，指定参数 -A 0.3
 [search]
@@ -13,3 +14,4 @@ conv-bond = [1, 2, 3, 5]
 high-dividend = [1, 2, 3, 5]
 high-momentum-sharpe = [1, 2, 3, 5]
 permanent = [1, 2, 3, 5]
+strong-small-cap = [1, 2, 3, 5]

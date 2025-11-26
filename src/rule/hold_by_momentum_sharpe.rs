@@ -13,8 +13,8 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
-        notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
@@ -43,7 +43,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -112,11 +112,13 @@ impl RuleExecutor for Executor {
                     if prices.len()
                         < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
                     {
-                        let _ = event_sender
-                            .send(BacktestEvent::Info(format!(
-                                "[{date_str}] [{rule_name}] [No Enough Data] {ticker}"
-                            )))
-                            .await;
+                        rule_send_warning(
+                            rule_name,
+                            &format!("[No Enough Data] {ticker}"),
+                            date,
+                            event_sender,
+                        )
+                        .await;
                         continue;
                     }
 
@@ -125,14 +127,22 @@ impl RuleExecutor for Executor {
                         calc_sharpe_ratio(&prices, 0.0),
                     ) {
                         tickers_factors.push((ticker.clone(), Factors { momentum, sharpe }));
+                    } else {
+                        rule_send_warning(
+                            rule_name,
+                            &format!("[Factors Calculation Failed] {ticker}"),
+                            date,
+                            event_sender,
+                        )
+                        .await;
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        notify_calc_progress(
-                            event_sender.clone(),
-                            date,
+                        rule_notify_calc_progress(
                             rule_name,
                             calc_count as f64 / tickers_map.len() as f64 * 100.0,
+                            date,
+                            event_sender,
                         )
                         .await;
 
@@ -140,7 +150,7 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
+                rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
             let normalized_momentum_values = normalize_zscore(
@@ -179,9 +189,7 @@ impl RuleExecutor for Executor {
 
             let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
 
-            notify_tickers_indicator(
-                event_sender.clone(),
-                date,
+            rule_notify_indicators(
                 rule_name,
                 &targets_indicator
                     .iter()
@@ -193,6 +201,8 @@ impl RuleExecutor for Executor {
                     .take(limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
+                date,
+                event_sender,
             )
             .await;
 

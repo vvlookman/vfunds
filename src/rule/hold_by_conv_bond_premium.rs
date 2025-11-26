@@ -13,8 +13,8 @@ use crate::{
         get_ticker_price,
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, notify_calc_progress,
-        notify_tickers_indicator,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        rule_notify_calc_progress, rule_notify_indicators,
     },
     spec::Frequency,
     ticker::Ticker,
@@ -43,7 +43,7 @@ impl RuleExecutor for Executor {
         &mut self,
         context: &mut FundBacktestContext,
         date: &NaiveDate,
-        event_sender: Sender<BacktestEvent>,
+        event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
@@ -155,11 +155,11 @@ impl RuleExecutor for Executor {
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
-                        notify_calc_progress(
-                            event_sender.clone(),
-                            date,
+                        rule_notify_calc_progress(
                             rule_name,
                             calc_count as f64 / conv_bonds.len() as f64 * 100.0,
+                            date,
+                            event_sender,
                         )
                         .await;
 
@@ -167,15 +167,13 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                notify_calc_progress(event_sender.clone(), date, rule_name, 100.0).await;
+                rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
 
-            notify_tickers_indicator(
-                event_sender.clone(),
-                date,
+            rule_notify_indicators(
                 rule_name,
                 &targets_indicator
                     .iter()
@@ -187,6 +185,8 @@ impl RuleExecutor for Executor {
                     .take(limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
+                date,
+                event_sender,
             )
             .await;
 

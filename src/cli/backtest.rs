@@ -212,19 +212,25 @@ impl BacktestCommand {
 
                     while let Some(event) = stream.next().await {
                         match event {
-                            BacktestEvent::Buy(s) => {
-                                logger.println(format!("[{vfund_name}][+] {s}"));
+                            BacktestEvent::Buy { .. } | BacktestEvent::Sell { .. } => {
+                                logger.println(format!("[{vfund_name}] {event}"));
                             }
-                            BacktestEvent::Sell(s) => {
-                                logger.println(format!("[{vfund_name}][-] {s}"));
+                            BacktestEvent::Info { .. } => {
+                                logger.println(format!(
+                                    "[{vfund_name}] {}",
+                                    event.to_string().bright_black()
+                                ));
                             }
-                            BacktestEvent::Info(s) => {
-                                logger.println(format!("[{vfund_name}][i] {}", s.bright_black()));
+                            BacktestEvent::Warning { .. } => {
+                                logger.println(format!(
+                                    "[{vfund_name}] {}",
+                                    event.to_string().bright_yellow()
+                                ));
                             }
-                            BacktestEvent::Toast(s) => {
+                            BacktestEvent::Toast { .. } => {
                                 spinner.set_message(format!(
-                                    "[{vfund_name}][i] {} ",
-                                    s.bright_black()
+                                    "[{vfund_name}] {} ",
+                                    event.to_string().bright_black()
                                 ));
                             }
                             BacktestEvent::Result(backtest_result) => {
@@ -323,7 +329,7 @@ impl BacktestCommand {
                 }
 
                 for (vfund_name, err) in &errors {
-                    logger.println(format!("[{vfund_name}][!] {}", err.to_string().red()));
+                    logger.println(format!("[{vfund_name}] [!] {}", err.to_string().red()));
                 }
 
                 if errors.is_empty() {
