@@ -1,42 +1,55 @@
-use std::{str::FromStr, sync::LazyLock};
+use std::{collections::HashMap, str::FromStr, sync::LazyLock};
 
 use chrono::NaiveDate;
 use dashmap::DashMap;
 use serde_json::json;
 
-use crate::{ds::aktools, error::VfResult, ticker::Ticker};
+use crate::{
+    ds::aktools,
+    error::VfResult,
+    ticker::Ticker,
+    utils::datetime::{date_from_str, date_to_str},
+};
 
 pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-    let query_date_str = date.format("%Y%m").to_string();
-    let cache_key = format!("{symbol}/{query_date_str}");
+    let cache_key = format!("{symbol}/{}", date_to_str(date));
     if let Some(result) = CNINDEX_TICKERS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
     let json = aktools::call_api(
-        "/index_detail_cni",
+        "/index_detail_hist_cni",
         &json!({
             "symbol": symbol, // 通过 /index_all_cni 查询
-            "date": query_date_str,
         }),
-        30,
+        0,
         None,
     )
     .await?;
 
-    let mut tickers: Vec<Ticker> = vec![];
+    let mut hist_tickers: HashMap<NaiveDate, Vec<Ticker>> = HashMap::new();
 
     if let Some(array) = json.as_array() {
         for item in array {
             if let Some(obj) = item.as_object() {
-                if let Some(ticker_str) = obj["样本代码"].as_str() {
-                    if let Ok(ticker) = Ticker::from_str(ticker_str) {
-                        tickers.push(ticker);
+                if let (Some(date_str), Some(ticker_str)) =
+                    (obj["日期"].as_str(), obj["样本代码"].as_str())
+                {
+                    if let (Ok(date), Ok(ticker)) =
+                        (date_from_str(date_str), Ticker::from_str(ticker_str))
+                    {
+                        hist_tickers.entry(date).or_default().push(ticker);
                     }
                 }
             }
         }
     }
+
+    let tickers = if let Some(latest_date) = hist_tickers.keys().filter(|d| **d < *date).max() {
+        hist_tickers.get(latest_date).unwrap_or(&vec![]).clone()
+    } else {
+        vec![]
+    };
 
     CNINDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
 
