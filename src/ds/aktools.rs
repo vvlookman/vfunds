@@ -7,7 +7,7 @@ use tokio::time::sleep;
 
 use crate::{
     CACHE_NO_EXPIRE, CONFIG, cache,
-    error::VfResult,
+    error::{VfError, VfResult},
     market::next_data_expire_in_china,
     utils::{
         compress,
@@ -82,4 +82,23 @@ pub async fn call_api(
     let json: serde_json::Value = serde_json::from_slice(&bytes?)?;
 
     Ok(json)
+}
+
+pub async fn check_api() -> VfResult<()> {
+    let aktools_api = { &CONFIG.read().await.aktools_api };
+    let api_url = join_url(aktools_api, "/api/public/stock_zh_a_hist")?;
+
+    let bytes = http_get(&api_url, None, &HashMap::new(), &HashMap::new(), 30, 3).await?;
+    let json: serde_json::Value = serde_json::from_slice(&bytes)?;
+
+    if let Some(array) = json.as_array() {
+        if !array.is_empty() {
+            return Ok(());
+        }
+    }
+
+    Err(VfError::Invalid {
+        code: "INVALID_RESPONSE",
+        message: "Invalid response".to_string(),
+    })
 }

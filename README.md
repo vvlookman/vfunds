@@ -2,7 +2,7 @@
 
 Virtual Funds Backtesting and Comparison
 
-## Service Dependencies
+## Dependent Services
 
 ```sh
 docker run --name aktools -p 8080:8080 -d lev1s/aktools:latest # AKTools (Open financial data)

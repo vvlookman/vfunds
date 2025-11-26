@@ -53,6 +53,9 @@ async fn main() {
         Commands::Backtest(cmd) => {
             cmd.exec().await;
         }
+        Commands::Check(cmd) => {
+            cmd.exec().await;
+        }
         Commands::Config(cmd) => {
             cmd.exec().await;
         }

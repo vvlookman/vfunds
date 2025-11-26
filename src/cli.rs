@@ -1,6 +1,7 @@
 use clap::Subcommand;
 
 mod backtest;
+mod check;
 mod config;
 mod list;
 mod result;
@@ -8,8 +9,11 @@ mod result;
 #[derive(Subcommand)]
 pub enum Commands {
     #[command(about = "Backtest virtual funds")]
-    #[clap(visible_aliases = &["test"])]
     Backtest(Box<backtest::BacktestCommand>),
+
+    #[command(about = "Check all dependent services")]
+    #[clap(visible_aliases = &["chk"])]
+    Check(Box<check::CheckCommand>),
 
     #[command(about = "Show and edit configurations")]
     #[clap(subcommand)]

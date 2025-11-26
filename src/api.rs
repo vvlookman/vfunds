@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     CONFIG, CONFIG_PATH, Config, VERSION, WORKSPACE, backtest,
+    ds::{aktools, qmt},
     error::*,
     spec::{FofDefinition, FundDefinition},
     utils,
@@ -78,6 +79,15 @@ pub async fn backtest(
     }
 
     Ok(streams)
+}
+
+pub async fn check() -> VfResult<Vec<(&'static str, Option<VfError>)>> {
+    let (aktools_result, qmt_result) = tokio::join!(aktools::check_api(), qmt::check_api());
+
+    Ok(vec![
+        ("AKTools", aktools_result.err()),
+        ("QMT", qmt_result.err()),
+    ])
 }
 
 pub async fn get_config() -> VfResult<Config> {
