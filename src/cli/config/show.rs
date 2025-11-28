@@ -10,8 +10,12 @@ impl ConfigShowCommand {
         match api::get_config().await {
             Ok(config) => {
                 let table_data: Vec<Vec<String>> = vec![
-                    vec!["aktools_api".to_string(), config.aktools_api.to_string()],
                     vec!["qmt_api".to_string(), config.qmt_api.to_string()],
+                    vec!["tushare_api".to_string(), config.tushare_api.to_string()],
+                    vec![
+                        "tushare_token".to_string(),
+                        config.tushare_token.to_string(),
+                    ],
                 ];
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();

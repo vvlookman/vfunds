@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::VfResult,
-    financial::sector::fetch_sector_tickers,
+    financial::{index::fetch_index_tickers, sector::fetch_sector_tickers},
     ticker::{Ticker, TickersIndex},
 };
 
@@ -147,7 +147,7 @@ impl FundDefinition {
             match ticker_source.source_type {
                 TickerSourceType::Index => {
                     let index = TickersIndex::from_str(&ticker_source.source)?;
-                    let index_tickers = index.all_tickers(date).await?;
+                    let index_tickers = fetch_index_tickers(&index, date).await?;
                     for ticker in index_tickers {
                         all_tickers_map.insert(ticker, (1.0, Some(ticker_source.clone())));
                     }

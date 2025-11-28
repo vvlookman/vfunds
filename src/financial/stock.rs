@@ -153,7 +153,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailySeries> {
         "dr".to_string(),
     );
 
-    let result = DailySeries::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_DIVIDENDS_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -192,7 +192,7 @@ pub async fn fetch_stock_kline(
     fields.insert(KlineField::Low.to_string(), "low".to_string());
     fields.insert(KlineField::Volume.to_string(), "volume".to_string());
 
-    let result = DailySeries::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_KLINE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -231,7 +231,7 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries
         "freeFloatCapital".to_string(),
     );
 
-    let result = DailySeries::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_REPORT_CAPITAL_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -270,7 +270,7 @@ pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailySeries>
         "tot_profit".to_string(),
     );
 
-    let result = DailySeries::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
@@ -329,7 +329,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySerie
         "equity_roe".to_string(),
     );
 
-    let result = DailySeries::from_json(&json, "date", &fields)?;
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)

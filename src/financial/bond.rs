@@ -2,24 +2,37 @@ use std::{collections::HashMap, sync::LazyLock};
 
 use chrono::{Months, NaiveDate};
 use dashmap::DashMap;
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
     data::series::*,
-    ds::aktools,
+    ds::tushare,
     error::*,
-    financial::KlineField,
     ticker::Ticker,
     utils::datetime::{date_from_str, date_to_str},
 };
 
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum ConvBondDailyField {
+    Open,
+    Close,
+    High,
+    Low,
+    Volume,
+    StraightValue,
+    ConversionValue,
+    StraightPremium,
+    ConversionPremium,
+}
+
 #[derive(Clone)]
 #[allow(dead_code)]
 pub struct ConvBondDetail {
-    pub code: String,
+    pub ticker: Ticker,
     pub title: String,
-    pub issue_size: Option<f64>, // 单位为亿
-    pub face_value: Option<f64>,
+    pub issue_size: Option<f64>,
+    pub par_value: Option<f64>,
     pub expire_date: Option<NaiveDate>,
 }
 
@@ -33,46 +46,47 @@ pub enum ConvBondAnalysisField {
     ConversionPremium,
 }
 
-pub async fn fetch_conv_bond_analysis(ticker: &Ticker) -> VfResult<DailySeries> {
+pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
     let cache_key = format!("{ticker}");
-    if let Some(result) = CONV_BOND_ANALYSIS_CACHE.get(&cache_key) {
+    if let Some(result) = CONV_BOND_DAILY_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
-    let json = aktools::call_api(
-        "/bond_zh_cov_value_analysis",
+    let json = tushare::call_api(
+        "cb_daily",
         &json!({
-            "symbol": ticker.symbol,
+            "ts_code": ticker.to_tushare_code(),
         }),
+        Some("trade_date,open,close,high,low,vol,bond_value,cb_value,bond_over_rate,cb_over_rate"),
         0,
-        None,
     )
     .await?;
 
     let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(ConvBondDailyField::Open.to_string(), "open".to_string());
+    fields.insert(ConvBondDailyField::Close.to_string(), "close".to_string());
+    fields.insert(ConvBondDailyField::High.to_string(), "high".to_string());
+    fields.insert(ConvBondDailyField::Low.to_string(), "low".to_string());
+    fields.insert(ConvBondDailyField::Volume.to_string(), "vol".to_string());
     fields.insert(
-        ConvBondAnalysisField::Price.to_string(),
-        "收盘价".to_string(),
+        ConvBondDailyField::StraightValue.to_string(),
+        "bond_value".to_string(),
     );
     fields.insert(
-        ConvBondAnalysisField::StraightValue.to_string(),
-        "纯债价值".to_string(),
+        ConvBondDailyField::ConversionValue.to_string(),
+        "cb_value".to_string(),
     );
     fields.insert(
-        ConvBondAnalysisField::ConversionValue.to_string(),
-        "转股价值".to_string(),
+        ConvBondDailyField::StraightPremium.to_string(),
+        "bond_over_rate".to_string(),
     );
     fields.insert(
-        ConvBondAnalysisField::StraightPremium.to_string(),
-        "纯债溢价率".to_string(),
-    );
-    fields.insert(
-        ConvBondAnalysisField::ConversionPremium.to_string(),
-        "转股溢价率".to_string(),
+        ConvBondDailyField::ConversionPremium.to_string(),
+        "cb_over_rate".to_string(),
     );
 
-    let result = DailySeries::from_json(&json, "日期", &fields)?;
-    CONV_BOND_ANALYSIS_CACHE.insert(cache_key, result.clone());
+    let result = DailySeries::from_tushare_json(&json, "trade_date", &fields)?;
+    CONV_BOND_DAILY_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
@@ -83,66 +97,60 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
         return Ok(result.clone());
     }
 
-    let json = aktools::call_api(
-        "/bond_zh_cov_info",
+    let json = tushare::call_api(
+        "cb_basic",
         &json!({
-            "symbol": ticker.symbol,
+            "ts_code": ticker.to_tushare_code(),
         }),
-        30,
         None,
+        30,
     )
     .await?;
 
-    let obj = &json[0];
+    if let (Some(fields), Some(items)) = (
+        json["data"]["fields"].as_array(),
+        json["data"]["items"].as_array(),
+    ) {
+        if let Some(item) = items.first() {
+            if let Some(values) = item.as_array() {
+                let mut json_item: HashMap<String, Value> = HashMap::new();
 
-    let result = ConvBondDetail {
-        code: obj["SECURITY_CODE"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-        title: obj["SECURITY_NAME_ABBR"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
-        issue_size: obj["ACTUAL_ISSUE_SCALE"].as_f64(),
-        face_value: obj["PAR_VALUE"].as_f64(),
-        expire_date: obj["EXPIRE_DATE"]
-            .as_str()
-            .and_then(|s| date_from_str(s).ok()),
-    };
+                for (i, field) in fields.iter().enumerate() {
+                    if let Some(field_name) = field.as_str() {
+                        if let Some(value) = values.get(i) {
+                            json_item.insert(field_name.to_string(), value.clone());
+                        }
+                    }
+                }
 
-    CONV_BOND_DETAIL_CACHE.insert(cache_key, result.clone());
+                if let Some(ticker) =
+                    Ticker::from_tushare_str(json_item["ts_code"].as_str().unwrap_or_default())
+                {
+                    let result = ConvBondDetail {
+                        ticker,
+                        title: json_item["bond_short_name"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        issue_size: json_item["issue_size"].as_f64(),
+                        par_value: json_item["par"].as_f64(),
+                        expire_date: json_item["delist_date"]
+                            .as_str()
+                            .and_then(|s| date_from_str(s).ok()),
+                    };
 
-    Ok(result)
-}
+                    CONV_BOND_DETAIL_CACHE.insert(cache_key, result.clone());
 
-pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
-    if let Some(result) = CONV_BOND_KLINE_CACHE.get(&cache_key) {
-        return Ok(result.clone());
+                    return Ok(result);
+                }
+            }
+        }
     }
 
-    let json = aktools::call_api(
-        "/bond_zh_hs_cov_daily",
-        &json!({
-            "symbol": ticker.to_sina_code(),
-        }),
-        0,
-        None,
-    )
-    .await?;
-
-    let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(KlineField::Open.to_string(), "open".to_string());
-    fields.insert(KlineField::Close.to_string(), "close".to_string());
-    fields.insert(KlineField::High.to_string(), "high".to_string());
-    fields.insert(KlineField::Low.to_string(), "low".to_string());
-    fields.insert(KlineField::Volume.to_string(), "volume".to_string());
-
-    let result = DailySeries::from_json(&json, "date", &fields)?;
-    CONV_BOND_KLINE_CACHE.insert(cache_key, result.clone());
-
-    Ok(result)
+    Err(VfError::Invalid {
+        code: "INVALID_JSON",
+        message: "Invalid Tushare JSON".to_string(),
+    })
 }
 
 pub async fn fetch_conv_bonds(
@@ -154,37 +162,51 @@ pub async fn fetch_conv_bonds(
         return Ok(result.clone());
     }
 
-    let json = aktools::call_api(
-        "/bond_cov_issue_cninfo",
+    let json = tushare::call_api(
+        "cb_issue",
         &json!({
             "start_date": (*date - Months::new(lookback_months)).format("%Y%m%d").to_string(),
             "end_date": date.format("%Y%m%d").to_string(),
         }),
-        30,
         None,
+        30,
     )
     .await?;
 
     let mut result = vec![];
 
-    if let Some(array) = json.as_array() {
-        for item in array {
-            if let Some(obj) = item.as_object() {
-                result.push(ConvBondDetail {
-                    code: obj["债券代码"]
-                        .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_default(),
-                    title: obj["债券简称"]
-                        .as_str()
-                        .map(|s| s.to_string())
-                        .unwrap_or_default(),
-                    issue_size: obj["实际发行总量"].as_f64().map(|v| v / 10000.0),
-                    face_value: obj["发行面值"].as_f64(),
-                    expire_date: obj["债权登记日"]
-                        .as_str()
-                        .and_then(|s| date_from_str(s).ok()),
-                });
+    if let (Some(fields), Some(items)) = (
+        json["data"]["fields"].as_array(),
+        json["data"]["items"].as_array(),
+    ) {
+        for item in items {
+            if let Some(values) = item.as_array() {
+                let mut json_item: HashMap<String, Value> = HashMap::new();
+
+                for (i, field) in fields.iter().enumerate() {
+                    if let Some(field_name) = field.as_str() {
+                        if let Some(value) = values.get(i) {
+                            json_item.insert(field_name.to_string(), value.clone());
+                        }
+                    }
+                }
+
+                if let Some(ticker) =
+                    Ticker::from_tushare_str(json_item["ts_code"].as_str().unwrap_or_default())
+                {
+                    let cb = ConvBondDetail {
+                        ticker,
+                        title: json_item["onl_name"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        issue_size: json_item["issue_size"].as_f64(),
+                        par_value: None,
+                        expire_date: None,
+                    };
+
+                    result.push(cb);
+                }
             }
         }
     }
@@ -194,11 +216,9 @@ pub async fn fetch_conv_bonds(
     Ok(result)
 }
 
-static CONV_BOND_ANALYSIS_CACHE: LazyLock<DashMap<String, DailySeries>> =
-    LazyLock::new(DashMap::new);
+static CONV_BOND_DAILY_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
     LazyLock::new(DashMap::new);
-static CONV_BOND_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondDetail>>> =
     LazyLock::new(DashMap::new);
 
@@ -206,21 +226,19 @@ static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondDetail>>> =
 mod tests {
     use std::str::FromStr;
 
-    use chrono::Local;
-
     use super::*;
     use crate::utils::datetime::date_from_str;
 
     #[tokio::test]
-    async fn test_fetch_conv_bond_analysis() {
+    async fn test_fetch_conv_bond_daily() {
         let ticker = Ticker::from_str("110098").unwrap();
-        let dataset = fetch_conv_bond_analysis(&ticker).await.unwrap();
+        let series = fetch_conv_bond_daily(&ticker).await.unwrap();
 
-        let (_, data) = dataset
+        let (_, data) = series
             .get_latest_value::<f64>(
                 &date_from_str("2025-08-08").unwrap(),
                 false,
-                &ConvBondAnalysisField::ConversionPremium.to_string(),
+                &ConvBondDailyField::ConversionPremium.to_string(),
             )
             .unwrap();
 
@@ -232,24 +250,8 @@ mod tests {
         let ticker = Ticker::from_str("110098").unwrap();
         let detail = fetch_conv_bond_detail(&ticker).await.unwrap();
 
-        assert_eq!(detail.code, "110098");
+        assert_eq!(detail.ticker.symbol, "110098");
         assert_eq!(detail.title, "南药转债");
-    }
-
-    #[tokio::test]
-    async fn test_fetch_conv_bond_kline() {
-        let ticker = Ticker::from_str("110098").unwrap();
-        let dataset = fetch_conv_bond_kline(&ticker).await.unwrap();
-
-        let (_, data) = dataset
-            .get_latest_value::<f64>(
-                &Local::now().date_naive(),
-                false,
-                &KlineField::Close.to_string(),
-            )
-            .unwrap();
-
-        assert!(data > 0.0);
     }
 
     #[tokio::test]

@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use num_traits::NumCast;
 use polars::prelude::*;
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::error::{VfError, VfResult};
 
@@ -17,85 +17,53 @@ pub struct DailySeries {
 }
 
 impl DailySeries {
-    pub fn from_json(
+    pub fn from_qmt_json(
         json: &Value,
         date_field_name: &str,
         value_field_names: &HashMap<String, String>,
     ) -> VfResult<Self> {
-        if let Some(array) = json.as_array() {
-            let column_names: Vec<String> = [
-                vec![date_field_name.to_string()],
-                value_field_names.values().map(|v| v.to_string()).collect(),
-            ]
-            .concat();
+        if let Some(json_items) = json.as_array() {
+            Self::from_json_items(json_items, date_field_name, value_field_names)
+        } else {
+            Err(VfError::Invalid {
+                code: "INVALID_JSON",
+                message: "Invalid QMT JSON".to_string(),
+            })
+        }
+    }
 
-            let mut series: Vec<Column> = Vec::with_capacity(column_names.len());
-            for column_name in column_names {
-                let is_date_column = column_name == date_field_name;
-                let mut values: Vec<AnyValue> = vec![];
+    pub fn from_tushare_json(
+        json: &Value,
+        date_field_name: &str,
+        value_field_names: &HashMap<String, String>,
+    ) -> VfResult<Self> {
+        if let (Some(fields), Some(items)) = (
+            json["data"]["fields"].as_array(),
+            json["data"]["items"].as_array(),
+        ) {
+            let mut json_items: Vec<Value> = Vec::with_capacity(items.len());
 
-                for item in array {
-                    if let Some(obj) = item.as_object() {
-                        if let Some(val) = obj.get(&column_name) {
-                            match val {
-                                Value::Null => {
-                                    values.push(AnyValue::Null);
-                                    continue;
-                                }
-                                Value::Bool(b) => {
-                                    values.push(AnyValue::Boolean(*b));
-                                    continue;
-                                }
-                                Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() {
-                                        values.push(AnyValue::Int64(i));
-                                        continue;
-                                    } else if let Some(f) = n.as_f64() {
-                                        values.push(AnyValue::Float64(f));
-                                        continue;
-                                    } else if let Some(u) = n.as_u64() {
-                                        values.push(AnyValue::UInt64(u));
-                                        continue;
-                                    }
-                                }
-                                Value::String(s) => {
-                                    if is_date_column {
-                                        let days_after_epoch: i32 = if let Ok((date, _)) =
-                                            NaiveDate::parse_and_remainder(s, "%Y-%m-%d")
-                                        {
-                                            date.to_epoch_days()
-                                        } else {
-                                            0
-                                        };
-                                        values.push(AnyValue::Date(days_after_epoch));
-                                    } else {
-                                        values.push(AnyValue::String(s));
-                                    }
+            for item in items {
+                if let Some(values) = item.as_array() {
+                    let mut json_item: Map<String, Value> = Map::new();
 
-                                    continue;
-                                }
-                                _ => {}
+                    for (i, field) in fields.iter().enumerate() {
+                        if let Some(field_name) = field.as_str() {
+                            if let Some(value) = values.get(i) {
+                                json_item.insert(field_name.to_string(), value.clone());
                             }
                         }
                     }
 
-                    values.push(AnyValue::Null);
+                    json_items.push(Value::Object(json_item));
                 }
-
-                series.push(Column::new(column_name.into(), values));
             }
 
-            let df = DataFrame::new(series)?;
-
-            Ok(Self {
-                df,
-                date_field_name: date_field_name.to_string(),
-                value_field_names: value_field_names.clone(),
-            })
+            Self::from_json_items(&json_items, date_field_name, value_field_names)
         } else {
             Err(VfError::Invalid {
-                code: "JSON_IS_NOT_ARRAY",
-                message: "Json is not a valid array".to_string(),
+                code: "INVALID_JSON",
+                message: "Invalid Tushare JSON".to_string(),
             })
         }
     }
@@ -336,5 +304,81 @@ impl DailySeries {
         }
 
         vec![]
+    }
+
+    fn from_json_items(
+        json_items: &[Value],
+        date_field_name: &str,
+        value_field_names: &HashMap<String, String>,
+    ) -> VfResult<Self> {
+        let column_names: Vec<String> = [
+            vec![date_field_name.to_string()],
+            value_field_names.values().map(|v| v.to_string()).collect(),
+        ]
+        .concat();
+
+        let mut series: Vec<Column> = Vec::with_capacity(column_names.len());
+        for column_name in column_names {
+            let is_date_column = column_name == date_field_name;
+            let mut values: Vec<AnyValue> = vec![];
+
+            for item in json_items {
+                if let Some(obj) = item.as_object() {
+                    if let Some(val) = obj.get(&column_name) {
+                        match val {
+                            Value::Null => {
+                                values.push(AnyValue::Null);
+                                continue;
+                            }
+                            Value::Bool(b) => {
+                                values.push(AnyValue::Boolean(*b));
+                                continue;
+                            }
+                            Value::Number(n) => {
+                                if let Some(i) = n.as_i64() {
+                                    values.push(AnyValue::Int64(i));
+                                    continue;
+                                } else if let Some(f) = n.as_f64() {
+                                    values.push(AnyValue::Float64(f));
+                                    continue;
+                                } else if let Some(u) = n.as_u64() {
+                                    values.push(AnyValue::UInt64(u));
+                                    continue;
+                                }
+                            }
+                            Value::String(s) => {
+                                if is_date_column {
+                                    let days_after_epoch: i32 = if let Ok((date, _)) =
+                                        NaiveDate::parse_and_remainder(s, "%Y-%m-%d")
+                                    {
+                                        date.to_epoch_days()
+                                    } else {
+                                        0
+                                    };
+                                    values.push(AnyValue::Date(days_after_epoch));
+                                } else {
+                                    values.push(AnyValue::String(s));
+                                }
+
+                                continue;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                values.push(AnyValue::Null);
+            }
+
+            series.push(Column::new(column_name.into(), values));
+        }
+
+        let df = DataFrame::new(series)?;
+
+        Ok(Self {
+            df,
+            date_field_name: date_field_name.to_string(),
+            value_field_names: value_field_names.clone(),
+        })
     }
 }

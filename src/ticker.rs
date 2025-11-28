@@ -1,13 +1,8 @@
 use std::{fmt::Display, str::FromStr};
 
-use chrono::NaiveDate;
 use serde::Serialize;
 
-use crate::{
-    error::{VfError, VfResult},
-    financial::index::{fetch_cnindex_tickers, fetch_csindex_tickers},
-    utils::text::is_ascii_digits,
-};
+use crate::{error::VfError, utils::text::is_ascii_digits};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
 pub struct Ticker {
@@ -101,6 +96,10 @@ impl Ticker {
         }
     }
 
+    pub fn from_tushare_str(s: &str) -> Option<Self> {
+        Self::from_qmt_str(s)
+    }
+
     pub fn to_qmt_code(&self) -> String {
         let suffix = match self.exchange.as_str() {
             "XSHG" => "SH",
@@ -111,6 +110,10 @@ impl Ticker {
         };
 
         format!("{}.{suffix}", self.symbol)
+    }
+
+    pub fn to_tushare_code(&self) -> String {
+        self.to_qmt_code()
     }
 
     pub fn to_sina_code(&self) -> String {
@@ -150,19 +153,21 @@ impl Display for TickersIndex {
 }
 
 impl TickersIndex {
-    pub async fn all_tickers(&self, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-        let tickers = match self.provider.as_str() {
-            "CNI" | "CNINDEX" => fetch_cnindex_tickers(&self.symbol, date).await?,
-            "CSI" | "CSINDEX" => fetch_csindex_tickers(&self.symbol, date).await?,
-            _ => {
-                return Err(VfError::Invalid {
-                    code: "UNSUPPORTED_TICKERS_INDEX",
-                    message: format!("Unsupported tickers index '{self}'"),
-                });
+    pub fn to_tushare_code(&self) -> String {
+        match self.provider.as_str() {
+            "CNI" | "CNINDEX" | "CSI" | "CSINDEX" => {
+                if self.symbol.len() == 6 {
+                    if self.symbol.starts_with("000") {
+                        return format!("{}.SH", self.symbol);
+                    } else if self.symbol.starts_with("399") {
+                        return format!("{}.SZ", self.symbol);
+                    }
+                }
             }
-        };
+            _ => {}
+        }
 
-        Ok(tickers)
+        self.to_string()
     }
 }
 

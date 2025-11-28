@@ -10,6 +10,7 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField, get_ticker_title,
+        index::fetch_index_tickers,
         stock::{
             StockDividendAdjust, StockReportCapitalField, fetch_stock_kline,
             fetch_stock_report_capital,
@@ -352,7 +353,7 @@ impl Executor {
                 continue;
             }
 
-            let tickers = index.all_tickers(&watch_date).await?;
+            let tickers = fetch_index_tickers(index, &watch_date).await?;
 
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;

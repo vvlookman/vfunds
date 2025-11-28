@@ -4,7 +4,7 @@ use chrono::NaiveDate;
 use serde_json::json;
 
 use crate::{
-    ds::aktools,
+    ds::tushare,
     error::VfResult,
     financial::{
         KlineField,
@@ -184,13 +184,18 @@ pub async fn calc_stock_ps_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Op
 pub async fn fetch_trade_dates() -> VfResult<HashSet<NaiveDate>> {
     let mut dates: HashSet<NaiveDate> = HashSet::new();
 
-    if let Ok(json) = aktools::call_api("/tool_trade_date_hist_sina", &json!({}), 0, None).await {
-        if let Some(array) = json.as_array() {
-            for item in array {
-                if let Some(obj) = item.as_object() {
-                    if let Some(trade_date_str) = obj["trade_date"].as_str() {
-                        if let Ok(date) = datetime::date_from_str(trade_date_str) {
-                            dates.insert(date);
+    if let Ok(json) = tushare::call_api("trade_cal", &json!({"is_open": "1"}), None, 0).await {
+        if let (Some(fields), Some(items)) = (
+            json["data"]["fields"].as_array(),
+            json["data"]["items"].as_array(),
+        ) {
+            if let Some(idx_cal_date) = fields.iter().position(|f| f == "cal_date") {
+                for item in items {
+                    if let Some(values) = item.as_array() {
+                        if let Some(trade_date_str) = values[idx_cal_date].as_str() {
+                            if let Ok(date) = datetime::date_from_str(trade_date_str) {
+                                dates.insert(date);
+                            }
                         }
                     }
                 }
@@ -204,4 +209,16 @@ pub async fn fetch_trade_dates() -> VfResult<HashSet<NaiveDate>> {
     }
 
     Ok(dates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_fetch_trade_dates() {
+        let trade_dates = fetch_trade_dates().await.unwrap();
+
+        assert!(trade_dates.len() > 0);
+    }
 }

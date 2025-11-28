@@ -19,8 +19,9 @@ pub static CHANNEL_BUFFER_DEFAULT: usize = 64;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub aktools_api: String,
     pub qmt_api: String,
+    pub tushare_api: String,
+    pub tushare_token: String,
 }
 
 /// Options that each item is String in <key>:<value> format
@@ -102,8 +103,9 @@ static WORKSPACE: LazyLock<RwLock<PathBuf>> =
 impl Default for Config {
     fn default() -> Self {
         Self {
-            aktools_api: "http://127.0.0.1:8080".to_string(),
             qmt_api: "http://127.0.0.1:9000".to_string(),
+            tushare_api: "http://api.tushare.pro".to_string(),
+            tushare_token: "".to_string(),
         }
     }
 }
@@ -146,4 +148,14 @@ impl VecOptions<'_> {
 
         tuples
     }
+}
+
+#[cfg(test)]
+use ctor::ctor;
+
+#[cfg(test)]
+#[ctor]
+fn global_test_setup() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(init(None));
 }

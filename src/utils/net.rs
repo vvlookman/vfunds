@@ -10,8 +10,8 @@ use crate::error::{VfError, VfResult};
 pub async fn http_get(
     url: &str,
     path: Option<&str>,
-    query: &HashMap<String, String>,
-    headers: &HashMap<String, String>,
+    query: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
     timeout_secs: u64,
     max_retries: u64,
 ) -> VfResult<Vec<u8>> {
@@ -35,10 +35,15 @@ pub async fn http_get(
     let mut request_builder = client
         .request(Method::GET, request_url)
         .timeout(Duration::from_secs(timeout_secs));
-    request_builder = request_builder.query(query);
 
-    for (k, v) in headers {
-        request_builder = request_builder.header(k, v);
+    if let Some(query) = query.as_ref() {
+        request_builder = request_builder.query(query);
+    }
+
+    if let Some(headers) = headers {
+        for (k, v) in headers {
+            request_builder = request_builder.header(k, v);
+        }
     }
 
     let response = request_builder.send().await?;
@@ -52,11 +57,60 @@ pub async fn http_get(
                 "{}?{}",
                 request_url,
                 query
+                    .unwrap_or_default()
                     .iter()
                     .map(|(k, v)| format!("{k}={v}"))
                     .collect::<Vec<_>>()
                     .join("&")
             ),
+        })
+    }
+}
+
+pub async fn http_post(
+    url: &str,
+    path: Option<&str>,
+    body: &serde_json::Value,
+    headers: Option<HashMap<String, String>>,
+    timeout_secs: u64,
+    max_retries: u64,
+) -> VfResult<Vec<u8>> {
+    let request_url = if let Some(path) = path {
+        &join_url(url, path)?
+    } else {
+        url
+    };
+
+    let retry_policy = ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_secs(1), Duration::from_secs(timeout_secs))
+        .jitter(Jitter::Bounded)
+        .base(2)
+        .build_with_total_retry_duration_and_max_retries(Duration::from_secs(
+            max_retries * timeout_secs,
+        ));
+    let client = ClientBuilder::new(reqwest::Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build();
+
+    let mut request_builder = client
+        .request(Method::POST, request_url)
+        .timeout(Duration::from_secs(timeout_secs));
+    request_builder = request_builder.body(body.to_string());
+
+    if let Some(headers) = headers {
+        for (k, v) in headers {
+            request_builder = request_builder.header(k, v);
+        }
+    }
+
+    let response = request_builder.send().await?;
+
+    if response.status().is_success() {
+        Ok(response.bytes().await?.to_vec())
+    } else {
+        Err(VfError::HttpStatusError {
+            status: response.status().to_string(),
+            request: format!("{request_url}?{body}"),
         })
     }
 }

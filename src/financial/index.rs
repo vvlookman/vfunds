@@ -1,96 +1,72 @@
-use std::{collections::HashMap, str::FromStr, sync::LazyLock};
+use std::{collections::HashMap, sync::LazyLock};
 
-use chrono::NaiveDate;
+use chrono::{Duration, NaiveDate};
 use dashmap::DashMap;
 use serde_json::json;
 
 use crate::{
-    ds::aktools,
+    ds::tushare,
     error::VfResult,
-    ticker::Ticker,
+    ticker::{Ticker, TickersIndex},
     utils::datetime::{date_from_str, date_to_str},
 };
 
-pub async fn fetch_cnindex_tickers(symbol: &str, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-    let cache_key = format!("{symbol}/{}", date_to_str(date));
-    if let Some(result) = CNINDEX_TICKERS_CACHE.get(&cache_key) {
+pub async fn fetch_index_tickers(index: &TickersIndex, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
+    let prev_date = *date - Duration::days(1);
+
+    let cache_key = format!("{index}/{}", date_to_str(&prev_date));
+    if let Some(result) = INDEX_TICKERS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
-    let json = aktools::call_api(
-        "/index_detail_hist_cni",
+    let json = tushare::call_api(
+        "index_weight",
         &json!({
-            "symbol": symbol, // 通过 /index_all_cni 查询
+            "index_code": index.to_tushare_code(),
+            "end_date": prev_date.format("%Y%m%d").to_string(),
         }),
-        0,
         None,
+        30,
     )
     .await?;
 
     let mut hist_tickers: HashMap<NaiveDate, Vec<Ticker>> = HashMap::new();
 
-    if let Some(array) = json.as_array() {
-        for item in array {
-            if let Some(obj) = item.as_object() {
-                if let (Some(date_str), Some(ticker_str)) =
-                    (obj["日期"].as_str(), obj["样本代码"].as_str())
-                {
-                    if let (Ok(date), Ok(ticker)) =
-                        (date_from_str(date_str), Ticker::from_str(ticker_str))
-                    {
-                        hist_tickers.entry(date).or_default().push(ticker);
+    if let (Some(fields), Some(items)) = (
+        json["data"]["fields"].as_array(),
+        json["data"]["items"].as_array(),
+    ) {
+        if let (Some(idx_con_code), Some(idx_trade_date)) = (
+            fields.iter().position(|f| f == "con_code"),
+            fields.iter().position(|f| f == "trade_date"),
+        ) {
+            for item in items {
+                if let Some(values) = item.as_array() {
+                    if let (Some(con_code_str), Some(trade_date_str)) = (
+                        values[idx_con_code].as_str(),
+                        values[idx_trade_date].as_str(),
+                    ) {
+                        if let (Ok(date), Some(ticker)) = (
+                            date_from_str(trade_date_str),
+                            Ticker::from_tushare_str(con_code_str),
+                        ) {
+                            hist_tickers.entry(date).or_default().push(ticker);
+                        }
                     }
                 }
             }
         }
     }
 
-    let tickers = if let Some(latest_date) = hist_tickers.keys().filter(|d| **d < *date).max() {
+    let tickers = if let Some(latest_date) = hist_tickers.keys().max() {
         hist_tickers.get(latest_date).unwrap_or(&vec![]).clone()
     } else {
         vec![]
     };
 
-    CNINDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
+    INDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
 
     Ok(tickers)
 }
 
-pub async fn fetch_csindex_tickers(symbol: &str, _date: &NaiveDate) -> VfResult<Vec<Ticker>> {
-    // !!!!!!! NOTICE, unsupported for historical constituents yet
-    let cache_key = symbol.to_string();
-    if let Some(result) = CSINDEX_TICKERS_CACHE.get(&cache_key) {
-        return Ok(result.clone());
-    }
-
-    let json = aktools::call_api(
-        "/index_stock_cons_weight_csindex",
-        &json!({
-            "symbol": symbol, // 通过 /index_stock_info 查询
-        }),
-        30,
-        None,
-    )
-    .await?;
-
-    let mut tickers: Vec<Ticker> = vec![];
-
-    if let Some(array) = json.as_array() {
-        for item in array {
-            if let Some(obj) = item.as_object() {
-                if let Some(ticker_str) = obj["成分券代码"].as_str() {
-                    if let Ok(ticker) = Ticker::from_str(ticker_str) {
-                        tickers.push(ticker);
-                    }
-                }
-            }
-        }
-    }
-
-    CSINDEX_TICKERS_CACHE.insert(cache_key, tickers.clone());
-
-    Ok(tickers)
-}
-
-static CNINDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
-static CSINDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
+static INDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);

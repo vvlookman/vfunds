@@ -5,10 +5,7 @@ use chrono::NaiveDate;
 use crate::{
     error::VfResult,
     financial::{
-        bond::{
-            ConvBondAnalysisField, fetch_conv_bond_analysis, fetch_conv_bond_detail,
-            fetch_conv_bond_kline,
-        },
+        bond::{ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail},
         stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
     },
     ticker::{Ticker, TickerType},
@@ -51,35 +48,33 @@ pub async fn get_ticker_price(
     include_today: bool,
     price_bias: i32, // >0 is high price, <0 is low price, =0 is close price
 ) -> VfResult<Option<f64>> {
-    let kline_field = if price_bias > 0 {
-        KlineField::High
-    } else if price_bias < 0 {
-        KlineField::Low
-    } else {
-        KlineField::Close
-    };
-
     match ticker.r#type {
         TickerType::ConvBond => {
-            if let Ok(kline) = fetch_conv_bond_kline(ticker).await {
-                Ok(kline
-                    .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
-                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
+            let price_field = if price_bias > 0 {
+                ConvBondDailyField::High
+            } else if price_bias < 0 {
+                ConvBondDailyField::Low
             } else {
-                let analysis = fetch_conv_bond_analysis(ticker).await?;
-                Ok(analysis
-                    .get_latest_value::<f64>(
-                        date,
-                        include_today,
-                        &ConvBondAnalysisField::Price.to_string(),
-                    )
-                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
-            }
+                ConvBondDailyField::Close
+            };
+
+            let daily = fetch_conv_bond_daily(ticker).await?;
+            Ok(daily
+                .get_latest_value::<f64>(date, include_today, &price_field.to_string())
+                .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
         }
         TickerType::Stock => {
+            let price_field = if price_bias > 0 {
+                KlineField::High
+            } else if price_bias < 0 {
+                KlineField::Low
+            } else {
+                KlineField::Close
+            };
+
             let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
             Ok(kline
-                .get_latest_value::<f64>(date, include_today, &kline_field.to_string())
+                .get_latest_value::<f64>(date, include_today, &price_field.to_string())
                 .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
         }
     }

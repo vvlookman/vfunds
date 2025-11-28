@@ -18,9 +18,6 @@ pub async fn call_api(
     params: &serde_json::Value,
     expire_days: i64,
 ) -> VfResult<serde_json::Value> {
-    let qmt_api = { &CONFIG.read().await.qmt_api };
-    let api_url = qmt_api.to_string();
-
     let cache_key = format!("qmt:{path}?{params}");
 
     let bytes: VfResult<Vec<u8>> =
@@ -54,12 +51,11 @@ pub async fn call_api(
                 sleep(tokio::time::Duration::from_secs(request_delay_secs as u64)).await;
             }
 
-            let headers: HashMap<String, String> = HashMap::new();
+            let qmt_api = { &CONFIG.read().await.qmt_api };
 
-            let bytes = http_get(&api_url, Some(path), &query, &headers, 30, 3).await?;
+            let bytes = http_get(qmt_api, Some(path), Some(query), None, 30, 3).await?;
 
-            {
-                let data = compress::encode(&bytes)?;
+            if let Ok(data) = compress::encode(&bytes) {
                 let expire = next_data_expire_in_china(expire_days);
                 let _ = cache::upsert(&cache_key, &data, &expire).await;
             }
@@ -76,7 +72,7 @@ pub async fn check_api() -> VfResult<()> {
     let qmt_api = { &CONFIG.read().await.qmt_api };
     let api_url = join_url(qmt_api, "/stock_kline/000001.SH")?;
 
-    let bytes = http_get(&api_url, None, &HashMap::new(), &HashMap::new(), 30, 3).await?;
+    let bytes = http_get(&api_url, None, None, None, 30, 3).await?;
     let json: serde_json::Value = serde_json::from_slice(&bytes)?;
 
     if let Some(array) = json.as_array() {

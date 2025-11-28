@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     CONFIG, CONFIG_PATH, Config, VERSION, WORKSPACE, backtest,
-    ds::{aktools, qmt},
+    ds::*,
     error::*,
     spec::{FofDefinition, FundDefinition},
     utils,
@@ -82,11 +82,11 @@ pub async fn backtest(
 }
 
 pub async fn check() -> VfResult<Vec<(&'static str, Option<VfError>)>> {
-    let (aktools_result, qmt_result) = tokio::join!(aktools::check_api(), qmt::check_api());
+    let (qmt_result, tushare_result) = tokio::join!(qmt::check_api(), tushare::check_api());
 
     Ok(vec![
-        ("AKTools", aktools_result.err()),
         ("QMT", qmt_result.err()),
+        ("Tushare", tushare_result.err()),
     ])
 }
 
@@ -228,11 +228,14 @@ pub async fn set_config(key: &str, value: &str) -> VfResult<Config> {
     let mut config = { CONFIG.read().await.clone() };
 
     match key.to_lowercase().as_str() {
-        "aktools_api" => {
-            config.aktools_api = value.to_string();
-        }
         "qmt_api" => {
             config.qmt_api = value.to_string();
+        }
+        "tushare_api" => {
+            config.tushare_api = value.to_string();
+        }
+        "tushare_token" => {
+            config.tushare_token = value.to_string();
         }
         _ => {
             return Err(VfError::Invalid {

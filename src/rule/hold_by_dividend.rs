@@ -2,26 +2,24 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate};
-use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
         stock::{
-            StockDetail, StockDividendAdjust, StockDividendField, StockReportPershareField,
-            fetch_stock_detail, fetch_stock_dividends, fetch_stock_kline,
-            fetch_stock_report_pershare,
+            StockDetail, StockDividendAdjust, StockDividendField, fetch_stock_detail,
+            fetch_stock_dividends, fetch_stock_kline,
         },
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
-        rule_notify_calc_progress, rule_notify_indicators,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
-    utils::{datetime::date_to_str, math::signed_powf},
+    utils::{financial::calc_annualized_volatility, math::signed_powf, stats::quantile},
 };
 
 pub struct Executor {
@@ -62,11 +60,16 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_years = self
+        let lookback_div_years = self
             .options
-            .get("lookback_years")
+            .get("lookback_div_years")
             .and_then(|v| v.as_u64())
             .unwrap_or(3);
+        let lookback_trade_days = self
+            .options
+            .get("lookback_trade_days")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(126);
         let min_div_count_per_year = self
             .options
             .get("min_div_count_per_year")
@@ -77,16 +80,16 @@ impl RuleExecutor for Executor {
             .get("price_avg_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
-        let roe_lower = self
-            .options
-            .get("roe_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let volatility_quantile_upper = self
+            .options
+            .get("volatility_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let weight_exp = self
             .options
             .get("weight_exp")
@@ -97,8 +100,8 @@ impl RuleExecutor for Executor {
                 panic!("limit must > 0");
             }
 
-            if lookback_years == 0 {
-                panic!("lookback_years must > 0");
+            if lookback_div_years == 0 {
+                panic!("lookback_div_years must > 0");
             }
 
             if price_avg_count == 0 {
@@ -108,19 +111,16 @@ impl RuleExecutor for Executor {
             if min_div_count_per_year <= 0.0 {
                 panic!("min_div_count_per_year must > 0");
             }
-
-            if roe_lower < 0.0 {
-                panic!("roe_lower must >= 0");
-            }
         }
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let date_str = date_to_str(date);
-            let date_from =
-                date.with_year(date.year() - lookback_years as i32).unwrap() + Duration::days(1);
+            let date_from = date
+                .with_year(date.year() - lookback_div_years as i32)
+                .unwrap()
+                + Duration::days(1);
 
-            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -132,147 +132,175 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
                             false,
                             &KlineField::Close.to_string(),
-                            price_avg_count as u32,
+                            lookback_trade_days as u32,
                         )
                         .iter()
                         .map(|&(_, v)| v)
                         .collect();
+                    if prices.len()
+                        < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
+                    {
+                        rule_send_warning(
+                            rule_name,
+                            &format!("[No Enough Data] {ticker}"),
+                            date,
+                            event_sender,
+                        )
+                        .await;
+                        continue;
+                    }
 
-                    let price = prices.iter().sum::<f64>() / prices.len() as f64;
-                    if price > 0.0 {
-                        let filter_roe = if roe_lower > 0.0 {
-                            let report_pershare = fetch_stock_report_pershare(ticker).await?;
-                            let roe = report_pershare
-                                .get_latest_value::<f64>(
-                                    date,
-                                    false,
-                                    &StockReportPershareField::Roe.to_string(),
-                                )
-                                .map(|(_, v)| v)
-                                .unwrap_or(0.0)
-                                / 100.0;
+                    let kline_no_adjust =
+                        fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
 
-                            roe > roe_lower
-                        } else {
-                            true
-                        };
+                    let price_no_adjust = {
+                        let prices: Vec<f64> = kline_no_adjust
+                            .get_latest_values::<f64>(
+                                date,
+                                false,
+                                &KlineField::Close.to_string(),
+                                price_avg_count as u32,
+                            )
+                            .iter()
+                            .map(|&(_, v)| v)
+                            .collect();
+                        prices.iter().sum::<f64>() / prices.len() as f64
+                    };
+                    if price_no_adjust > 0.0 {
+                        let dividends = fetch_stock_dividends(ticker).await?;
 
-                        if filter_roe {
-                            let dividends = fetch_stock_dividends(ticker).await?;
+                        let interest_values = dividends.get_values::<f64>(
+                            &date_from,
+                            date,
+                            &StockDividendField::Interest.to_string(),
+                        );
 
-                            let interest_values = dividends.get_values::<f64>(
+                        let mut total_income = interest_values.iter().map(|(_, v)| v).sum::<f64>();
+                        let mut total_count =
+                            interest_values.iter().filter(|(_, v)| *v > 0.0).count();
+
+                        if div_bonus_gift_weight != 0.0 {
+                            let mut free_shares_map: HashMap<NaiveDate, f64> = HashMap::new();
+
+                            for (div_date, stock_bonus) in dividends.get_values::<f64>(
                                 &date_from,
                                 date,
-                                &StockDividendField::Interest.to_string(),
-                            );
+                                &StockDividendField::StockBonus.to_string(),
+                            ) {
+                                free_shares_map
+                                    .entry(div_date)
+                                    .and_modify(|x| *x += stock_bonus)
+                                    .or_insert(stock_bonus);
+                            }
 
-                            let mut total_income =
-                                interest_values.iter().map(|(_, v)| v).sum::<f64>();
-                            let mut total_count =
-                                interest_values.iter().filter(|(_, v)| *v > 0.0).count();
+                            for (div_date, stock_gift) in dividends.get_values::<f64>(
+                                &date_from,
+                                date,
+                                &StockDividendField::StockGift.to_string(),
+                            ) {
+                                free_shares_map
+                                    .entry(div_date)
+                                    .and_modify(|x| *x += stock_gift)
+                                    .or_insert(stock_gift);
+                            }
 
-                            if div_bonus_gift_weight != 0.0 {
-                                let mut free_shares_map: HashMap<NaiveDate, f64> = HashMap::new();
-
-                                for (div_date, stock_bonus) in dividends.get_values::<f64>(
-                                    &date_from,
-                                    date,
-                                    &StockDividendField::StockBonus.to_string(),
-                                ) {
-                                    free_shares_map
-                                        .entry(div_date)
-                                        .and_modify(|x| *x += stock_bonus)
-                                        .or_insert(stock_bonus);
-                                }
-
-                                for (div_date, stock_gift) in dividends.get_values::<f64>(
-                                    &date_from,
-                                    date,
-                                    &StockDividendField::StockGift.to_string(),
-                                ) {
-                                    free_shares_map
-                                        .entry(div_date)
-                                        .and_modify(|x| *x += stock_gift)
-                                        .or_insert(stock_gift);
-                                }
-
-                                for (div_date, shares) in free_shares_map {
-                                    if shares > 0.0 {
-                                        if let Some((_, price)) = kline.get_latest_value::<f64>(
+                            for (div_date, shares) in free_shares_map {
+                                if shares > 0.0 {
+                                    if let Some((_, price_no_adjust)) = kline_no_adjust
+                                        .get_latest_value::<f64>(
                                             &div_date,
                                             true,
                                             &KlineField::Close.to_string(),
-                                        ) {
-                                            total_income += shares * price * div_bonus_gift_weight;
-                                        }
+                                        )
+                                    {
+                                        total_income +=
+                                            shares * price_no_adjust * div_bonus_gift_weight;
+                                    }
 
-                                        if div_bonus_gift_weight > 0.0 {
-                                            total_count += 1;
-                                        }
+                                    if div_bonus_gift_weight > 0.0 {
+                                        total_count += 1;
                                     }
                                 }
                             }
+                        }
 
-                            if div_allot_weight != 0.0 {
-                                let allot_num_map = dividends
-                                    .get_values::<f64>(
-                                        &date_from,
-                                        date,
-                                        &StockDividendField::AllotNum.to_string(),
-                                    )
-                                    .iter()
-                                    .copied()
-                                    .collect::<HashMap<NaiveDate, f64>>();
+                        if div_allot_weight != 0.0 {
+                            let allot_num_map = dividends
+                                .get_values::<f64>(
+                                    &date_from,
+                                    date,
+                                    &StockDividendField::AllotNum.to_string(),
+                                )
+                                .iter()
+                                .copied()
+                                .collect::<HashMap<NaiveDate, f64>>();
 
-                                let allot_price_map = dividends
-                                    .get_values::<f64>(
-                                        &date_from,
-                                        date,
-                                        &StockDividendField::AllotPrice.to_string(),
-                                    )
-                                    .iter()
-                                    .copied()
-                                    .collect::<HashMap<NaiveDate, f64>>();
+                            let allot_price_map = dividends
+                                .get_values::<f64>(
+                                    &date_from,
+                                    date,
+                                    &StockDividendField::AllotPrice.to_string(),
+                                )
+                                .iter()
+                                .copied()
+                                .collect::<HashMap<NaiveDate, f64>>();
 
-                                for (div_date, allot_num) in allot_num_map {
-                                    if allot_num > 0.0 {
-                                        if let Some(allot_price) = allot_price_map.get(&div_date) {
-                                            if let Some((_, price)) = kline.get_latest_value::<f64>(
+                            for (div_date, allot_num) in allot_num_map {
+                                if allot_num > 0.0 {
+                                    if let Some(allot_price) = allot_price_map.get(&div_date) {
+                                        if let Some((_, price_no_adjust)) = kline_no_adjust
+                                            .get_latest_value::<f64>(
                                                 &div_date,
                                                 true,
                                                 &KlineField::Close.to_string(),
-                                            ) {
-                                                total_income += allot_num
-                                                    * (price - allot_price)
-                                                    * div_allot_weight;
-                                            }
+                                            )
+                                        {
+                                            total_income += allot_num
+                                                * (price_no_adjust - allot_price)
+                                                * div_allot_weight;
                                         }
+                                    }
 
-                                        if div_allot_weight > 0.0 {
-                                            total_count += 1;
-                                        }
+                                    if div_allot_weight > 0.0 {
+                                        total_count += 1;
                                     }
                                 }
                             }
+                        }
 
-                            if total_income > 0.0
-                                && (total_count as f64 / lookback_years as f64)
-                                    >= min_div_count_per_year
-                            {
-                                let indicator = total_income / lookback_years as f64 / price;
-                                debug!(
-                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(COUNT={total_count})"
-                                );
+                        if total_income > 0.0
+                            && (total_count as f64 / lookback_div_years as f64)
+                                >= min_div_count_per_year
+                        {
+                            let dv_ratio =
+                                total_income / lookback_div_years as f64 / price_no_adjust;
 
-                                if indicator.is_finite() {
-                                    indicators.push((ticker.clone(), indicator));
+                            if dv_ratio.is_finite() {
+                                let volatility = calc_annualized_volatility(&prices);
+
+                                if volatility.is_none() {
+                                    rule_send_warning(
+                                        rule_name,
+                                        &format!("{prices:?}"),
+                                        date,
+                                        event_sender,
+                                    )
+                                    .await;
                                 }
+
+                                tickers_factors.push((
+                                    ticker.clone(),
+                                    Factors {
+                                        dv_ratio,
+                                        volatility,
+                                    },
+                                ));
                             }
                         }
                     }
@@ -293,6 +321,24 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
+            let factors_volatility = tickers_factors
+                .iter()
+                .filter_map(|(_, f)| f.volatility)
+                .collect::<Vec<f64>>();
+            let volatility_upper = quantile(&factors_volatility, volatility_quantile_upper);
+
+            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            for (ticker, factors) in tickers_factors {
+                if let (Some(volatility), Some(volatility_upper)) =
+                    (factors.volatility, volatility_upper)
+                {
+                    if volatility > volatility_upper {
+                        continue;
+                    }
+                }
+
+                indicators.push((ticker, factors.dv_ratio));
+            }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             let top_indicators = indicators
@@ -365,4 +411,10 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    dv_ratio: f64,
+    volatility: Option<f64>,
 }

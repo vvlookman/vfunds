@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap, str::FromStr};
+use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
@@ -9,7 +9,7 @@ use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
-        bond::{ConvBondAnalysisField, fetch_conv_bond_analysis, fetch_conv_bonds},
+        bond::{ConvBondAnalysisField, fetch_conv_bond_daily, fetch_conv_bonds},
         get_ticker_price,
     },
     rule::{
@@ -108,10 +108,6 @@ impl RuleExecutor for Executor {
                 for conv_bond in &conv_bonds {
                     calc_count += 1;
 
-                    if conv_bond.title.ends_with("退") {
-                        continue;
-                    }
-
                     if let Some(issue_size) = conv_bond.issue_size {
                         if let Some(min_issue_size) = min_issue_size {
                             if issue_size < min_issue_size {
@@ -126,29 +122,29 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    if let Ok(ticker) = Ticker::from_str(&conv_bond.code) {
-                        // Some conv bond price data is missing
-                        if let Ok(Some(price)) = get_ticker_price(&ticker, date, false, 0).await {
-                            let analysis = fetch_conv_bond_analysis(&ticker).await?;
-                            if let Some((latest_date, conversion_premium)) = analysis
-                                .get_latest_value::<f64>(
-                                    date,
-                                    false,
-                                    &ConvBondAnalysisField::ConversionPremium.to_string(),
-                                )
-                            {
-                                if price > 0.0
-                                    && conversion_premium <= max_conversion_premium
-                                    && latest_date >= filter_analysis_date
-                                {
-                                    let indicator = 1.0 - conversion_premium;
-                                    debug!(
-                                        "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
-                                    );
+                    let ticker = &conv_bond.ticker;
 
-                                    if indicator.is_finite() {
-                                        indicators.push((ticker, indicator));
-                                    }
+                    // Some conv bond price data is missing
+                    if let Ok(Some(price)) = get_ticker_price(ticker, date, false, 0).await {
+                        let daily = fetch_conv_bond_daily(ticker).await?;
+                        if let Some((latest_date, conversion_premium)) = daily
+                            .get_latest_value::<f64>(
+                                date,
+                                false,
+                                &ConvBondAnalysisField::ConversionPremium.to_string(),
+                            )
+                        {
+                            if price > 0.0
+                                && conversion_premium <= max_conversion_premium
+                                && latest_date >= filter_analysis_date
+                            {
+                                let indicator = 1.0 - conversion_premium;
+                                debug!(
+                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
+                                );
+
+                                if indicator.is_finite() {
+                                    indicators.push((ticker.clone(), indicator));
                                 }
                             }
                         }
