@@ -708,8 +708,9 @@ pub async fn backtest_fund(
                             }
                         }
 
-                        rule.exec(&mut context, &date, &sender).await?;
-                        rules_period_start_date.insert(rule_index, date);
+                        if rule.exec(&mut context, &date, &sender).await.is_ok() {
+                            rules_period_start_date.insert(rule_index, date);
+                        }
                     }
 
                     if let Ok(total_value) = context.calc_total_value(&date).await {
@@ -1218,7 +1219,8 @@ impl FundBacktestContext<'_> {
             if targets_weight_sum > 0.0 {
                 let total_value = self.calc_total_value(date).await?;
 
-                for &(ref ticker, weight) in targets_weight {
+                let mut nodata_count = 0;
+                for (ticker, weight) in &targets_weight {
                     let ticker_value = total_value * (1.0 - self.options.buffer_ratio) * weight
                         / targets_weight_sum;
                     if let Some(current_reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
@@ -1230,9 +1232,9 @@ impl FundBacktestContext<'_> {
                             .entry(ticker.clone())
                             .and_modify(|v| *v += delta_cash);
                     } else {
-                        let mut price_bias = 0;
-                        if self.options.pessimistic {
-                            if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
+                        if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
+                            let mut price_bias = 0;
+                            if self.options.pessimistic {
                                 if let Some(current_ticker_value) = self
                                     .portfolio
                                     .positions
@@ -1246,11 +1248,26 @@ impl FundBacktestContext<'_> {
                                     }
                                 }
                             }
-                        }
 
-                        self.scale_position(ticker, ticker_value, price_bias, date, event_sender)
+                            self.scale_position(
+                                ticker,
+                                ticker_value,
+                                price_bias,
+                                date,
+                                event_sender,
+                            )
                             .await?;
+                        } else {
+                            nodata_count += 1;
+                        }
                     }
+                }
+
+                if nodata_count == targets_weight.len() {
+                    return Err(VfError::NoData {
+                        code: "NO_ANY_TICKET_DATA",
+                        message: "All tickers have no data".to_string(),
+                    });
                 }
             }
         }
