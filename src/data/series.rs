@@ -6,7 +6,10 @@ use polars::prelude::*;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::error::{VfError, VfResult};
+use crate::{
+    error::{VfError, VfResult},
+    utils::datetime,
+};
 
 #[derive(Clone, Debug, Serialize)]
 pub struct DailySeries {
@@ -348,13 +351,12 @@ impl DailySeries {
                             }
                             Value::String(s) => {
                                 if is_date_column {
-                                    let days_after_epoch: i32 = if let Ok((date, _)) =
-                                        NaiveDate::parse_and_remainder(s, "%Y-%m-%d")
-                                    {
-                                        date.to_epoch_days()
-                                    } else {
-                                        0
-                                    };
+                                    let days_after_epoch: i32 =
+                                        if let Ok(date) = datetime::date_from_str(s) {
+                                            date.to_epoch_days()
+                                        } else {
+                                            0
+                                        };
                                     values.push(AnyValue::Date(days_after_epoch));
                                 } else {
                                     values.push(AnyValue::String(s));

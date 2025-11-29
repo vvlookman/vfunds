@@ -8,9 +8,8 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     PROGRESS_INTERVAL_SECS,
     error::VfResult,
-    financial::{
-        bond::{ConvBondAnalysisField, fetch_conv_bond_daily, fetch_conv_bonds},
-        get_ticker_price,
+    financial::bond::{
+        ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail, fetch_conv_bonds,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
@@ -87,14 +86,14 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let conv_bonds = fetch_conv_bonds(date, max_tenor_months as u32).await?;
-        if !conv_bonds.is_empty() {
+        let conv_bond_issues = fetch_conv_bonds(date, max_tenor_months as u32).await?;
+        if !conv_bond_issues.is_empty() {
             let date_str = date_to_str(date);
 
             let filter_analysis_date = *date - Days::new(7);
             let filter_expire_date = *date + Days::new(min_remaining_days.max(self.frequency.days));
 
-            let conv_bonds_issue_size = conv_bonds
+            let conv_bonds_issue_size = conv_bond_issues
                 .iter()
                 .filter_map(|b| b.issue_size)
                 .collect::<Vec<_>>();
@@ -105,8 +104,11 @@ impl RuleExecutor for Executor {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
 
-                for conv_bond in &conv_bonds {
+                for conv_bond_issue in &conv_bond_issues {
                     calc_count += 1;
+
+                    let ticker = &conv_bond_issue.ticker;
+                    let conv_bond = fetch_conv_bond_detail(ticker).await?;
 
                     if let Some(issue_size) = conv_bond.issue_size {
                         if let Some(min_issue_size) = min_issue_size {
@@ -122,30 +124,30 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    let ticker = &conv_bond.ticker;
-
-                    // Some conv bond price data is missing
-                    if let Ok(Some(price)) = get_ticker_price(ticker, date, false, 0).await {
-                        let daily = fetch_conv_bond_daily(ticker).await?;
-                        if let Some((latest_date, conversion_premium)) = daily
-                            .get_latest_value::<f64>(
-                                date,
-                                false,
-                                &ConvBondAnalysisField::ConversionPremium.to_string(),
-                            )
+                    let daily = fetch_conv_bond_daily(ticker).await?;
+                    if let (Some((_, price)), Some((latest_date, conversion_premium))) = (
+                        daily.get_latest_value::<f64>(
+                            date,
+                            false,
+                            &ConvBondDailyField::Close.to_string(),
+                        ),
+                        daily.get_latest_value::<f64>(
+                            date,
+                            false,
+                            &ConvBondDailyField::ConversionPremium.to_string(),
+                        ),
+                    ) {
+                        if price > 0.0
+                            && conversion_premium <= max_conversion_premium
+                            && latest_date >= filter_analysis_date
                         {
-                            if price > 0.0
-                                && conversion_premium <= max_conversion_premium
-                                && latest_date >= filter_analysis_date
-                            {
-                                let indicator = 1.0 - conversion_premium;
-                                debug!(
-                                    "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
-                                );
+                            let indicator = 100.0 - conversion_premium;
+                            debug!(
+                                "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
+                            );
 
-                                if indicator.is_finite() {
-                                    indicators.push((ticker.clone(), indicator));
-                                }
+                            if indicator.is_finite() {
+                                indicators.push((ticker.clone(), indicator));
                             }
                         }
                     }
@@ -153,7 +155,7 @@ impl RuleExecutor for Executor {
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
                         rule_notify_calc_progress(
                             rule_name,
-                            calc_count as f64 / conv_bonds.len() as f64 * 100.0,
+                            calc_count as f64 / conv_bond_issues.len() as f64 * 100.0,
                             date,
                             event_sender,
                         )

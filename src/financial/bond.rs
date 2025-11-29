@@ -26,7 +26,7 @@ pub enum ConvBondDailyField {
     ConversionPremium,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct ConvBondDetail {
     pub ticker: Ticker,
@@ -36,14 +36,12 @@ pub struct ConvBondDetail {
     pub expire_date: Option<NaiveDate>,
 }
 
-#[derive(strum::Display, strum::EnumString)]
-#[strum(ascii_case_insensitive)]
-pub enum ConvBondAnalysisField {
-    Price,
-    StraightValue,
-    ConversionValue,
-    StraightPremium,
-    ConversionPremium,
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub struct ConvBondIssue {
+    pub ticker: Ticker,
+    pub title: String,
+    pub issue_size: Option<f64>,
 }
 
 pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
@@ -156,7 +154,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
 pub async fn fetch_conv_bonds(
     date: &NaiveDate,
     lookback_months: u32,
-) -> VfResult<Vec<ConvBondDetail>> {
+) -> VfResult<Vec<ConvBondIssue>> {
     let cache_key = format!("{}/{lookback_months}", date_to_str(date));
     if let Some(result) = CONV_BONDS_CACHE.get(&cache_key) {
         return Ok(result.clone());
@@ -194,15 +192,13 @@ pub async fn fetch_conv_bonds(
                 if let Some(ticker) =
                     Ticker::from_tushare_str(json_item["ts_code"].as_str().unwrap_or_default())
                 {
-                    let cb = ConvBondDetail {
+                    let cb = ConvBondIssue {
                         ticker,
                         title: json_item["onl_name"]
                             .as_str()
                             .unwrap_or_default()
                             .to_string(),
                         issue_size: json_item["issue_size"].as_f64(),
-                        par_value: None,
-                        expire_date: None,
                     };
 
                     result.push(cb);
@@ -219,7 +215,7 @@ pub async fn fetch_conv_bonds(
 static CONV_BOND_DAILY_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
     LazyLock::new(DashMap::new);
-static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondDetail>>> =
+static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondIssue>>> =
     LazyLock::new(DashMap::new);
 
 #[cfg(test)]
