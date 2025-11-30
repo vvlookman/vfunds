@@ -50,7 +50,7 @@ pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
         return Ok(result.clone());
     }
 
-    let json = tushare::call_api(
+    let mut json = tushare::call_api(
         "cb_daily",
         &json!({
             "ts_code": ticker.to_tushare_code(),
@@ -59,6 +59,32 @@ pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
         0,
     )
     .await?;
+
+    let check_field_idxs = {
+        let mut idxs = vec![];
+        if let Some(fields) = json["data"]["fields"].as_array() {
+            for (i, name) in fields.iter().enumerate() {
+                if name == "open" || name == "close" || name == "high" || name == "low" {
+                    idxs.push(i);
+                }
+            }
+        }
+        idxs
+    };
+
+    if let Some(data) = json.get_mut("data") {
+        if let Some(items) = data.get_mut("items").and_then(Value::as_array_mut) {
+            for item in items.iter_mut() {
+                for field_idx in &check_field_idxs {
+                    if let Some(v) = item[field_idx].as_f64() {
+                        if v == 0.0 {
+                            item[field_idx] = Value::Null;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let mut fields: HashMap<String, String> = HashMap::new();
     fields.insert(ConvBondDailyField::Open.to_string(), "open".to_string());

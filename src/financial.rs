@@ -96,3 +96,25 @@ impl Portfolio {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::utils::datetime;
+
+    #[tokio::test]
+    async fn test_get_ticker_price() {
+        let ticker = Ticker::from_str("123029").unwrap();
+        assert_eq!(ticker.r#type, TickerType::ConvBond);
+
+        let date = datetime::date_from_str("2021-09-16").unwrap();
+        let price = get_ticker_price(&ticker, &date, true, -1)
+            .await
+            .unwrap()
+            .unwrap_or(0.0);
+
+        assert!(price > 0.0);
+    }
+}
