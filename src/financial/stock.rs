@@ -1,16 +1,16 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-use chrono::NaiveDate;
+use chrono::{Days, NaiveDate};
 use dashmap::DashMap;
 use serde_json::json;
 
 use crate::{
     data::series::*,
-    ds::qmt,
+    ds::{qmt, tushare},
     error::*,
     financial::{KlineField, sector::fetch_sector_tickers},
     ticker::Ticker,
-    utils::datetime::date_from_str,
+    utils::datetime::{date_from_str, date_to_str},
 };
 
 #[derive(Clone, Debug)]
@@ -76,6 +76,47 @@ pub enum StockReportPershareField {
     IncRevenueRate,
     NetProfit,
     Roe,
+}
+
+pub async fn fetch_st_stocks(date: &NaiveDate, lookback_days: u64) -> VfResult<Vec<Ticker>> {
+    let cache_key = format!("{}/{lookback_days}", date_to_str(date));
+    if let Some(result) = ST_STOCKS_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = tushare::call_api(
+        "stock_st",
+        &json!({
+            "start_date": (*date - Days::new(lookback_days)).format("%Y%m%d").to_string(),
+            "end_date": date.format("%Y%m%d").to_string(),
+        }),
+        None,
+        30,
+    )
+    .await?;
+
+    let mut result = vec![];
+
+    if let (Some(fields), Some(items)) = (
+        json["data"]["fields"].as_array(),
+        json["data"]["items"].as_array(),
+    ) {
+        if let Some(ts_code_idx) = fields.iter().position(|f| f == "ts_code") {
+            for item in items {
+                if let Some(values) = item.as_array() {
+                    if let Some(ticker) =
+                        Ticker::from_tushare_str(values[ts_code_idx].as_str().unwrap_or_default())
+                    {
+                        result.push(ticker);
+                    }
+                }
+            }
+        }
+    }
+
+    ST_STOCKS_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
 }
 
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
@@ -335,6 +376,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySerie
     Ok(result)
 }
 
+static ST_STOCKS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
 static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
 static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
@@ -352,6 +394,14 @@ mod tests {
     use chrono::Local;
 
     use super::*;
+
+    #[tokio::test]
+    async fn test_fetch_st_stocks() {
+        let date = date_from_str("2018-01-01").unwrap();
+        let st_stocks = fetch_st_stocks(&date, 7).await.unwrap();
+
+        assert!(!st_stocks.is_empty());
+    }
 
     #[tokio::test]
     async fn test_fetch_stock_detail() {

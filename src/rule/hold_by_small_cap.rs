@@ -9,7 +9,10 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField,
-        stock::{StockDetail, StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
+        stock::{
+            StockDetail, StockDividendAdjust, fetch_st_stocks, fetch_stock_detail,
+            fetch_stock_kline,
+        },
         tool::calc_stock_market_cap,
     },
     rule::{
@@ -58,6 +61,11 @@ impl RuleExecutor for Executor {
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+        let skip_st = self
+            .options
+            .get("skip_st")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let volatility_quantile_lower = self
             .options
             .get("volatility_quantile_lower")
@@ -83,7 +91,15 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let tickers_map = context.fund_definition.all_tickers_map(date).await?;
+        let mut tickers_map = context.fund_definition.all_tickers_map(date).await?;
+
+        if skip_st {
+            let st_tickers = fetch_st_stocks(date, 30).await.unwrap_or(vec![]);
+            for ticker in st_tickers {
+                tickers_map.remove(&ticker);
+            }
+        }
+
         if !tickers_map.is_empty() {
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {

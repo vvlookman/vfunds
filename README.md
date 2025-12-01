@@ -13,7 +13,7 @@ python proxy/qmt_http.py # Access QMT (China market data), MUST run on Windows s
 ```sh
 vfunds config show # Show configurations
 vfunds config set qmt_api http://192.168.0.222:9000 # Set where to access QMT
-vfunds config set tushare_token xxx # Get Tushare token first
+vfunds config set tushare_token xxx # Get Tushare token first, and keep 3000 points (= 300 RMB)
 
 vfunds list -w ~/vfunds/example # List all virtual funds
 vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2018-01-01 # Run backtest
