@@ -34,8 +34,8 @@ weight_exp = 0
 
 [rules.search]
 # frequency = ["1m", "2m", "3m", "4m", "6m", "9m", "1y"]
-factor_momentum_weight = [0, 1, 2, 3, 5]
-factor_sharpe_weight = [0, 1, 2, 3, 5]
+# factor_momentum_weight = [0, 1, 2, 3, 5]
+# factor_sharpe_weight = [0, 1, 2, 3, 5]
 # limit = [2, 3, 4, 5]
 # lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
 # weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]
