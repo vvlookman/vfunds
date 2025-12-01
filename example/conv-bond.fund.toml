@@ -8,16 +8,16 @@ frequency_take_profit_pct = 0
 
 [rules.options]
 issue_size_quantile_lower = 0.2
-limit = 2
+limit = 4
 max_conversion_premium = 0
 min_remaining_days = 60
-weight_exp = 0.5
+weight_exp = 0
 
 [rules.search]
-# frequency = ["4w", "6w", "8w", "10w", "12w"]
-# frequency_take_profit_pct = [0, 100, 200, 300, 400, 500]
-# issue_size_quantile_lower = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
+# frequency = ["2w", "4w", "6w", "8w", "10w", "12w"]
+# frequency_take_profit_pct = [0, 50, 100, 150, 200, 300]
+# issue_size_quantile_lower = [0, 0.1, 0.2, 0.3]
 # limit = [2, 3, 4, 5]
-max_conversion_premium = [-20, -10, 0, 10, 20, 40, 80]
+# max_conversion_premium = [-20, -10, 0, 10, 20, 40, 80]
 # min_remaining_days = [30, 40, 50, 60, 70, 80, 90]
 # weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]
