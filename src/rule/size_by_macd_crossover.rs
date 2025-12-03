@@ -112,11 +112,11 @@ impl RuleExecutor for Executor {
                 let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
-                    let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
+                    let ticker_title = get_ticker_title(&ticker).await;
 
                     rule_send_info(
                         rule_name,
-                        &format!("[Sell Signal] {ticker}({ticker_title})"),
+                        &format!("[Sell Signal] {ticker_title}"),
                         date,
                         event_sender,
                     )
@@ -164,11 +164,11 @@ impl RuleExecutor for Executor {
                 let macd_slope = slope(&macd_hists).unwrap_or(0.0);
 
                 if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
-                    let ticker_title = get_ticker_title(&ticker).await.unwrap_or_default();
+                    let ticker_title = get_ticker_title(&ticker).await;
 
                     rule_send_info(
                         rule_name,
-                        &format!("[Buy Signal] {ticker}({ticker_title})"),
+                        &format!("[Buy Signal] {ticker_title}"),
                         date,
                         event_sender,
                     )

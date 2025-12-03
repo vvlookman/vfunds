@@ -20,7 +20,11 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
-    utils::{financial::calc_annualized_volatility, math::signed_powf, stats::quantile},
+    utils::{
+        financial::{calc_annualized_return_rate, calc_annualized_volatility},
+        math::signed_powf,
+        stats::quantile,
+    },
 };
 
 pub struct Executor {
@@ -46,6 +50,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let arr_quantile_lower = self
+            .options
+            .get("arr_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let limit = self
             .options
             .get("limit")
@@ -66,11 +75,6 @@ impl RuleExecutor for Executor {
             .get("skip_st")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let volatility_quantile_lower = self
-            .options
-            .get("volatility_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let volatility_quantile_upper = self
             .options
             .get("volatility_quantile_upper")
@@ -137,21 +141,30 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if let (Some(market_cap), Some(volatility)) = (
-                        calc_stock_market_cap(ticker, date).await?,
-                        calc_annualized_volatility(&prices),
-                    ) {
-                        tickers_factors.push((
-                            ticker.clone(),
-                            Factors {
-                                market_cap,
-                                volatility,
-                            },
-                        ));
-                    } else {
+                    let market_cap = calc_stock_market_cap(ticker, date).await?;
+                    let arr = calc_annualized_return_rate(&prices);
+                    let volatility = calc_annualized_volatility(&prices);
+
+                    if let Some(fail_factor_name) = match (market_cap, arr, volatility) {
+                        (None, _, _) => Some("market_cap"),
+                        (_, None, _) => Some("arr"),
+                        (_, _, None) => Some("volatility"),
+                        (Some(market_cap), Some(arr), Some(volatility)) => {
+                            tickers_factors.push((
+                                ticker.clone(),
+                                Factors {
+                                    market_cap,
+                                    arr,
+                                    volatility,
+                                },
+                            ));
+
+                            None
+                        }
+                    } {
                         rule_send_warning(
                             rule_name,
-                            &format!("[Factors Calculation Failed] {ticker}"),
+                            &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
                             date,
                             event_sender,
                         )
@@ -174,17 +187,22 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
+            let factors_arr = tickers_factors
+                .iter()
+                .map(|(_, f)| f.arr)
+                .collect::<Vec<f64>>();
+            let arr_lower = quantile(&factors_arr, arr_quantile_lower);
+
             let factors_volatility = tickers_factors
                 .iter()
                 .map(|(_, f)| f.volatility)
                 .collect::<Vec<f64>>();
-            let volatility_lower = quantile(&factors_volatility, volatility_quantile_lower);
             let volatility_upper = quantile(&factors_volatility, volatility_quantile_upper);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
-                if let Some(volatility_lower) = volatility_lower {
-                    if factors.volatility < volatility_lower {
+                if let Some(arr_lower) = arr_lower {
+                    if factors.arr < arr_lower {
                         continue;
                     }
                 }
@@ -276,5 +294,6 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     market_cap: f64,
+    arr: f64,
     volatility: f64,
 }

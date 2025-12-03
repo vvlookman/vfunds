@@ -122,15 +122,21 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if let (Some(momentum), Some(sharpe)) = (
-                        calc_regression_momentum(&prices),
-                        calc_sharpe_ratio(&prices, 0.0),
-                    ) {
-                        tickers_factors.push((ticker.clone(), Factors { momentum, sharpe }));
-                    } else {
+                    let momentum = calc_regression_momentum(&prices);
+                    let sharpe = calc_sharpe_ratio(&prices, 0.0);
+
+                    if let Some(fail_factor_name) = match (momentum, sharpe) {
+                        (None, _) => Some("momentum"),
+                        (_, None) => Some("sharpe"),
+                        (Some(momentum), Some(sharpe)) => {
+                            tickers_factors.push((ticker.clone(), Factors { momentum, sharpe }));
+
+                            None
+                        }
+                    } {
                         rule_send_warning(
                             rule_name,
-                            &format!("[Factors Calculation Failed] {ticker}"),
+                            &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
                             date,
                             event_sender,
                         )

@@ -19,7 +19,11 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
-    utils::{financial::calc_annualized_volatility, math::signed_powf, stats::quantile},
+    utils::{
+        financial::{calc_annualized_return_rate, calc_annualized_volatility},
+        math::signed_powf,
+        stats::quantile,
+    },
 };
 
 pub struct Executor {
@@ -45,6 +49,11 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let arr_quantile_lower = self
+            .options
+            .get("arr_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let div_allot_weight = self
             .options
             .get("div_allot_weight")
@@ -69,7 +78,7 @@ impl RuleExecutor for Executor {
             .options
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
-            .unwrap_or(126);
+            .unwrap_or(252);
         let min_div_count_per_year = self
             .options
             .get("min_div_count_per_year")
@@ -102,6 +111,10 @@ impl RuleExecutor for Executor {
 
             if lookback_div_years == 0 {
                 panic!("lookback_div_years must > 0");
+            }
+
+            if lookback_trade_days == 0 {
+                panic!("lookback_trade_days must > 0");
             }
 
             if price_avg_count == 0 {
@@ -282,25 +295,33 @@ impl RuleExecutor for Executor {
                                 total_income / lookback_div_years as f64 / price_no_adjust;
 
                             if dv_ratio.is_finite() {
+                                let arr = calc_annualized_return_rate(&prices);
                                 let volatility = calc_annualized_volatility(&prices);
 
-                                if volatility.is_none() {
+                                if let Some(fail_factor_name) = match (arr, volatility) {
+                                    (None, _) => Some("arr"),
+                                    (_, None) => Some("volatility"),
+                                    (Some(arr), Some(volatility)) => {
+                                        tickers_factors.push((
+                                            ticker.clone(),
+                                            Factors {
+                                                dv_ratio,
+                                                arr,
+                                                volatility,
+                                            },
+                                        ));
+
+                                        None
+                                    }
+                                } {
                                     rule_send_warning(
                                         rule_name,
-                                        &format!("{prices:?}"),
+                                        &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
                                         date,
                                         event_sender,
                                     )
                                     .await;
                                 }
-
-                                tickers_factors.push((
-                                    ticker.clone(),
-                                    Factors {
-                                        dv_ratio,
-                                        volatility,
-                                    },
-                                ));
                             }
                         }
                     }
@@ -321,18 +342,28 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
+            let factors_arr = tickers_factors
+                .iter()
+                .map(|(_, f)| f.arr)
+                .collect::<Vec<f64>>();
+            let arr_lower = quantile(&factors_arr, arr_quantile_lower);
+
             let factors_volatility = tickers_factors
                 .iter()
-                .filter_map(|(_, f)| f.volatility)
+                .map(|(_, f)| f.volatility)
                 .collect::<Vec<f64>>();
             let volatility_upper = quantile(&factors_volatility, volatility_quantile_upper);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
-                if let (Some(volatility), Some(volatility_upper)) =
-                    (factors.volatility, volatility_upper)
-                {
-                    if volatility > volatility_upper {
+                if let Some(arr_lower) = arr_lower {
+                    if factors.arr < arr_lower {
+                        continue;
+                    }
+                }
+
+                if let Some(volatility_upper) = volatility_upper {
+                    if factors.volatility > volatility_upper {
                         continue;
                     }
                 }
@@ -416,5 +447,6 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     dv_ratio: f64,
-    volatility: Option<f64>,
+    arr: f64,
+    volatility: f64,
 }

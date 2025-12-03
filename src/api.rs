@@ -17,6 +17,7 @@ use crate::{
     utils::datetime::{date_from_str, date_to_str},
 };
 
+pub type BacktestCvOptions = backtest::BacktestCvOptions;
 pub type BacktestEvent = backtest::BacktestEvent;
 pub type BacktestMetrics = backtest::BacktestMetrics;
 pub type BacktestOptions = backtest::BacktestOptions;
@@ -52,8 +53,6 @@ pub async fn backtest(
     vfund_names: &[String],
     options: &BacktestOptions,
 ) -> VfResult<Vec<(String, BacktestStream)>> {
-    let mut streams: Vec<(String, BacktestStream)> = vec![];
-
     let mut vfunds = load_vfunds().await?;
     if !vfund_names.is_empty() {
         vfunds.retain(|(name, _)| vfund_names.contains(name));
@@ -68,11 +67,48 @@ pub async fn backtest(
         }
     }
 
+    let mut streams: Vec<(String, BacktestStream)> = vec![];
+
     for (vfund_name, vfund) in vfunds {
         let stream = match vfund {
             Vfund::Fof(fof_definition) => backtest::backtest_fof(&fof_definition, options).await?,
             Vfund::Fund(fund_definition) => {
                 backtest::backtest_fund(&fund_definition, options).await?
+            }
+        };
+        streams.push((vfund_name, stream));
+    }
+
+    Ok(streams)
+}
+
+pub async fn backtest_cv(
+    vfund_names: &[String],
+    cv_options: &BacktestCvOptions,
+) -> VfResult<Vec<(String, BacktestStream)>> {
+    let mut vfunds = load_vfunds().await?;
+    if !vfund_names.is_empty() {
+        vfunds.retain(|(name, _)| vfund_names.contains(name));
+    }
+
+    for name in vfund_names {
+        if vfunds.iter().filter(|(v, _)| v == name).count() == 0 {
+            return Err(VfError::NotExists {
+                code: "VFUND_NOT_EXISTS",
+                message: format!("Vfund '{name}' not exists"),
+            });
+        }
+    }
+
+    let mut streams: Vec<(String, BacktestStream)> = vec![];
+
+    for (vfund_name, vfund) in vfunds {
+        let stream = match vfund {
+            Vfund::Fof(fof_definition) => {
+                backtest::backtest_fof_cv(&fof_definition, cv_options).await?
+            }
+            Vfund::Fund(fund_definition) => {
+                backtest::backtest_fund_cv(&fund_definition, cv_options).await?
             }
         };
         streams.push((vfund_name, stream));

@@ -226,13 +226,12 @@ impl RuleExecutor for Executor {
                                 "[{date_str}] {ticker} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2} ps={ps:.2}  ps_overvalued={ps_overvalued:.2} ps_sell={ps_sell:.2}"
                             );
                             if *pe > pe_overvalued || *ps > ps_overvalued {
-                                let ticker_title =
-                                    get_ticker_title(ticker).await.unwrap_or_default();
+                                let ticker_title = get_ticker_title(ticker).await;
 
                                 if *pe > pe_sell || *ps > ps_sell {
                                     rule_send_info(
                                         rule_name,
-                                        &format!("[Sell Signal] {ticker}({ticker_title}) PE:{pe:.2}>{pe_sell:.2} || PS:{ps:.2}>{ps_sell:.2}"),
+                                        &format!("[Sell Signal] {ticker_title} PE:{pe:.2}>{pe_sell:.2} || PS:{ps:.2}>{ps_sell:.2}"),
                                         date,
                                         event_sender,
                                     )
@@ -248,7 +247,7 @@ impl RuleExecutor for Executor {
                                 } else {
                                     rule_send_info(
                                         rule_name,
-                                        &format!("[Overvalued Warn] {ticker}({ticker_title}) PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"),
+                                        &format!("[Overvalued Warn] {ticker_title} PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"),
                                         date,
                                         event_sender,
                                         )
@@ -276,13 +275,12 @@ impl RuleExecutor for Executor {
                                 "[{date_str}] {ticker} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2} ps={ps:.2} ps_undervalued={ps_undervalued:.2} ps_buy={ps_buy:.2}"
                             );
                             if *pe < pe_undervalued && *ps < ps_undervalued {
-                                let ticker_title =
-                                    get_ticker_title(ticker).await.unwrap_or_default();
+                                let ticker_title = get_ticker_title(ticker).await;
 
                                 if *pe < pe_buy && *ps < ps_buy {
                                     rule_send_info(
                                         rule_name,
-                                        &format!("[Buy Signal] {ticker}({ticker_title}) PE:{pe:.2}<{pe_buy:.2} && PS:{ps:.2}<{ps_buy:.2}"),
+                                        &format!("[Buy Signal] {ticker_title} PE:{pe:.2}<{pe_buy:.2} && PS:{ps:.2}<{ps_buy:.2}"),
                                         date,
                                         event_sender,
                                     )

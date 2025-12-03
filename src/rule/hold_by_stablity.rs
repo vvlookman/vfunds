@@ -14,6 +14,7 @@ use crate::{
             StockDetail, StockDividendAdjust, StockReportCapitalField, fetch_stock_detail,
             fetch_stock_kline, fetch_stock_report_capital,
         },
+        tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
@@ -147,42 +148,45 @@ impl RuleExecutor for Executor {
                         .collect();
 
                     let report_capital = fetch_stock_report_capital(ticker).await?;
-                    if let (
-                        Some((_, price)),
-                        Some((_, total_capital)),
-                        Some((_, circulating_capital)),
-                        Some(volatility),
-                    ) = (
-                        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string()),
-                        report_capital.get_latest_value::<f64>(
-                            date,
-                            false,
-                            &StockReportCapitalField::Total.to_string(),
-                        ),
-                        report_capital.get_latest_value::<f64>(
-                            date,
-                            false,
-                            &StockReportCapitalField::Circulating.to_string(),
-                        ),
-                        calc_annualized_volatility(&prices),
-                    ) {
-                        let market_cap = price * total_capital;
 
-                        let volumes_avg = volumes.iter().sum::<f64>() / volumes.len() as f64;
-                        let turnover_ratio = 100.0 * volumes_avg / circulating_capital;
+                    let market_cap = calc_stock_market_cap(ticker, date).await?;
+                    let circulating_capital_with_date = report_capital.get_latest_value::<f64>(
+                        date,
+                        false,
+                        &StockReportCapitalField::Circulating.to_string(),
+                    );
+                    let volatility = calc_annualized_volatility(&prices);
 
-                        tickers_factors.push((
-                            ticker.clone(),
-                            Factors {
-                                market_cap,
-                                turnover_ratio,
-                                volatility,
-                            },
-                        ));
-                    } else {
+                    if let Some(fail_factor_name) =
+                        match (market_cap, circulating_capital_with_date, volatility) {
+                            (None, _, _) => Some("market_cap"),
+                            (_, None, _) => Some("circulating_capital"),
+                            (_, _, None) => Some("volatility"),
+                            (
+                                Some(market_cap),
+                                Some((_, circulating_capital)),
+                                Some(volatility),
+                            ) => {
+                                let volumes_avg =
+                                    volumes.iter().sum::<f64>() / volumes.len() as f64;
+                                let turnover_ratio = 100.0 * volumes_avg / circulating_capital;
+
+                                tickers_factors.push((
+                                    ticker.clone(),
+                                    Factors {
+                                        market_cap,
+                                        turnover_ratio,
+                                        volatility,
+                                    },
+                                ));
+
+                                None
+                            }
+                        }
+                    {
                         rule_send_warning(
                             rule_name,
-                            &format!("[Factors Calculation Failed] {ticker}"),
+                            &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
                             date,
                             event_sender,
                         )

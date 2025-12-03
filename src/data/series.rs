@@ -99,11 +99,11 @@ impl DailySeries {
             let filter = if include_today {
                 col(&self.date_field_name)
                     .lt_eq(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             } else {
                 col(&self.date_field_name)
                     .lt(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             };
 
             if let Ok(df) = self
@@ -148,11 +148,11 @@ impl DailySeries {
             let filter = if include_today {
                 col(&self.date_field_name)
                     .lt_eq(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             } else {
                 col(&self.date_field_name)
                     .lt(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             };
 
             if let Ok(df) = self
@@ -210,11 +210,11 @@ impl DailySeries {
             let filter = if include_today {
                 col(&self.date_field_name)
                     .lt_eq(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             } else {
                 col(&self.date_field_name)
                     .lt(lit(*date))
-                    .and(col(origin_field_name).is_not_null())
+                    .and(col(origin_field_name).is_finite())
             };
 
             if let Ok(df) = self
@@ -277,7 +277,7 @@ impl DailySeries {
                     col(&self.date_field_name)
                         .gt_eq(lit(*date_from))
                         .and(col(&self.date_field_name).lt_eq(lit(*date_to)))
-                        .and(col(origin_field_name).is_not_null()),
+                        .and(col(origin_field_name).is_finite()),
                 )
                 .collect()
             {

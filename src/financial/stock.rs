@@ -16,7 +16,7 @@ use crate::{
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct StockDetail {
-    pub title: String,
+    pub name: String,
     pub sector: Option<String>,
     pub trading_date: Option<NaiveDate>,
     pub expire_date: Option<NaiveDate>,
@@ -135,7 +135,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let tickers_sector_map = fetch_sector_tickers("SW1").await?;
 
     let result = StockDetail {
-        title: json["InstrumentName"]
+        name: json["InstrumentName"]
             .as_str()
             .unwrap_or_default()
             .to_string(),
@@ -408,7 +408,7 @@ mod tests {
         let ticker = Ticker::from_str("000001").unwrap();
         let detail = fetch_stock_detail(&ticker).await.unwrap();
 
-        assert_eq!(detail.title, "平安银行");
+        assert_eq!(detail.name, "平安银行");
         assert_eq!(&detail.sector.unwrap(), "银行");
     }
 

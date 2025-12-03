@@ -30,8 +30,9 @@ pub enum ConvBondDailyField {
 #[allow(dead_code)]
 pub struct ConvBondDetail {
     pub ticker: Ticker,
-    pub title: String,
+    pub name: String,
     pub issue_size: Option<f64>,
+    pub remain_size: Option<f64>,
     pub par_value: Option<f64>,
     pub expire_date: Option<NaiveDate>,
 }
@@ -40,7 +41,7 @@ pub struct ConvBondDetail {
 #[allow(dead_code)]
 pub struct ConvBondIssue {
     pub ticker: Ticker,
-    pub title: String,
+    pub name: String,
     pub issue_size: Option<f64>,
 }
 
@@ -152,11 +153,12 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
                 {
                     let result = ConvBondDetail {
                         ticker,
-                        title: json_item["bond_short_name"]
+                        name: json_item["bond_short_name"]
                             .as_str()
                             .unwrap_or_default()
                             .to_string(),
                         issue_size: json_item["issue_size"].as_f64(),
+                        remain_size: json_item["remain_size"].as_f64(),
                         par_value: json_item["par"].as_f64(),
                         expire_date: json_item["delist_date"]
                             .as_str()
@@ -220,7 +222,7 @@ pub async fn fetch_conv_bonds(
                 {
                     let cb = ConvBondIssue {
                         ticker,
-                        title: json_item["onl_name"]
+                        name: json_item["onl_name"]
                             .as_str()
                             .unwrap_or_default()
                             .to_string(),

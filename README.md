@@ -16,15 +16,15 @@ vfunds config set qmt_api http://192.168.0.222:9000 # Set where to access QMT
 vfunds config set tushare_token xxx # Get Tushare token first, and keep 3000 points (= 300 RMB)
 
 vfunds list -w ~/vfunds/example # List all virtual funds
-vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2018-01-01 # Run backtest
-vfunds result -o ~/vfunds/output -g # Show backtest result with GUI chart
-CACHE_NO_EXPIRE=true vfunds backtest -s 2018-01-01 @permanent -S -p # Run cross-validation backtests, ignoring cache expiration
+vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2018-01-08 -s 2018-07-08 # Run backtests with multi start dates
+vfunds result -o ~/vfunds/output -g # Show backtest results with GUI chart
+CACHE_NO_EXPIRE=true vfunds backtest -s 2018-01-08 -s 2018-07-08 @permanent -S -p # Run cross-validation backtests, ignoring cache expiration
 ```
 
 ## Develop
 
 ```sh
-LOG="vfunds=debug" CACHE_NO_EXPIRE=true cargo run -- backtest -w ./example -s 2018-01-01 @permanent
+LOG="vfunds=debug" CACHE_NO_EXPIRE=true cargo run -- backtest -w ./example -s 2018-01-08 @permanent
 ```
 
 ## Release

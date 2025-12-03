@@ -80,10 +80,14 @@ pub async fn get_ticker_price(
     }
 }
 
-pub async fn get_ticker_title(ticker: &Ticker) -> VfResult<String> {
-    match ticker.r#type {
-        TickerType::ConvBond => Ok(fetch_conv_bond_detail(ticker).await?.title),
-        TickerType::Stock => Ok(fetch_stock_detail(ticker).await?.title),
+pub async fn get_ticker_title(ticker: &Ticker) -> String {
+    if let Ok(name) = match ticker.r#type {
+        TickerType::ConvBond => fetch_conv_bond_detail(ticker).await.map(|d| d.name),
+        TickerType::Stock => fetch_stock_detail(ticker).await.map(|d| d.name),
+    } {
+        format!("{ticker}({name})")
+    } else {
+        ticker.to_string()
     }
 }
 

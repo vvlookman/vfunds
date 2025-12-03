@@ -109,20 +109,14 @@ async fn rule_notify_indicators(
     if !indicators.is_empty() {
         let mut strs: Vec<String> = vec![];
         for (ticker, indicator) in indicators.iter() {
-            if let Ok(ticker_title) = get_ticker_title(ticker).await {
-                strs.push(format!("{ticker}({ticker_title})={indicator}"));
-            } else {
-                strs.push(format!("{ticker}={indicator}"));
-            }
+            let ticker_title = get_ticker_title(ticker).await;
+            strs.push(format!("{ticker_title}={indicator}"));
         }
 
         let mut candidate_strs: Vec<String> = vec![];
         for (ticker, indicator) in candidates.iter() {
-            if let Ok(ticker_title) = get_ticker_title(ticker).await {
-                candidate_strs.push(format!("{ticker}({ticker_title})={indicator}"));
-            } else {
-                candidate_strs.push(format!("{ticker}={indicator}"));
-            }
+            let ticker_title = get_ticker_title(ticker).await;
+            candidate_strs.push(format!("{ticker_title}={indicator}"));
         }
 
         let mut message = String::new();
