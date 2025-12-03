@@ -32,9 +32,9 @@ pub struct BacktestCommand {
         short = 's',
         long = "start",
         value_parser = date_from_str,
-        help = "Start date of backtest, e.g. -s 2019-08-08"
+        help = "Start date of backtest, e.g. -s 2018-01-01 -s 2018-07-01"
     )]
-    start_date: NaiveDate,
+    start_dates: Vec<NaiveDate>,
 
     #[arg(
         short = 'e',
@@ -109,13 +109,6 @@ pub struct BacktestCommand {
     output_dir: Option<PathBuf>,
 
     #[arg(
-        short = 'n',
-        long = "number",
-        help = "Specify the tranche number of funds, useful for running multiple funds with the same configuration but different time windows"
-    )]
-    tranche_number: Option<u64>,
-
-    #[arg(
         short = 'S',
         long = "cv-search",
         group = "cv",
@@ -150,32 +143,6 @@ pub struct BacktestCommand {
 
 impl BacktestCommand {
     pub async fn exec(&self) {
-        let options = BacktestOptions {
-            init_cash: self.init_cash,
-            start_date: self.start_date,
-            end_date: self.end_date.unwrap_or(Local::now().date_naive()),
-            pessimistic: self.pessimistic,
-            buffer_ratio: self.buffer_ratio,
-            risk_free_rate: self.risk_free_rate,
-            stamp_duty_rate: self.stamp_duty_rate,
-            stamp_duty_min_fee: self.stamp_duty_min_fee,
-            broker_commission_rate: self.broker_commission_rate,
-            broker_commission_min_fee: self.broker_commission_min_fee,
-
-            cv_search: self.cv_search,
-            cv_window: self.cv_window,
-            cv_min_window_days: self.cv_min_window_days,
-            cv_score_arr_weight: self.cv_score_arr_weight,
-        };
-
-        println!(
-            "[Initial Cash ${}] [{}~{}] [{} Days]\n",
-            options.init_cash,
-            date_to_str(&options.start_date),
-            date_to_str(&options.end_date),
-            (options.end_date - options.start_date).num_days() + 1
-        );
-
         let multi_progress = MultiProgress::new();
 
         let logger = multi_progress.add(ProgressBar::new_spinner());
@@ -186,170 +153,191 @@ impl BacktestCommand {
             .set_style(ProgressStyle::with_template("{msg}[{elapsed}] {spinner:.cyan}").unwrap());
         spinner.enable_steady_tick(Duration::from_millis(100));
 
-        match api::backtest(&self.funds, &options).await {
-            Ok(streams) => {
-                let mut errors: HashMap<String, VfError> = HashMap::new();
-                let mut table_data: Vec<Vec<String>> = vec![vec![
-                    "".to_string(),
-                    "Final T".to_string(),
-                    "T Days".to_string(),
-                    "Return".to_string(),
-                    "Ann Return".to_string(),
-                    "Max Drawdown".to_string(),
-                    "Ann Volatility".to_string(),
-                    "+Years".to_string(),
-                    "Wait+".to_string(),
-                    "Win Rate".to_string(),
-                    "Profit Factor".to_string(),
-                    "Sharpe".to_string(),
-                    "Calmar".to_string(),
-                    "Sortino".to_string(),
-                ]];
-                for (vfund_name, mut stream) in streams {
-                    let vfund_name = self
-                        .tranche_number
-                        .map_or(vfund_name.clone(), |n| format!("{vfund_name}_{n}"));
+        let mut errors: HashMap<String, VfError> = HashMap::new();
+        let mut table_data: Vec<Vec<String>> = vec![vec![
+            "".to_string(),
+            "Start".to_string(),
+            "Final T".to_string(),
+            "T Days".to_string(),
+            "Return".to_string(),
+            "Ann Return".to_string(),
+            "Max Drawdown".to_string(),
+            "Ann Volatility".to_string(),
+            "+Years".to_string(),
+            "Wait+".to_string(),
+            "Win Rate".to_string(),
+            "Profit Factor".to_string(),
+            "Sharpe".to_string(),
+            "Calmar".to_string(),
+            "Sortino".to_string(),
+        ]];
 
-                    while let Some(event) = stream.next().await {
-                        match event {
-                            BacktestEvent::Buy { .. } | BacktestEvent::Sell { .. } => {
-                                logger.println(format!("[{vfund_name}] {event}"));
-                            }
-                            BacktestEvent::Info { .. } => {
-                                logger.println(format!(
-                                    "[{vfund_name}] {}",
-                                    event.to_string().bright_black()
-                                ));
-                            }
-                            BacktestEvent::Warning { .. } => {
-                                logger.println(format!(
-                                    "[{vfund_name}] {}",
-                                    event.to_string().bright_yellow()
-                                ));
-                            }
-                            BacktestEvent::Toast { .. } => {
-                                spinner.set_message(format!(
-                                    "[{vfund_name}] {} ",
-                                    event.to_string().bright_black()
-                                ));
-                            }
-                            BacktestEvent::Result(backtest_result) => {
-                                if let Some(output_dir) = &self.output_dir {
-                                    if !output_dir.exists() {
-                                        let _ = fs::create_dir_all(output_dir);
-                                    }
+        for start_date in &self.start_dates {
+            let options = BacktestOptions {
+                init_cash: self.init_cash,
+                start_date: *start_date,
+                end_date: self.end_date.unwrap_or(Local::now().date_naive()),
+                pessimistic: self.pessimistic,
+                buffer_ratio: self.buffer_ratio,
+                risk_free_rate: self.risk_free_rate,
+                stamp_duty_rate: self.stamp_duty_rate,
+                stamp_duty_min_fee: self.stamp_duty_min_fee,
+                broker_commission_rate: self.broker_commission_rate,
+                broker_commission_min_fee: self.broker_commission_min_fee,
 
-                                    if let Err(err) = api::output_backtest_result(
-                                        output_dir,
-                                        &vfund_name,
-                                        &backtest_result,
-                                    )
-                                    .await
-                                    {
-                                        errors.insert(vfund_name.to_string(), err);
-                                    }
+                cv_search: self.cv_search,
+                cv_window: self.cv_window,
+                cv_min_window_days: self.cv_min_window_days,
+                cv_score_arr_weight: self.cv_score_arr_weight,
+            };
+
+            match api::backtest(&self.funds, &options).await {
+                Ok(streams) => {
+                    for (vfund_name, mut stream) in streams {
+                        let vfund_tranche = format!("{vfund_name}_{}", start_date.format("%Y%m%d"));
+
+                        while let Some(event) = stream.next().await {
+                            match event {
+                                BacktestEvent::Buy { .. } | BacktestEvent::Sell { .. } => {
+                                    logger.println(format!("[{vfund_tranche}] {event}"));
                                 }
+                                BacktestEvent::Info { .. } => {
+                                    logger.println(format!(
+                                        "[{vfund_tranche}] {}",
+                                        event.to_string().bright_black()
+                                    ));
+                                }
+                                BacktestEvent::Warning { .. } => {
+                                    logger.println(format!(
+                                        "[{vfund_tranche}] {}",
+                                        event.to_string().bright_yellow()
+                                    ));
+                                }
+                                BacktestEvent::Toast { .. } => {
+                                    spinner.set_message(format!(
+                                        "[{vfund_tranche}] {} ",
+                                        event.to_string().bright_black()
+                                    ));
+                                }
+                                BacktestEvent::Result(backtest_result) => {
+                                    if let Some(output_dir) = &self.output_dir {
+                                        if !output_dir.exists() {
+                                            let _ = fs::create_dir_all(output_dir);
+                                        }
 
-                                let BacktestResult {
-                                    options, metrics, ..
-                                } = *backtest_result;
-                                table_data.push(vec![
-                                    vfund_name.to_string(),
-                                    metrics
-                                        .last_trade_date
-                                        .map(|d| date_to_str(&d))
-                                        .unwrap_or("-".to_string()),
-                                    format!("{}", metrics.trade_days),
-                                    format!(
-                                        "{:.2}%",
-                                        metrics.total_return / options.init_cash * 100.0
-                                    ),
-                                    metrics
-                                        .annualized_return_rate
-                                        .map(|v| format!("{:.2}%", v * 100.0))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .max_drawdown
-                                        .map(|v| format!("{:.2}%", v * 100.0))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .annualized_volatility
-                                        .map(|v| format!("{:.2}%", v * 100.0))
-                                        .unwrap_or("-".to_string()),
-                                    format!(
-                                        "{}/{}",
+                                        if let Err(err) = api::output_backtest_result(
+                                            output_dir,
+                                            &vfund_tranche,
+                                            &backtest_result,
+                                        )
+                                        .await
+                                        {
+                                            errors.insert(vfund_tranche.to_string(), err);
+                                        }
+                                    }
+
+                                    let BacktestResult {
+                                        options, metrics, ..
+                                    } = *backtest_result;
+                                    table_data.push(vec![
+                                        vfund_tranche.to_string(),
+                                        date_to_str(&options.start_date),
                                         metrics
-                                            .calendar_year_returns
-                                            .iter()
-                                            .filter(|&(_, v)| *v > 0.0)
-                                            .count(),
-                                        metrics.calendar_year_returns.len()
-                                    ),
-                                    metrics
-                                        .unbroken_date
-                                        .map(|v| {
-                                            format!(
-                                                "{:.2}%",
-                                                (v - options.start_date).num_days() as f64
-                                                    / ((options.end_date - options.start_date)
-                                                        .num_days()
-                                                        + 1)
-                                                        as f64
-                                                    * 100.0
-                                            )
-                                        })
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .win_rate
-                                        .map(|v| format!("{:.2}%", v * 100.0))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .profit_factor
-                                        .map(|v| format!("{v:.3}"))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .sharpe_ratio
-                                        .map(|v| format!("{v:.3}"))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .calmar_ratio
-                                        .map(|v| format!("{v:.3}"))
-                                        .unwrap_or("-".to_string()),
-                                    metrics
-                                        .sortino_ratio
-                                        .map(|v| format!("{v:.3}"))
-                                        .unwrap_or("-".to_string()),
-                                ]);
-                            }
-                            BacktestEvent::Error(err) => {
-                                errors.insert(vfund_name.to_string(), err);
+                                            .last_trade_date
+                                            .map(|d| date_to_str(&d))
+                                            .unwrap_or("-".to_string()),
+                                        format!("{}", metrics.trade_days),
+                                        format!(
+                                            "{:.2}%",
+                                            metrics.total_return / options.init_cash * 100.0
+                                        ),
+                                        metrics
+                                            .annualized_return_rate
+                                            .map(|v| format!("{:.2}%", v * 100.0))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .max_drawdown
+                                            .map(|v| format!("{:.2}%", v * 100.0))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .annualized_volatility
+                                            .map(|v| format!("{:.2}%", v * 100.0))
+                                            .unwrap_or("-".to_string()),
+                                        format!(
+                                            "{}/{}",
+                                            metrics
+                                                .calendar_year_returns
+                                                .iter()
+                                                .filter(|&(_, v)| *v > 0.0)
+                                                .count(),
+                                            metrics.calendar_year_returns.len()
+                                        ),
+                                        metrics
+                                            .unbroken_date
+                                            .map(|v| {
+                                                format!(
+                                                    "{:.2}%",
+                                                    (v - options.start_date).num_days() as f64
+                                                        / ((options.end_date - options.start_date)
+                                                            .num_days()
+                                                            + 1)
+                                                            as f64
+                                                        * 100.0
+                                                )
+                                            })
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .win_rate
+                                            .map(|v| format!("{:.2}%", v * 100.0))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .profit_factor
+                                            .map(|v| format!("{v:.3}"))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .sharpe_ratio
+                                            .map(|v| format!("{v:.3}"))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .calmar_ratio
+                                            .map(|v| format!("{v:.3}"))
+                                            .unwrap_or("-".to_string()),
+                                        metrics
+                                            .sortino_ratio
+                                            .map(|v| format!("{v:.3}"))
+                                            .unwrap_or("-".to_string()),
+                                    ]);
+                                }
+                                BacktestEvent::Error(err) => {
+                                    errors.insert(vfund_tranche.to_string(), err);
+                                }
                             }
                         }
                     }
                 }
-
-                for (vfund_name, err) in &errors {
-                    logger.println(format!("[{vfund_name}] [!] {}", err.to_string().red()));
+                Err(err) => {
+                    spinner.finish_with_message(format!("{} ", err.to_string().red()));
                 }
-
-                if errors.is_empty() {
-                    spinner.finish_with_message(format!("{} ", "✔".to_string().green()));
-                } else {
-                    spinner.finish_with_message(format!("{} ", "!".to_string().yellow()));
-                }
-
-                let mut table = tabled::builder::Builder::from_iter(&table_data).build();
-                table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
-                table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
-                table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
-                table.modify(Columns::new(11..12).not(Rows::first()), Color::FG_CYAN);
-                table.modify(Columns::new(1..), Alignment::right());
-                table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
-                logger.println(format!("\n{table}"));
-            }
-            Err(err) => {
-                spinner.finish_with_message(format!("{} ", err.to_string().red()));
             }
         }
+
+        for (vfund_tranche, err) in &errors {
+            logger.println(format!("[{vfund_tranche}] [!] {}", err.to_string().red()));
+        }
+
+        if errors.is_empty() {
+            spinner.finish_with_message(format!("{} ", "✔".to_string().green()));
+        } else {
+            spinner.finish_with_message(format!("{} ", "!".to_string().yellow()));
+        }
+
+        let mut table = tabled::builder::Builder::from_iter(&table_data).build();
+        table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
+        table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
+        table.modify(Columns::new(5..6).not(Rows::first()), Color::FG_CYAN);
+        table.modify(Columns::new(12..13).not(Rows::first()), Color::FG_CYAN);
+        table.modify(Columns::new(1..), Alignment::right());
+        table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
+        logger.println(format!("\n{table}"));
     }
 }
