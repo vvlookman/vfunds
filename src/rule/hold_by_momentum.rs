@@ -2,7 +2,6 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
-use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
@@ -18,9 +17,9 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        datetime::date_to_str,
-        financial::{calc_regression_momentum, calc_sharpe_ratio},
-        math::{normalize_zscore, signed_powf},
+        financial::{calc_annualized_volatility, calc_max_drawdown, calc_regression_momentum},
+        math::signed_powf,
+        stats::quantile,
     },
 };
 
@@ -47,16 +46,6 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let factor_momentum_weight = self
-            .options
-            .get("factor_momentum_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let factor_sharpe_weight = self
-            .options
-            .get("factor_sharpe_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let limit = self
             .options
             .get("limit")
@@ -67,6 +56,16 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
+        let max_drawdown_quantile_upper = self
+            .options
+            .get("max_drawdown_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let volatility_quantile_upper = self
+            .options
+            .get("volatility_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let weight_exp = self
             .options
             .get("weight_exp")
@@ -84,8 +83,6 @@ impl RuleExecutor for Executor {
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let date_str = date_to_str(date);
-
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
@@ -122,14 +119,25 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
+                    let max_drawdown = calc_max_drawdown(&prices);
                     let momentum = calc_regression_momentum(&prices);
-                    let sharpe = calc_sharpe_ratio(&prices, 0.0);
+                    let volatility = calc_annualized_volatility(&prices);
 
-                    if let Some(fail_factor_name) = match (momentum, sharpe) {
-                        (None, _) => Some("momentum"),
-                        (_, None) => Some("sharpe"),
-                        (Some(momentum), Some(sharpe)) => {
-                            tickers_factors.push((ticker.clone(), Factors { momentum, sharpe }));
+                    if let Some(fail_factor_name) = match (max_drawdown, momentum, volatility) {
+                        (None, _, _) => Some("max_drawdown"),
+                        (_, None, _) => Some("momentum"),
+                        (_, _, None) => Some("volatility"),
+                        (Some(max_drawdown), Some(momentum), Some(volatility)) => {
+                            if momentum > 0.0 {
+                                tickers_factors.push((
+                                    ticker.clone(),
+                                    Factors {
+                                        max_drawdown,
+                                        momentum,
+                                        volatility,
+                                    },
+                                ));
+                            }
 
                             None
                         }
@@ -159,38 +167,34 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            let normalized_momentum_values = normalize_zscore(
-                &tickers_factors
-                    .iter()
-                    .map(|(_, f)| f.momentum)
-                    .collect::<Vec<f64>>(),
-            );
-            let normalized_sharpe_values = normalize_zscore(
-                &tickers_factors
-                    .iter()
-                    .map(|(_, f)| f.sharpe)
-                    .collect::<Vec<f64>>(),
-            );
-
-            let mut indicators: Vec<(Ticker, f64)> = tickers_factors
+            let factors_max_drawdown = tickers_factors
                 .iter()
-                .enumerate()
-                .filter_map(|(i, x)| {
-                    let ticker = &x.0;
+                .map(|(_, f)| f.max_drawdown)
+                .collect::<Vec<f64>>();
+            let max_drawdown_upper = quantile(&factors_max_drawdown, max_drawdown_quantile_upper);
 
-                    let momentum = normalized_momentum_values[i];
-                    let sharpe = normalized_sharpe_values[i];
+            let factors_volatility = tickers_factors
+                .iter()
+                .map(|(_, f)| f.volatility)
+                .collect::<Vec<f64>>();
+            let volatility_upper = quantile(&factors_volatility, volatility_quantile_upper);
 
-                    let indicator = factor_momentum_weight * (1.0 + momentum.tanh()) + factor_sharpe_weight * (1.0 + sharpe.tanh());
-                    debug!("[{date_str}] {ticker}={indicator:.4} (Momentum={momentum:.4} Sharpe={sharpe:.4}");
-
-                    if indicator.is_finite() {
-                        Some((ticker.clone(), indicator))
-                    } else {
-                        None
+            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            for (ticker, factors) in tickers_factors {
+                if let Some(max_drawdown_upper) = max_drawdown_upper {
+                    if factors.max_drawdown > max_drawdown_upper {
+                        continue;
                     }
-                })
-                .collect();
+                }
+
+                if let Some(volatility_upper) = volatility_upper {
+                    if factors.volatility > volatility_upper {
+                        continue;
+                    }
+                }
+
+                indicators.push((ticker, factors.momentum));
+            }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
@@ -233,6 +237,7 @@ impl RuleExecutor for Executor {
 
 #[derive(Debug)]
 struct Factors {
+    max_drawdown: f64,
     momentum: f64,
-    sharpe: f64,
+    volatility: f64,
 }

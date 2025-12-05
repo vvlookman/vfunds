@@ -1,5 +1,5 @@
-title = "高动量夏普"
-description = "持有动量和夏普综合评分最高的ETF"
+title = "高动量"
+description = "持有动量最高的ETF"
 
 tickers = [
   "510300", # 沪深300ETF
@@ -22,20 +22,20 @@ tickers = [
 ]
 
 [[rules]]
-name = "hold_by_momentum_sharpe"
-frequency = "6m"
+name = "hold_by_momentum"
+frequency = "1w"
 
 [rules.options]
-factor_momentum_weight = 5
-factor_sharpe_weight = 1
-limit = 3
-lookback_trade_days = 126
+limit = 1
+lookback_trade_days = 252
+max_drawdown_quantile_upper = 1
+volatility_quantile_upper = 1
 weight_exp = 0
 
 [rules.search]
-# frequency = ["1m", "2m", "3m", "4m", "6m", "9m", "1y"]
-# factor_momentum_weight = [0, 1, 2, 3, 5]
-# factor_sharpe_weight = [0, 1, 2, 3, 5]
-# limit = [2, 3, 4, 5]
+frequency = ["3d", "1w", "2w", "3w", "4w"]
+limit = [1, 2, 3, 4, 5]
 # lookback_trade_days = [21, 42, 63, 84, 126, 189, 252]
+# max_drawdown_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+# volatility_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 # weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]

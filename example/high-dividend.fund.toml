@@ -19,7 +19,7 @@ lookback_trade_days = 756
 min_div_count_per_year = 0.8
 price_avg_count = 5
 skip_same_sector = true
-volatility_quantile_upper = 0.3
+volatility_quantile_upper = 0.4
 weight_exp = 0
 
 [rules.search]
@@ -27,7 +27,7 @@ frequency = ["3m", "6m", "9m", "12m", "18m", "24m", "36m"]
 # arr_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
 # div_allot_weight = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 # div_bonus_gift_weight = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
-# limit = [1, 2, 3, 4, 5, 10]
+limit = [1, 2, 3, 4, 5, 10]
 # lookback_trade_days = [252, 504, 756, 1008, 1236]
 # lookback_div_years = [2, 3, 4, 5]
 # min_div_count_per_year = [0.6, 0.8, 1, 1.2, 1.4]

@@ -40,9 +40,7 @@ impl Rule {
             "hold_by_factors_boosting" => {
                 Box::new(hold_by_factors_boosting::Executor::new(definition))
             }
-            "hold_by_momentum_sharpe" => {
-                Box::new(hold_by_momentum_sharpe::Executor::new(definition))
-            }
+            "hold_by_momentum" => Box::new(hold_by_momentum::Executor::new(definition)),
             "hold_by_return_px_ratio" => {
                 Box::new(hold_by_return_px_ratio::Executor::new(definition))
             }
@@ -75,7 +73,7 @@ mod hold;
 mod hold_by_conv_bond_premium;
 mod hold_by_dividend;
 mod hold_by_factors_boosting;
-mod hold_by_momentum_sharpe;
+mod hold_by_momentum;
 mod hold_by_return_px_ratio;
 mod hold_by_risk_parity;
 mod hold_by_small_cap;

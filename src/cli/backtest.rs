@@ -156,7 +156,6 @@ impl BacktestCommand {
         let mut errors: HashMap<String, VfError> = HashMap::new();
         let mut table_data: Vec<Vec<String>> = vec![vec![
             "".to_string(),
-            "Start".to_string(),
             "Final T".to_string(),
             "T Days".to_string(),
             "Return".to_string(),
@@ -245,7 +244,6 @@ impl BacktestCommand {
                                         } = *backtest_result;
                                         table_data.push(vec![
                                             vfund_tranche.to_string(),
-                                            date_to_str(&options.start_date),
                                             metrics
                                                 .last_trade_date
                                                 .map(|d| date_to_str(&d))
@@ -367,8 +365,8 @@ impl BacktestCommand {
             let mut table = tabled::builder::Builder::from_iter(&table_data).build();
             table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
             table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
-            table.modify(Columns::new(5..6).not(Rows::first()), Color::FG_CYAN);
-            table.modify(Columns::new(12..13).not(Rows::first()), Color::FG_CYAN);
+            table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
+            table.modify(Columns::new(11..12).not(Rows::first()), Color::FG_CYAN);
             table.modify(Columns::new(1..), Alignment::right());
             table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
             logger.println(format!("\n{table}"));

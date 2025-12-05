@@ -71,6 +71,11 @@ impl RuleExecutor for Executor {
             .get("min_remaining_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(60);
+        let remain_lower = self
+            .options
+            .get("remain_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.2);
         let weight_exp = self
             .options
             .get("weight_exp")
@@ -110,15 +115,21 @@ impl RuleExecutor for Executor {
                     let ticker = &conv_bond_issue.ticker;
                     let conv_bond = fetch_conv_bond_detail(ticker).await?;
 
-                    if let Some(issue_size) = conv_bond.issue_size {
+                    if let (Some(issue_size), Some(remain_size), Some(expire_date)) = (
+                        conv_bond.issue_size,
+                        conv_bond.remain_size,
+                        conv_bond.expire_date,
+                    ) {
                         if let Some(min_issue_size) = min_issue_size {
                             if issue_size < min_issue_size {
                                 continue;
                             }
                         }
-                    }
 
-                    if let Some(expire_date) = conv_bond.expire_date {
+                        if remain_size < issue_size * remain_lower {
+                            continue;
+                        }
+
                         if expire_date < filter_expire_date {
                             continue;
                         }
