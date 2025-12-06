@@ -128,11 +128,6 @@ impl RuleExecutor for Executor {
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let date_from = date
-                .with_year(date.year() - lookback_div_years as i32)
-                .unwrap()
-                + Duration::days(1);
-
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
@@ -186,142 +181,122 @@ impl RuleExecutor for Executor {
                         prices.iter().sum::<f64>() / prices.len() as f64
                     };
                     if price_no_adjust > 0.0 {
-                        let dividends = fetch_stock_dividends(ticker).await?;
+                        let mut dividends: Vec<f64> = vec![];
 
-                        let interest_values = dividends.get_values::<f64>(
-                            &date_from,
-                            date,
-                            &StockDividendField::Interest.to_string(),
-                        );
+                        let stock_dividends = fetch_stock_dividends(ticker).await?;
+                        for i in 0..lookback_div_years {
+                            let year_date_from =
+                                date.with_year(date.year() - 1 - i as i32).unwrap();
+                            let year_date_to =
+                                date.with_year(date.year() - i as i32).unwrap() - Duration::days(1);
+                            if let Ok(year_dividends) =
+                                stock_dividends.slice_by_date_range(&year_date_from, &year_date_to)
+                            {
+                                let div_dates = year_dividends.get_dates();
 
-                        let mut total_income = interest_values.iter().map(|(_, v)| v).sum::<f64>();
-                        let mut total_count =
-                            interest_values.iter().filter(|(_, v)| *v > 0.0).count();
-
-                        if div_bonus_gift_weight != 0.0 {
-                            let mut free_shares_map: HashMap<NaiveDate, f64> = HashMap::new();
-
-                            for (div_date, stock_bonus) in dividends.get_values::<f64>(
-                                &date_from,
-                                date,
-                                &StockDividendField::StockBonus.to_string(),
-                            ) {
-                                free_shares_map
-                                    .entry(div_date)
-                                    .and_modify(|x| *x += stock_bonus)
-                                    .or_insert(stock_bonus);
-                            }
-
-                            for (div_date, stock_gift) in dividends.get_values::<f64>(
-                                &date_from,
-                                date,
-                                &StockDividendField::StockGift.to_string(),
-                            ) {
-                                free_shares_map
-                                    .entry(div_date)
-                                    .and_modify(|x| *x += stock_gift)
-                                    .or_insert(stock_gift);
-                            }
-
-                            for (div_date, shares) in free_shares_map {
-                                if shares > 0.0 {
-                                    if let Some((_, price_no_adjust)) = kline_no_adjust
-                                        .get_latest_value::<f64>(
+                                for div_date in div_dates {
+                                    if let (
+                                        Some((_, interest)),
+                                        Some((_, allot_num)),
+                                        Some((_, allot_price)),
+                                        Some((_, stock_bonus)),
+                                        Some((_, stock_gift)),
+                                    ) = (
+                                        year_dividends.get_value::<f64>(
                                             &div_date,
-                                            true,
-                                            &KlineField::Close.to_string(),
-                                        )
-                                    {
-                                        total_income +=
-                                            shares * price_no_adjust * div_bonus_gift_weight;
-                                    }
+                                            &StockDividendField::Interest.to_string(),
+                                        ),
+                                        year_dividends.get_value::<f64>(
+                                            &div_date,
+                                            &StockDividendField::AllotNum.to_string(),
+                                        ),
+                                        year_dividends.get_value::<f64>(
+                                            &div_date,
+                                            &StockDividendField::AllotPrice.to_string(),
+                                        ),
+                                        year_dividends.get_value::<f64>(
+                                            &div_date,
+                                            &StockDividendField::StockBonus.to_string(),
+                                        ),
+                                        year_dividends.get_value::<f64>(
+                                            &div_date,
+                                            &StockDividendField::StockGift.to_string(),
+                                        ),
+                                    ) {
+                                        let mut dividend = interest;
 
-                                    if div_bonus_gift_weight > 0.0 {
-                                        total_count += 1;
-                                    }
-                                }
-                            }
-                        }
-
-                        if div_allot_weight != 0.0 {
-                            let allot_num_map = dividends
-                                .get_values::<f64>(
-                                    &date_from,
-                                    date,
-                                    &StockDividendField::AllotNum.to_string(),
-                                )
-                                .iter()
-                                .copied()
-                                .collect::<HashMap<NaiveDate, f64>>();
-
-                            let allot_price_map = dividends
-                                .get_values::<f64>(
-                                    &date_from,
-                                    date,
-                                    &StockDividendField::AllotPrice.to_string(),
-                                )
-                                .iter()
-                                .copied()
-                                .collect::<HashMap<NaiveDate, f64>>();
-
-                            for (div_date, allot_num) in allot_num_map {
-                                if allot_num > 0.0 {
-                                    if let Some(allot_price) = allot_price_map.get(&div_date) {
-                                        if let Some((_, price_no_adjust)) = kline_no_adjust
-                                            .get_latest_value::<f64>(
-                                                &div_date,
-                                                true,
-                                                &KlineField::Close.to_string(),
-                                            )
-                                        {
-                                            total_income += allot_num
-                                                * (price_no_adjust - allot_price)
-                                                * div_allot_weight;
+                                        if div_allot_weight != 0.0 && allot_num > 0.0 {
+                                            if let Some((_, price_no_adjust)) = kline_no_adjust
+                                                .get_latest_value::<f64>(
+                                                    &div_date,
+                                                    true,
+                                                    &KlineField::Close.to_string(),
+                                                )
+                                            {
+                                                dividend += allot_num
+                                                    * (price_no_adjust - allot_price)
+                                                    * div_allot_weight;
+                                            }
                                         }
-                                    }
 
-                                    if div_allot_weight > 0.0 {
-                                        total_count += 1;
+                                        if div_bonus_gift_weight != 0.0
+                                            && (stock_bonus > 0.0 || stock_gift > 0.0)
+                                        {
+                                            if let Some((_, price_no_adjust)) = kline_no_adjust
+                                                .get_latest_value::<f64>(
+                                                    &div_date,
+                                                    true,
+                                                    &KlineField::Close.to_string(),
+                                                )
+                                            {
+                                                dividend += (stock_bonus + stock_gift)
+                                                    * price_no_adjust
+                                                    * div_bonus_gift_weight;
+                                            }
+                                        }
+
+                                        dividends.push(dividend);
                                     }
                                 }
                             }
                         }
 
-                        if total_income > 0.0
-                            && (total_count as f64 / lookback_div_years as f64)
-                                >= min_div_count_per_year
+                        if (dividends.len() as f64 / lookback_div_years as f64)
+                            < min_div_count_per_year
                         {
-                            let dv_ratio =
-                                total_income / lookback_div_years as f64 / price_no_adjust;
+                            continue;
+                        }
 
-                            if dv_ratio.is_finite() {
-                                let arr = calc_annualized_return_rate(&prices);
-                                let volatility = calc_annualized_volatility(&prices);
+                        let dv_ratio = dividends.iter().sum::<f64>()
+                            / lookback_div_years as f64
+                            / price_no_adjust;
+                        if dv_ratio > 0.0 {
+                            let arr = calc_annualized_return_rate(&prices);
+                            let volatility = calc_annualized_volatility(&prices);
 
-                                if let Some(fail_factor_name) = match (arr, volatility) {
-                                    (None, _) => Some("arr"),
-                                    (_, None) => Some("volatility"),
-                                    (Some(arr), Some(volatility)) => {
-                                        tickers_factors.push((
-                                            ticker.clone(),
-                                            Factors {
-                                                dv_ratio,
-                                                arr,
-                                                volatility,
-                                            },
-                                        ));
+                            if let Some(fail_factor_name) = match (arr, volatility) {
+                                (None, _) => Some("arr"),
+                                (_, None) => Some("volatility"),
+                                (Some(arr), Some(volatility)) => {
+                                    tickers_factors.push((
+                                        ticker.clone(),
+                                        Factors {
+                                            dv_ratio,
+                                            arr,
+                                            volatility,
+                                        },
+                                    ));
 
-                                        None
-                                    }
-                                } {
-                                    rule_send_warning(
-                                        rule_name,
-                                        &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
-                                        date,
-                                        event_sender,
-                                    )
-                                    .await;
+                                    None
                                 }
+                            } {
+                                rule_send_warning(
+                                    rule_name,
+                                    &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
                             }
                         }
                     }

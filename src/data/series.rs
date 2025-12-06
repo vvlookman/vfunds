@@ -262,12 +262,11 @@ impl DailySeries {
         vec![]
     }
 
-    pub fn get_values<T: NumCast>(
+    pub fn get_value<T: NumCast>(
         &self,
-        date_from: &NaiveDate,
-        date_to: &NaiveDate,
+        date: &NaiveDate,
         field_name: &str,
-    ) -> Vec<(NaiveDate, T)> {
+    ) -> Option<(NaiveDate, T)> {
         if let Some(origin_field_name) = self.value_field_names.get(field_name) {
             if let Ok(df) = self
                 .df
@@ -275,14 +274,11 @@ impl DailySeries {
                 .lazy()
                 .filter(
                     col(&self.date_field_name)
-                        .gt_eq(lit(*date_from))
-                        .and(col(&self.date_field_name).lt_eq(lit(*date_to)))
+                        .eq(lit(*date))
                         .and(col(origin_field_name).is_finite()),
                 )
                 .collect()
             {
-                let mut vals = vec![];
-
                 if let (Ok(col_date), Ok(col_val)) = (
                     df.column(&self.date_field_name),
                     df.column(origin_field_name),
@@ -295,18 +291,40 @@ impl DailySeries {
                                 if let Some(date) =
                                     NaiveDate::from_epoch_days(date_days_after_epoch)
                                 {
-                                    vals.push((date, val));
+                                    return Some((date, val));
                                 }
                             }
                         }
                     }
                 }
-
-                return vals;
             }
         }
 
-        vec![]
+        None
+    }
+
+    pub fn slice_by_date_range(
+        &self,
+        date_from: &NaiveDate,
+        date_to: &NaiveDate,
+    ) -> VfResult<Self> {
+        let df = self
+            .df
+            .clone()
+            .lazy()
+            .filter(
+                col(&self.date_field_name)
+                    .gt_eq(lit(*date_from))
+                    .and(col(&self.date_field_name).lt_eq(lit(*date_to))),
+            )
+            .collect()?;
+
+        Ok(Self {
+            df,
+
+            date_field_name: self.date_field_name.clone(),
+            value_field_names: self.value_field_names.clone(),
+        })
     }
 
     fn from_json_items(
