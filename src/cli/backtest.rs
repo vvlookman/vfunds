@@ -109,6 +109,13 @@ pub struct BacktestCommand {
     output_dir: Option<PathBuf>,
 
     #[arg(
+        short = 'L',
+        long = "output-logs",
+        help = "Output backtest logs when outputting backtest results"
+    )]
+    output_logs: bool,
+
+    #[arg(
         short = 'S',
         long = "cv-search",
         group = "cv",
@@ -199,18 +206,32 @@ impl BacktestCommand {
                                 vfund_name
                             };
 
+                            let mut backtest_logs: Vec<String> = vec![];
+
                             while let Some(event) = stream.next().await {
                                 match event {
                                     BacktestEvent::Buy { .. } | BacktestEvent::Sell { .. } => {
+                                        if self.output_logs {
+                                            backtest_logs.push(event.to_string());
+                                        }
+
                                         logger.println(format!("[{vfund_tranche}] {event}"));
                                     }
                                     BacktestEvent::Info { .. } => {
+                                        if self.output_logs {
+                                            backtest_logs.push(event.to_string());
+                                        }
+
                                         logger.println(format!(
                                             "[{vfund_tranche}] {}",
                                             event.to_string().bright_black()
                                         ));
                                     }
                                     BacktestEvent::Warning { .. } => {
+                                        if self.output_logs {
+                                            backtest_logs.push(event.to_string());
+                                        }
+
                                         logger.println(format!(
                                             "[{vfund_tranche}] {}",
                                             event.to_string().bright_yellow()
@@ -228,10 +249,11 @@ impl BacktestCommand {
                                                 let _ = fs::create_dir_all(output_dir);
                                             }
 
-                                            if let Err(err) = api::output_backtest_result(
+                                            if let Err(err) = api::output_backtest(
                                                 output_dir,
                                                 &vfund_tranche,
                                                 &backtest_result,
+                                                &backtest_logs,
                                             )
                                             .await
                                             {
@@ -312,6 +334,10 @@ impl BacktestCommand {
                                         ]);
                                     }
                                     BacktestEvent::Error(err) => {
+                                        if self.output_logs {
+                                            backtest_logs.push(err.to_string());
+                                        }
+
                                         errors.insert(vfund_tranche.to_string(), err);
                                     }
                                 }

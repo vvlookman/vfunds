@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
 };
 
@@ -290,10 +291,11 @@ pub async fn set_config(key: &str, value: &str) -> VfResult<Config> {
     Ok(config)
 }
 
-pub async fn output_backtest_result(
+pub async fn output_backtest(
     output_dir: &Path,
-    vfund_name: &str,
+    output_name: &str,
     backtest_result: &BacktestResult,
+    backtest_logs: &[String],
 ) -> VfResult<()> {
     {
         let result = BacktestOutputResult {
@@ -312,13 +314,13 @@ pub async fn output_backtest_result(
             version: VERSION.to_string(),
         };
 
-        let path = output_dir.join(format!("{vfund_name}.backtest.json"));
+        let path = output_dir.join(format!("{output_name}.backtest.json"));
         let file = fs::File::create(path)?;
         serde_json::to_writer_pretty(file, &result)?;
     }
 
     {
-        let path = output_dir.join(format!("{vfund_name}.values.csv"));
+        let path = output_dir.join(format!("{output_name}.values.csv"));
 
         let mut csv_writer = csv::Writer::from_path(&path)?;
         csv_writer.write_record(["date", "value"])?;
@@ -326,6 +328,26 @@ pub async fn output_backtest_result(
             csv_writer.write_record(&[date_to_str(date), format!("{value:.2}")])?;
         }
         csv_writer.flush()?;
+    }
+
+    {
+        let path = output_dir.join(format!("{output_name}.log"));
+
+        if backtest_logs.is_empty() {
+            if let Err(err) = fs::remove_file(path) {
+                if err.kind() != ErrorKind::NotFound {
+                    return Err(VfError::from(err));
+                }
+            }
+        } else {
+            let mut file = fs::File::create(path)?;
+
+            for log in backtest_logs.iter().rev() {
+                writeln!(file, "{log}")?;
+            }
+
+            file.flush()?;
+        }
     }
 
     Ok(())

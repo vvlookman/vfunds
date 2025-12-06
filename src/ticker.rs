@@ -173,25 +173,26 @@ impl TickersIndex {
 
 fn detect_ticker_exchange(symbol: &str) -> Option<String> {
     if symbol.len() == 6 {
-        if symbol.starts_with("60")
-            || symbol.starts_with("68")
+        if symbol.starts_with("11")
+            || symbol.starts_with("13")
+            || symbol.starts_with("50")
             || symbol.starts_with("51")
             || symbol.starts_with("58")
-            || symbol.starts_with("11")
-            || symbol.starts_with("13")
+            || symbol.starts_with("60")
+            || symbol.starts_with("68")
         {
             return Some("XSHG".to_string());
         } else if symbol.starts_with("00")
-            || symbol.starts_with("30")
+            || symbol.starts_with("12")
             || symbol.starts_with("15")
             || symbol.starts_with("16")
-            || symbol.starts_with("12")
+            || symbol.starts_with("30")
         {
             return Some("XSHE".to_string());
-        } else if symbol.starts_with("92")
+        } else if symbol.starts_with("43")
             || symbol.starts_with("83")
-            || symbol.starts_with("43")
             || symbol.starts_with("87")
+            || symbol.starts_with("92")
         {
             return Some("BSE".to_string());
         }
