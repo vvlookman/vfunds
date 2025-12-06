@@ -11,7 +11,7 @@ use smartcore::{
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
         KlineField,
@@ -245,7 +245,7 @@ impl RuleExecutor for Executor {
                     .iter()
                     .filter(|&(_, v)| *v > 0.0)
                     .skip(limit as usize)
-                    .take(limit as usize)
+                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,

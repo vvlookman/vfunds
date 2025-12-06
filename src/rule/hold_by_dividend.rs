@@ -2,10 +2,11 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate};
+use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -20,6 +21,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
+        datetime::date_to_str,
         financial::{calc_annualized_return_rate, calc_annualized_volatility},
         math::signed_powf,
         stats::quantile,
@@ -128,6 +130,12 @@ impl RuleExecutor for Executor {
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
+            debug!(
+                "[{}] [{rule_name}] Tickers({})={tickers_map:?}",
+                date_to_str(date),
+                tickers_map.len()
+            );
+
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
@@ -349,7 +357,7 @@ impl RuleExecutor for Executor {
 
             let top_indicators = indicators
                 .iter()
-                .take(3 * limit as usize)
+                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
                 .collect::<Vec<_>>();
 
             let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();

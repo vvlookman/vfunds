@@ -11,18 +11,6 @@ pub struct Ticker {
     pub r#type: TickerType,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
-pub struct TickersIndex {
-    pub provider: String,
-    pub symbol: String,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
-pub enum TickerType {
-    ConvBond,
-    Stock,
-}
-
 impl FromStr for Ticker {
     type Err = VfError;
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
@@ -127,6 +115,12 @@ impl Ticker {
     }
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+pub struct TickersIndex {
+    pub provider: String,
+    pub symbol: String,
+}
+
 impl FromStr for TickersIndex {
     type Err = VfError;
     fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
@@ -169,6 +163,12 @@ impl TickersIndex {
 
         self.to_string()
     }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize)]
+pub enum TickerType {
+    ConvBond,
+    Stock,
 }
 
 fn detect_ticker_exchange(symbol: &str) -> Option<String> {

@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -221,7 +221,7 @@ impl RuleExecutor for Executor {
 
             let top_indicators = indicators
                 .iter()
-                .take(3 * limit as usize)
+                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
                 .collect::<Vec<_>>();
 
             let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();

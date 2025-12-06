@@ -15,16 +15,6 @@ pub struct Rule {
     definition: RuleDefinition,
 }
 
-#[async_trait]
-pub trait RuleExecutor: Send {
-    async fn exec(
-        &mut self,
-        context: &mut FundBacktestContext,
-        date: &NaiveDate,
-        event_sender: &Sender<BacktestEvent>,
-    ) -> VfResult<()>;
-}
-
 impl Rule {
     pub fn definition(&self) -> &RuleDefinition {
         &self.definition
@@ -67,6 +57,16 @@ impl Rule {
     ) -> VfResult<()> {
         self.executor.exec(context, date, event_sender).await
     }
+}
+
+#[async_trait]
+pub trait RuleExecutor: Send {
+    async fn exec(
+        &mut self,
+        context: &mut FundBacktestContext,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()>;
 }
 
 mod hold;

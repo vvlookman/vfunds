@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -17,7 +17,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_volatility, calc_max_drawdown, calc_regression_momentum},
+        financial::{calc_annualized_volatility, calc_regression_momentum},
         math::signed_powf,
         stats::quantile,
     },
@@ -56,11 +56,6 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
-        let max_drawdown_quantile_upper = self
-            .options
-            .get("max_drawdown_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let volatility_quantile_upper = self
             .options
             .get("volatility_quantile_upper")
@@ -119,20 +114,17 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let max_drawdown = calc_max_drawdown(&prices);
                     let momentum = calc_regression_momentum(&prices);
                     let volatility = calc_annualized_volatility(&prices);
 
-                    if let Some(fail_factor_name) = match (max_drawdown, momentum, volatility) {
-                        (None, _, _) => Some("max_drawdown"),
-                        (_, None, _) => Some("momentum"),
-                        (_, _, None) => Some("volatility"),
-                        (Some(max_drawdown), Some(momentum), Some(volatility)) => {
+                    if let Some(fail_factor_name) = match (momentum, volatility) {
+                        (None, _) => Some("momentum"),
+                        (_, None) => Some("volatility"),
+                        (Some(momentum), Some(volatility)) => {
                             if momentum > 0.0 {
                                 tickers_factors.push((
                                     ticker.clone(),
                                     Factors {
-                                        max_drawdown,
                                         momentum,
                                         volatility,
                                     },
@@ -167,12 +159,6 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            let factors_max_drawdown = tickers_factors
-                .iter()
-                .map(|(_, f)| f.max_drawdown)
-                .collect::<Vec<f64>>();
-            let max_drawdown_upper = quantile(&factors_max_drawdown, max_drawdown_quantile_upper);
-
             let factors_volatility = tickers_factors
                 .iter()
                 .map(|(_, f)| f.volatility)
@@ -181,12 +167,6 @@ impl RuleExecutor for Executor {
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
-                if let Some(max_drawdown_upper) = max_drawdown_upper {
-                    if factors.max_drawdown > max_drawdown_upper {
-                        continue;
-                    }
-                }
-
                 if let Some(volatility_upper) = volatility_upper {
                     if factors.volatility > volatility_upper {
                         continue;
@@ -208,7 +188,7 @@ impl RuleExecutor for Executor {
                 &indicators
                     .iter()
                     .skip(limit as usize)
-                    .take(limit as usize)
+                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,
@@ -237,7 +217,6 @@ impl RuleExecutor for Executor {
 
 #[derive(Debug)]
 struct Factors {
-    max_drawdown: f64,
     momentum: f64,
     volatility: f64,
 }

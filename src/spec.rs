@@ -21,6 +21,12 @@ pub struct FofDefinition {
     pub search: HashMap<String, Vec<f64>>,
 }
 
+impl FofDefinition {
+    pub fn from_file(path: &Path) -> VfResult<Self> {
+        confy::load_path(path).map_err(Into::into)
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct FundDefinition {
     pub title: String,
@@ -37,82 +43,6 @@ pub struct FundDefinition {
 
     #[serde(default)]
     pub rules: Vec<RuleDefinition>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub struct Frequency {
-    pub days: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct FundOptions {
-    pub suspend_months: Vec<u32>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct RuleDefinition {
-    pub name: String,
-
-    #[serde(default)]
-    #[serde(deserialize_with = "deserialize_frequency")]
-    pub frequency: Frequency,
-
-    #[serde(default)]
-    pub frequency_take_profit_pct: u32,
-
-    #[serde(default)]
-    pub options: HashMap<String, serde_json::Value>,
-
-    #[serde(default)]
-    pub search: HashMap<String, serde_json::Value>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(untagged)]
-pub enum TickersDefinition {
-    Array(Vec<String>),
-    Map(HashMap<String, f64>),
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TickerSourceDefinition {
-    pub source: String,
-    pub source_type: TickerSourceType,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-#[serde(rename_all = "lowercase")]
-pub enum TickerSourceType {
-    Index,
-    Sector,
-}
-
-impl FromStr for Frequency {
-    type Err = ParseIntError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let days: u64 = if let Some(stripped) = s.strip_suffix("d") {
-            stripped.parse()?
-        } else if let Some(stripped) = s.strip_suffix("w") {
-            let weeks: u64 = stripped.parse()?;
-            7 * weeks
-        } else if let Some(stripped) = s.strip_suffix("m") {
-            let months: u64 = stripped.parse()?;
-            (30.4375 * months as f64).round() as u64
-        } else if let Some(stripped) = s.strip_suffix("y") {
-            let years: u64 = stripped.parse()?;
-            (365.25 * years as f64).round() as u64
-        } else {
-            0
-        };
-
-        Ok(Frequency { days })
-    }
-}
-
-impl FofDefinition {
-    pub fn from_file(path: &Path) -> VfResult<Self> {
-        confy::load_path(path).map_err(Into::into)
-    }
 }
 
 impl FundDefinition {
@@ -165,10 +95,80 @@ impl FundDefinition {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct Frequency {
+    pub days: u64,
+}
+
+impl FromStr for Frequency {
+    type Err = ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let days: u64 = if let Some(stripped) = s.strip_suffix("d") {
+            stripped.parse()?
+        } else if let Some(stripped) = s.strip_suffix("w") {
+            let weeks: u64 = stripped.parse()?;
+            7 * weeks
+        } else if let Some(stripped) = s.strip_suffix("m") {
+            let months: u64 = stripped.parse()?;
+            (30.4375 * months as f64).round() as u64
+        } else if let Some(stripped) = s.strip_suffix("y") {
+            let years: u64 = stripped.parse()?;
+            (365.25 * years as f64).round() as u64
+        } else {
+            0
+        };
+
+        Ok(Frequency { days })
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct FundOptions {
+    pub suspend_months: Vec<u32>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RuleDefinition {
+    pub name: String,
+
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_frequency")]
+    pub frequency: Frequency,
+
+    #[serde(default)]
+    pub frequency_take_profit_pct: u32,
+
+    #[serde(default)]
+    pub options: HashMap<String, serde_json::Value>,
+
+    #[serde(default)]
+    pub search: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum TickersDefinition {
+    Array(Vec<String>),
+    Map(HashMap<String, f64>),
+}
+
 impl Default for TickersDefinition {
     fn default() -> Self {
         TickersDefinition::Array(Vec::new())
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TickerSourceDefinition {
+    pub source: String,
+    pub source_type: TickerSourceType,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum TickerSourceType {
+    Index,
+    Sector,
 }
 
 fn deserialize_frequency<'de, D>(deserializer: D) -> Result<Frequency, D::Error>

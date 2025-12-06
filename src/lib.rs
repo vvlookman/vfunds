@@ -24,8 +24,58 @@ pub struct Config {
     pub tushare_token: String,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            qmt_api: "http://127.0.0.1:9000".to_string(),
+            tushare_api: "http://api.tushare.pro".to_string(),
+            tushare_token: "".to_string(),
+        }
+    }
+}
+
 /// Options that each item is String in <key>:<value> format
 pub struct VecOptions<'a>(pub &'a [String]);
+
+impl VecOptions<'_> {
+    pub fn get(&self, name: &str) -> Option<String> {
+        if let Some(option_text) = self.0.par_iter().find_any(|s| {
+            s.to_lowercase()
+                .starts_with(&format!("{}:", name.to_lowercase()))
+        }) {
+            let parts: Vec<_> = option_text.splitn(2, ':').collect();
+            parts.get(1).map(|s| s.trim().to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn into_map(self) -> HashMap<String, String> {
+        let mut map: HashMap<String, String> = HashMap::new();
+
+        for option_text in self.0 {
+            let parts: Vec<_> = option_text.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                map.insert(parts[0].to_string(), parts[1].trim().to_string());
+            }
+        }
+
+        map
+    }
+
+    pub fn into_tuples(self) -> Vec<(String, String)> {
+        let mut tuples: Vec<(String, String)> = vec![];
+
+        for option_text in self.0 {
+            let parts: Vec<_> = option_text.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                tuples.push((parts[0].to_string(), parts[1].trim().to_string()));
+            }
+        }
+
+        tuples
+    }
+}
 
 pub async fn init(workspace: Option<PathBuf>) {
     env_logger::Builder::new()
@@ -57,6 +107,7 @@ macro_rules! mod_name {
     };
 }
 
+const CANDIDATE_TICKER_RATIO: usize = 2;
 const POSITION_TOLERANCE: f64 = 0.02;
 const REQUIRED_DATA_COMPLETENESS: f64 = 0.9;
 
@@ -99,56 +150,6 @@ static PROGRESS_INTERVAL_SECS: u64 = 1;
 
 static WORKSPACE: LazyLock<RwLock<PathBuf>> =
     LazyLock::new(|| RwLock::new(env::current_dir().expect("Unable to get current directory!")));
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            qmt_api: "http://127.0.0.1:9000".to_string(),
-            tushare_api: "http://api.tushare.pro".to_string(),
-            tushare_token: "".to_string(),
-        }
-    }
-}
-
-impl VecOptions<'_> {
-    pub fn get(&self, name: &str) -> Option<String> {
-        if let Some(option_text) = self.0.par_iter().find_any(|s| {
-            s.to_lowercase()
-                .starts_with(&format!("{}:", name.to_lowercase()))
-        }) {
-            let parts: Vec<_> = option_text.splitn(2, ':').collect();
-            parts.get(1).map(|s| s.trim().to_string())
-        } else {
-            None
-        }
-    }
-
-    pub fn into_map(self) -> HashMap<String, String> {
-        let mut map: HashMap<String, String> = HashMap::new();
-
-        for option_text in self.0 {
-            let parts: Vec<_> = option_text.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                map.insert(parts[0].to_string(), parts[1].trim().to_string());
-            }
-        }
-
-        map
-    }
-
-    pub fn into_tuples(self) -> Vec<(String, String)> {
-        let mut tuples: Vec<(String, String)> = vec![];
-
-        for option_text in self.0 {
-            let parts: Vec<_> = option_text.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                tuples.push((parts[0].to_string(), parts[1].trim().to_string()));
-            }
-        }
-
-        tuples
-    }
-}
 
 #[cfg(test)]
 use ctor::ctor;

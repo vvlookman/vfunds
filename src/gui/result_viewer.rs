@@ -35,13 +35,6 @@ pub struct ResultViewer {
     warning_message: Option<String>,
 }
 
-type BacktestDailyValues = Vec<(NaiveDate, f64)>;
-
-enum LoadEvent {
-    Finished(Vec<(String, BacktestOutputResult, BacktestDailyValues)>),
-    Error(VfError),
-}
-
 impl ResultViewer {
     pub fn new(
         cc: &eframe::CreationContext,
@@ -347,6 +340,13 @@ impl eframe::App for ResultViewer {
         storage.set_string("show_zero", self.show_zero.to_string());
         storage.flush();
     }
+}
+
+type BacktestDailyValues = Vec<(NaiveDate, f64)>;
+
+enum LoadEvent {
+    Finished(Vec<(String, BacktestOutputResult, BacktestDailyValues)>),
+    Error(VfError),
 }
 
 fn str_to_color(s: &str) -> egui::Color32 {

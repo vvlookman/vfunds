@@ -34,6 +34,16 @@ pub struct Portfolio {
     pub positions: HashMap<Ticker, u64>,
 }
 
+impl Portfolio {
+    pub fn new(cash: f64) -> Self {
+        Self {
+            free_cash: cash,
+            reserved_cash: HashMap::new(),
+            positions: HashMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, strum::Display, strum::EnumIter, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum Prospect {
@@ -88,16 +98,6 @@ pub async fn get_ticker_title(ticker: &Ticker) -> String {
         format!("{ticker}({name})")
     } else {
         ticker.to_string()
-    }
-}
-
-impl Portfolio {
-    pub fn new(cash: f64) -> Self {
-        Self {
-            free_cash: cash,
-            reserved_cash: HashMap::new(),
-            positions: HashMap::new(),
-        }
     }
 }
 

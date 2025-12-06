@@ -6,7 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::bond::{
         ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail, fetch_conv_bonds,
@@ -191,7 +191,7 @@ impl RuleExecutor for Executor {
                 &indicators
                     .iter()
                     .skip(limit as usize)
-                    .take(limit as usize)
+                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,
