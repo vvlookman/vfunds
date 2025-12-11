@@ -19,7 +19,6 @@ use crate::{
             StockDetail, StockDividendAdjust, StockReportCapitalField, fetch_stock_detail,
             fetch_stock_kline, fetch_stock_report_capital,
         },
-        tool::{calc_stock_pb, calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
@@ -28,10 +27,7 @@ use crate::{
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
-        financial::{
-            calc_annualized_return_rate, calc_annualized_volatility, calc_max_drawdown,
-            calc_profit_factor, calc_regression_momentum, calc_sharpe_ratio,
-        },
+        financial::*,
         math::{normalize_zscore, signed_powf},
     },
 };
@@ -59,6 +55,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let bbands_multiplier = self
+            .options
+            .get("bbands_multiplier")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(2.0);
+        let bbands_period = self
+            .options
+            .get("bbands_period")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20);
         let limit = self
             .options
             .get("limit")
@@ -69,6 +75,11 @@ impl RuleExecutor for Executor {
             .get("metric_r2_threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8);
+        let rsi_period = self
+            .options
+            .get("rsi_period")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(14);
         let score_arr_weight = self
             .options
             .get("score_arr_weight")
@@ -172,12 +183,22 @@ impl RuleExecutor for Executor {
                             score_start_date,
                             step_trade_days as usize,
                             steps as usize,
+                            bbands_multiplier,
+                            bbands_period as usize,
+                            rsi_period as usize,
                         )
                         .await?;
 
-                        let test_factors: Vec<f64> =
-                            calc_factors(ticker, date, step_trade_days as usize, steps as usize)
-                                .await?;
+                        let test_factors: Vec<f64> = calc_factors(
+                            ticker,
+                            date,
+                            step_trade_days as usize,
+                            steps as usize,
+                            bbands_multiplier,
+                            bbands_period as usize,
+                            rsi_period as usize,
+                        )
+                        .await?;
 
                         let score_prices: Vec<f64> =
                             score_prices_with_date.iter().map(|&(_, v)| v).collect();
@@ -385,26 +406,11 @@ async fn calc_factors(
     end_date: &NaiveDate,
     step_trade_days: usize,
     steps: usize,
+    bbands_multiplier: f64,
+    bbands_period: usize,
+    rsi_period: usize,
 ) -> VfResult<Vec<f64>> {
     let mut factors: Vec<f64> = vec![];
-
-    if let Ok(Some(v)) = calc_stock_pb(ticker, end_date).await {
-        factors.push(v);
-    } else {
-        factors.push(f64::NAN);
-    }
-
-    if let Ok(Some(v)) = calc_stock_pe_ttm(ticker, end_date).await {
-        factors.push(v);
-    } else {
-        factors.push(f64::NAN);
-    }
-
-    if let Ok(Some(v)) = calc_stock_ps_ttm(ticker, end_date).await {
-        factors.push(v);
-    } else {
-        factors.push(f64::NAN);
-    }
 
     let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
     let report_capital = fetch_stock_report_capital(ticker).await?;
@@ -423,45 +429,40 @@ async fn calc_factors(
             .map(|&(_, v)| v)
             .collect();
 
-        factors.push(calc_annualized_return_rate(&prices).unwrap_or(f64::NAN));
-        factors.push(calc_annualized_volatility(&prices).unwrap_or(f64::NAN));
-        factors.push(calc_max_drawdown(&prices).unwrap_or(f64::NAN));
-        factors.push(calc_profit_factor(&prices).unwrap_or(f64::NAN));
-        factors.push(calc_regression_momentum(&prices).unwrap_or(f64::NAN));
-        factors.push(calc_sharpe_ratio(&prices, 0.0).unwrap_or(f64::NAN));
-        factors.push(calc_sharpe_ratio(&prices, 0.01).unwrap_or(f64::NAN));
-        factors.push(calc_sharpe_ratio(&prices, 0.02).unwrap_or(f64::NAN));
-
-        if let (Some((_, price)), Some((_, total_capital))) = (
-            kline.get_latest_value::<f64>(end_date, false, &KlineField::Close.to_string()),
-            report_capital.get_latest_value::<f64>(
+        let volumes: Vec<f64> = kline
+            .get_latest_values::<f64>(
                 end_date,
                 false,
-                &StockReportCapitalField::Total.to_string(),
-            ),
-        ) {
-            let market_cap = price * total_capital;
-            factors.push(market_cap);
-        } else {
-            factors.push(f64::NAN);
-        }
+                &KlineField::Volume.to_string(),
+                lookback_trade_days as u32,
+            )
+            .iter()
+            .map(|&(_, v)| v)
+            .collect();
+        let volumes_avg = volumes.iter().sum::<f64>() / volumes.len() as f64;
+
+        factors.push(prices.last().map(|x| x.ln()).unwrap_or(f64::NAN));
+        factors.push(volumes.last().map(|x| x / volumes_avg).unwrap_or(f64::NAN));
+        factors.push(calc_annualized_return_rate(&prices).unwrap_or(f64::NAN));
+        factors.push(calc_annualized_volatility(&prices).unwrap_or(f64::NAN));
+        factors.push(
+            calc_bollinger_band_position(&prices, bbands_period, bbands_multiplier)
+                .unwrap_or(f64::NAN),
+        );
+        factors.push(calc_regression_momentum(&prices).unwrap_or(f64::NAN));
+        factors.push(
+            calc_rsi(&prices, rsi_period)
+                .last()
+                .copied()
+                .unwrap_or(f64::NAN),
+        );
+        factors.push(calc_sharpe_ratio(&prices, 0.0).unwrap_or(f64::NAN));
 
         if let Some((_, circulating_capital)) = report_capital.get_latest_value::<f64>(
             end_date,
             false,
             &StockReportCapitalField::Circulating.to_string(),
         ) {
-            let volumes: Vec<f64> = kline
-                .get_latest_values::<f64>(
-                    end_date,
-                    false,
-                    &KlineField::Volume.to_string(),
-                    lookback_trade_days as u32,
-                )
-                .iter()
-                .map(|&(_, v)| v)
-                .collect();
-            let volumes_avg = volumes.iter().sum::<f64>() / volumes.len() as f64;
             let turnover_ratio = volumes_avg / circulating_capital;
             factors.push(turnover_ratio);
         } else {

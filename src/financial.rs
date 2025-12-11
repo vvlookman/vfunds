@@ -44,14 +44,6 @@ impl Portfolio {
     }
 }
 
-#[derive(Debug, PartialEq, strum::Display, strum::EnumIter, strum::EnumString)]
-#[strum(ascii_case_insensitive)]
-pub enum Prospect {
-    Bullish,
-    Bearish,
-    Neutral,
-}
-
 pub async fn get_ticker_price(
     ticker: &Ticker,
     date: &NaiveDate,

@@ -2,7 +2,6 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
-use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
@@ -17,7 +16,7 @@ use crate::{
     },
     spec::Frequency,
     ticker::Ticker,
-    utils::{datetime::date_to_str, math::signed_powf, stats::quantile},
+    utils::{math::signed_powf, stats::quantile},
 };
 
 pub struct Executor {
@@ -56,11 +55,6 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
-        let max_conversion_premium = self
-            .options
-            .get("max_conversion_premium")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let max_tenor_months = self
             .options
             .get("max_tenor_months")
@@ -76,6 +70,11 @@ impl RuleExecutor for Executor {
             .get("remain_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.2);
+        let straight_premium_quantile_upper = self
+            .options
+            .get("straight_premium_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let weight_exp = self
             .options
             .get("weight_exp")
@@ -93,8 +92,6 @@ impl RuleExecutor for Executor {
 
         let conv_bond_issues = fetch_conv_bonds(date, max_tenor_months as u32).await?;
         if !conv_bond_issues.is_empty() {
-            let date_str = date_to_str(date);
-
             let filter_analysis_date = *date - Days::new(7);
             let filter_expire_date = *date + Days::new(min_remaining_days.max(self.frequency.days));
 
@@ -104,7 +101,7 @@ impl RuleExecutor for Executor {
                 .collect::<Vec<_>>();
             let min_issue_size = quantile(&conv_bonds_issue_size, issue_size_quantile_lower);
 
-            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -136,7 +133,11 @@ impl RuleExecutor for Executor {
                     }
 
                     let daily = fetch_conv_bond_daily(ticker).await?;
-                    if let (Some((_, price)), Some((latest_date, conversion_premium))) = (
+                    if let (
+                        Some((latest_date, price)),
+                        Some((_, straight_premium)),
+                        Some((_, conversion_premium)),
+                    ) = (
                         daily.get_latest_value::<f64>(
                             date,
                             false,
@@ -145,21 +146,26 @@ impl RuleExecutor for Executor {
                         daily.get_latest_value::<f64>(
                             date,
                             false,
+                            &ConvBondDailyField::StraightPremium.to_string(),
+                        ),
+                        daily.get_latest_value::<f64>(
+                            date,
+                            false,
                             &ConvBondDailyField::ConversionPremium.to_string(),
                         ),
                     ) {
                         if price > 0.0
-                            && conversion_premium <= max_conversion_premium
+                            && straight_premium.is_finite()
+                            && conversion_premium < 0.0
                             && latest_date >= filter_analysis_date
                         {
-                            let indicator = 100.0 - conversion_premium;
-                            debug!(
-                                "[{date_str}] [{rule_name}] {ticker}={indicator:.4}(${price:.2})"
-                            );
-
-                            if indicator.is_finite() {
-                                indicators.push((ticker.clone(), indicator));
-                            }
+                            tickers_factors.push((
+                                ticker.clone(),
+                                Factors {
+                                    straight_premium,
+                                    conversion_premium,
+                                },
+                            ));
                         }
                     }
 
@@ -178,7 +184,25 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+            let factors_straight_premium = tickers_factors
+                .iter()
+                .map(|(_, f)| f.straight_premium)
+                .collect::<Vec<f64>>();
+            let straight_premium_upper =
+                quantile(&factors_straight_premium, straight_premium_quantile_upper);
+
+            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            for (ticker, factors) in tickers_factors {
+                if let Some(straight_premium_upper) = straight_premium_upper {
+                    if factors.straight_premium > straight_premium_upper {
+                        continue;
+                    }
+                }
+
+                indicators.push((ticker, 100.0 + factors.conversion_premium));
+            }
+            indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
             let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
 
@@ -211,4 +235,10 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    straight_premium: f64,
+    conversion_premium: f64,
 }

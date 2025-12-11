@@ -1,7 +1,8 @@
 use ta::{
     Next,
     indicators::{
-        ExponentialMovingAverage, MovingAverageConvergenceDivergence, RelativeStrengthIndex,
+        BollingerBands, ExponentialMovingAverage, MovingAverageConvergenceDivergence,
+        RelativeStrengthIndex,
     },
 };
 
@@ -42,6 +43,34 @@ pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
             if return_std.is_finite() {
                 return Some(return_std * (TRADE_DAYS_PER_YEAR).sqrt());
             }
+        }
+    }
+
+    None
+}
+
+pub fn calc_bollinger_band_position(
+    daily_values: &[f64],
+    period: usize,
+    bbands_multiplier: f64,
+) -> Option<f64> {
+    if daily_values.len() > 1 {
+        if let Ok(mut bb) = BollingerBands::new(period, bbands_multiplier) {
+            let mut price: f64 = 0.0;
+            let mut mid: f64 = 0.0;
+            let mut upper: f64 = 0.0;
+            let mut lower: f64 = 0.0;
+
+            for value in daily_values {
+                price = *value;
+
+                let out = bb.next(*value);
+                mid = out.average;
+                upper = out.upper;
+                lower = out.lower;
+            }
+
+            return Some((price - mid) / (upper - lower));
         }
     }
 
