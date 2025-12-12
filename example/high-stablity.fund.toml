@@ -16,7 +16,7 @@ factor_volatility_weight = 2
 limit = 3
 lookback_trade_days = 126
 skip_same_sector = false
-weight_exp = 0
+weight_method = "equal"
 
 [rules.search]
 # frequency = ["1m", "2m", "3m", "6m", "9m", "1y"]
@@ -26,4 +26,3 @@ weight_exp = 0
 # limit = [2, 3, 4, 5, 10]
 # lookback_trade_days = [21, 63, 126, 189, 252]
 # skip_same_sector = [true, false]
-# weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]

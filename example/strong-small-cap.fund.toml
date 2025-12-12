@@ -19,7 +19,7 @@ lookback_trade_days = 252
 skip_same_sector = false
 skip_st = true
 volatility_quantile_upper = 0.9
-weight_exp = 0
+weight_method = "equal"
 
 [rules.search]
 # frequency = ["15d", "1m", "2m", "3m"]
@@ -28,4 +28,3 @@ arr_quantile_lower = [0, 0.1, 0.2, 0.3]
 # lookback_trade_days = [63, 126, 189, 252, 378, 504]
 # skip_same_sector = [true, false]
 volatility_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-# weight_exp = [0, 0.25, 0.5, 1, 2, 4]

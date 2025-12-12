@@ -31,11 +31,11 @@ frequency = "1w"
 limit = 1
 lookback_trade_days = 250
 volatility_quantile_upper = 1
-weight_exp = 0
+weight_method = "equal"
 
 [rules.search]
 frequency = ["3d", "1w", "2w", "3w", "4w"]
 limit = [1, 2, 3, 4, 5]
 # lookback_trade_days = [125, 250, 500, 750]
 # volatility_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
-# weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]
+# weight_method = ["equal", "grad(2)", "grad(3)", "grad(4)", "grad(5)"]

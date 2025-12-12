@@ -15,7 +15,7 @@ lookback_years = 2
 min_trade_days = 126
 px = "pe"
 skip_same_sector = true
-weight_exp = 1
+weight_method = "equal"
 
 [rules.search]
 frequency = ["6m", "1y", "18m", "2y"]
@@ -24,4 +24,3 @@ lookback_years = [1, 2, 3]
 min_trade_days = [21, 63, 126]
 px = ["pe", "ps", "pb"]
 skip_same_sector = [true, false]
-weight_exp = [0, 0.25, 0.5, 1.0, 2.0, 4.0]

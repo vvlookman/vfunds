@@ -18,14 +18,13 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
         datetime::date_to_str,
         financial::{calc_annualized_return_rate, calc_ema},
-        math::signed_powf,
     },
 };
 
@@ -87,11 +86,11 @@ impl RuleExecutor for Executor {
             .get("regression_alpha")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let weight_exp = self
+        let weight_method = self
             .options
-            .get("weight_exp")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .get("weight_method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("equal");
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -231,15 +230,16 @@ impl RuleExecutor for Executor {
 
             let targets_indicator = indicators
                 .iter()
-                .filter(|&(_, v)| *v > 0.0)
+                .filter(|(_, v)| *v > 0.0)
                 .take(limit as usize)
+                .map(|(t, v)| (t.clone(), *v))
                 .collect::<Vec<_>>();
 
             rule_notify_indicators(
                 rule_name,
                 &targets_indicator
                     .iter()
-                    .map(|&(t, v)| (t.clone(), format!("{v:.4}")))
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 &indicators
                     .iter()
@@ -253,19 +253,8 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &targets_indicator {
-                if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((
-                        ticker.clone(),
-                        (*weight) * signed_powf(*indicator, weight_exp),
-                    ));
-                }
-            }
-
-            context
-                .rebalance(&targets_weight, date, event_sender)
-                .await?;
+            let weights = calc_weights(&targets_indicator, weight_method)?;
+            context.rebalance(&weights, date, event_sender).await?;
         }
 
         Ok(())

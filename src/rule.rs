@@ -1,10 +1,12 @@
+use std::str::FromStr;
+
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
     backtest::{BacktestEvent, FundBacktestContext},
-    error::VfResult,
+    error::{VfError, VfResult},
     financial::get_ticker_title,
     spec::RuleDefinition,
     ticker::Ticker,
@@ -81,6 +83,49 @@ mod hold_by_stablity;
 mod hold_by_trend;
 mod size_by_macd_crossover;
 mod size_by_valuation;
+
+enum WeightMethod {
+    Equal,
+    Grad(f64),
+}
+
+impl FromStr for WeightMethod {
+    type Err = VfError;
+    fn from_str(method_str: &str) -> Result<Self, Self::Err> {
+        let s = method_str.trim().to_lowercase();
+        if s == "equal" {
+            return Ok(WeightMethod::Equal);
+        } else if s.starts_with("grad(") && s.ends_with(')') {
+            let num_str = &s[5..s.len() - 1];
+            if let Ok(num) = num_str.parse::<f64>() {
+                return Ok(WeightMethod::Grad(num));
+            }
+        }
+
+        Err(VfError::Invalid {
+            code: "INVALID_WEIGHT_METHOD",
+            message: format!("Invalid weight method '{method_str}'"),
+        })
+    }
+}
+
+fn calc_weights(
+    tickers_indicator: &[(Ticker, f64)],
+    weight_method: &str,
+) -> VfResult<Vec<(Ticker, f64)>> {
+    let method = WeightMethod::from_str(weight_method)?;
+    Ok(match method {
+        WeightMethod::Equal => tickers_indicator
+            .iter()
+            .map(|(ticker, _)| (ticker.clone(), 1.0))
+            .collect(),
+        WeightMethod::Grad(num) => tickers_indicator
+            .iter()
+            .enumerate()
+            .map(|(i, (ticker, _))| (ticker.clone(), num.powi(-(i as i32))))
+            .collect(),
+    })
+}
 
 async fn rule_notify_calc_progress(
     rule_name: &str,

@@ -21,15 +21,11 @@ use crate::{
         },
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators,
     },
     ticker::Ticker,
-    utils::{
-        datetime::date_to_str,
-        financial::*,
-        math::{normalize_zscore, signed_powf},
-    },
+    utils::{datetime::date_to_str, financial::*, math::normalize_zscore},
 };
 
 pub struct Executor {
@@ -100,11 +96,11 @@ impl RuleExecutor for Executor {
             .get("steps")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let weight_exp = self
+        let weight_method = self
             .options
-            .get("weight_exp")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .get("weight_method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("equal");
         let xgboost_gamma = self
             .options
             .get("xgboost_gamma")
@@ -379,19 +375,8 @@ impl RuleExecutor for Executor {
                         )
                         .await;
 
-                        let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-                        for (ticker, indicator) in &targets_indicator {
-                            if let Some((weight, _)) = tickers_map.get(ticker) {
-                                targets_weight.push((
-                                    ticker.clone(),
-                                    (*weight) * signed_powf(*indicator, weight_exp),
-                                ));
-                            }
-                        }
-
-                        context
-                            .rebalance(&targets_weight, date, event_sender)
-                            .await?;
+                        let weights = calc_weights(&targets_indicator, weight_method)?;
+                        context.rebalance(&weights, date, event_sender).await?;
                     }
                 }
             }

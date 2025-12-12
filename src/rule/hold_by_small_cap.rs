@@ -16,13 +16,12 @@ use crate::{
         tool::calc_stock_market_cap,
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
         financial::{calc_annualized_return_rate, calc_annualized_volatility},
-        math::signed_powf,
         stats::quantile,
     },
 };
@@ -80,11 +79,11 @@ impl RuleExecutor for Executor {
             .get("volatility_quantile_upper")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let weight_exp = self
+        let weight_method = self
             .options
-            .get("weight_exp")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .get("weight_method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("equal");
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -272,19 +271,8 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &targets_indicator {
-                if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((
-                        ticker.clone(),
-                        (*weight) * signed_powf(*indicator, weight_exp),
-                    ));
-                }
-            }
-
-            context
-                .rebalance(&targets_weight, date, event_sender)
-                .await?;
+            let weights = calc_weights(&targets_indicator, weight_method)?;
+            context.rebalance(&weights, date, event_sender).await?;
         }
 
         Ok(())

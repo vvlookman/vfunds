@@ -13,7 +13,7 @@ pub struct Ticker {
 
 impl FromStr for Ticker {
     type Err = VfError;
-    fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
 
         let ticker = if is_ascii_digits(s) {
@@ -123,7 +123,7 @@ pub struct TickersIndex {
 
 impl FromStr for TickersIndex {
     type Err = VfError;
-    fn from_str(s: &str) -> Result<Self, <Self as FromStr>::Err> {
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
 
         if let Some((symbol, provider)) = s.rsplit_once('.') {

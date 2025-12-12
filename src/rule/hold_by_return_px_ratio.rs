@@ -13,14 +13,11 @@ use crate::{
         tool::{calc_stock_pb, calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
-    utils::{
-        financial::{TRADE_DAYS_PER_YEAR, calc_annualized_return_rate},
-        math::signed_powf,
-    },
+    utils::financial::{TRADE_DAYS_PER_YEAR, calc_annualized_return_rate},
 };
 
 pub struct Executor {
@@ -71,11 +68,11 @@ impl RuleExecutor for Executor {
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let weight_exp = self
+        let weight_method = self
             .options
-            .get("weight_exp")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .get("weight_method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("equal");
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -208,19 +205,8 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let mut targets_weight: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &targets_indicator {
-                if let Some((weight, _)) = tickers_map.get(ticker) {
-                    targets_weight.push((
-                        ticker.clone(),
-                        (*weight) * signed_powf(*indicator, weight_exp),
-                    ));
-                }
-            }
-
-            context
-                .rebalance(&targets_weight, date, event_sender)
-                .await?;
+            let weights = calc_weights(&targets_indicator, weight_method)?;
+            context.rebalance(&weights, date, event_sender).await?;
         }
 
         Ok(())

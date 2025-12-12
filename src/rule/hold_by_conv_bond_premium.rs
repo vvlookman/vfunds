@@ -11,12 +11,12 @@ use crate::{
         ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail, fetch_conv_bonds,
     },
     rule::{
-        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
+        BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators,
     },
     spec::Frequency,
     ticker::Ticker,
-    utils::{math::signed_powf, stats::quantile},
+    utils::stats::quantile,
 };
 
 pub struct Executor {
@@ -75,11 +75,11 @@ impl RuleExecutor for Executor {
             .get("straight_premium_quantile_upper")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let weight_exp = self
+        let weight_method = self
             .options
-            .get("weight_exp")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .get("weight_method")
+            .and_then(|v| v.as_str())
+            .unwrap_or("equal");
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -204,13 +204,17 @@ impl RuleExecutor for Executor {
             }
             indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
-            let targets_indicator = indicators.iter().take(limit as usize).collect::<Vec<_>>();
+            let targets_indicator = indicators
+                .iter()
+                .take(limit as usize)
+                .map(|(t, v)| (t.clone(), *v))
+                .collect::<Vec<_>>();
 
             rule_notify_indicators(
                 rule_name,
                 &targets_indicator
                     .iter()
-                    .map(|&(t, v)| (t.clone(), format!("{v:.4}")))
+                    .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 &indicators
                     .iter()
@@ -223,14 +227,8 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let targets_weight: Vec<(Ticker, f64)> = targets_indicator
-                .iter()
-                .map(|(ticker, indicator)| (ticker.clone(), signed_powf(*indicator, weight_exp)))
-                .collect();
-
-            context
-                .rebalance(&targets_weight, date, event_sender)
-                .await?;
+            let weights = calc_weights(&targets_indicator, weight_method)?;
+            context.rebalance(&weights, date, event_sender).await?;
         }
 
         Ok(())
