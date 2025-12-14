@@ -229,7 +229,7 @@ impl BacktestMetrics {
         let annualized_return_rate = calc_annualized_return_rate_by_start_end(
             options.init_cash,
             final_value,
-            (options.end_date - options.start_date).num_days() as u64 + 1,
+            trade_dates_value.len() as u64,
         );
         let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
         let max_drawdown = calc_max_drawdown(&daily_values);

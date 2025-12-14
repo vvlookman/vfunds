@@ -14,7 +14,7 @@ factor_market_cap_weight = 1
 factor_turnover_ratio_weight = 5
 factor_volatility_weight = 2
 limit = 3
-lookback_trade_days = 126
+lookback_trade_days = 125
 skip_same_sector = false
 weight_method = "equal"
 
@@ -24,5 +24,5 @@ weight_method = "equal"
 # factor_turnover_ratio_weight = [0, 1, 2, 3, 5]
 # factor_volatility_weight = [0, 1, 2, 3, 5]
 # limit = [2, 3, 4, 5, 10]
-# lookback_trade_days = [21, 63, 126, 189, 252]
+# lookback_trade_days = [21, 63, 125, 188, 250]
 # skip_same_sector = [true, false]
