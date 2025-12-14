@@ -25,17 +25,17 @@ tickers = [
 
 [[rules]]
 name = "hold_by_momentum"
-frequency = "1w"
+frequency = "2m"
 
 [rules.options]
 limit = 1
-lookback_trade_days = 250
+lookback_trade_days = 252
 volatility_quantile_upper = 1
 weight_method = "equal"
 
 [rules.search]
-frequency = ["3d", "1w", "2w", "3w", "4w"]
+frequency = ["1w", "2w", "1m", "2m", "3m", "4m"]
 limit = [1, 2, 3, 4, 5]
-# lookback_trade_days = [125, 250, 500, 750]
+# lookback_trade_days = [63, 126, 252, 378, 504]
 # volatility_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 # weight_method = ["equal", "grad(2)", "grad(3)", "grad(4)", "grad(5)"]

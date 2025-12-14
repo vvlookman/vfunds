@@ -17,7 +17,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_volatility, calc_regression_momentum},
+        financial::{calc_annualized_momentum, calc_annualized_volatility},
         stats::quantile,
     },
 };
@@ -113,7 +113,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let momentum = calc_regression_momentum(&prices);
+                    let momentum = calc_annualized_momentum(&prices);
                     let volatility = calc_annualized_volatility(&prices);
 
                     if let Some(fail_factor_name) = match (momentum, volatility) {

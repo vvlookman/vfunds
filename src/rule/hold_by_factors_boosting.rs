@@ -434,7 +434,7 @@ async fn calc_factors(
             calc_bollinger_band_position(&prices, bbands_period, bbands_multiplier)
                 .unwrap_or(f64::NAN),
         );
-        factors.push(calc_regression_momentum(&prices).unwrap_or(f64::NAN));
+        factors.push(calc_annualized_momentum(&prices).unwrap_or(f64::NAN));
         factors.push(
             calc_rsi(&prices, rsi_period)
                 .last()

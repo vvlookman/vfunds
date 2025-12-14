@@ -1,3 +1,11 @@
+use smartcore::{
+    linalg::basic::{arrays::Array, matrix::DenseMatrix},
+    linear::linear_regression::{
+        LinearRegression, LinearRegressionParameters, LinearRegressionSolverName,
+    },
+    metrics::r2,
+};
+
 pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     let n = values.len();
     let sum: f64 = values.iter().sum();
@@ -72,6 +80,30 @@ pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
     result
 }
 
+pub fn linear_regression(values: &[f64]) -> Option<(f64, f64)> {
+    let features: Vec<Vec<f64>> = (0..values.len()).map(|i| vec![i as f64]).collect();
+    if let Ok(x) = DenseMatrix::from_2d_array(
+        &features
+            .iter()
+            .map(|v| v.as_slice())
+            .collect::<Vec<&[f64]>>(),
+    ) {
+        let y: Vec<f64> = values.to_vec();
+        let parameters =
+            LinearRegressionParameters::default().with_solver(LinearRegressionSolverName::QR);
+        if let Ok(model) = LinearRegression::fit(&x, &y, parameters) {
+            let s = model.coefficients().get((0, 0));
+
+            if let Ok(y_pred) = model.predict(&x) {
+                let r2_score = r2(&y, &y_pred);
+                return Some((*s, r2_score));
+            }
+        }
+    }
+
+    None
+}
+
 pub fn normalize_zscore(values: &[f64]) -> Vec<f64> {
     let computed_values: Vec<f64> = values.iter().filter(|v| v.is_finite()).copied().collect();
     if computed_values.is_empty() {
@@ -130,6 +162,11 @@ mod tests {
         for (a, b) in sorted1.iter().zip(sorted2.iter()) {
             assert!((a - b).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn test_linear_regression() {
+        assert!((linear_regression(&vec![1.0, 2.0, 3.0]).unwrap().0 - 1.0).abs() < 1e-6);
     }
 
     #[test]

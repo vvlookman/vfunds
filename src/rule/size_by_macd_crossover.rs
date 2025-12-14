@@ -13,7 +13,7 @@ use crate::{
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
     utils::{
         financial::{calc_macd, calc_rsi},
-        stats::slope,
+        math::linear_regression,
     },
 };
 
@@ -109,9 +109,14 @@ impl RuleExecutor for Executor {
                     .rev()
                     .map(|v| v.2)
                     .collect();
-                let macd_slope = slope(&macd_hists).unwrap_or(0.0);
+                let (macd_slope, macd_slope_r2) =
+                    linear_regression(&macd_hists).unwrap_or((0.0, 0.0));
 
-                if macd_today.2 < 0.0 && macd_prev.2 > 0.0 && macd_slope < 0.0 && *rsi < rsi_low {
+                if macd_today.2 < 0.0
+                    && macd_prev.2 > 0.0
+                    && macd_slope * macd_slope_r2 < 0.0
+                    && *rsi < rsi_low
+                {
                     let ticker_title = get_ticker_title(&ticker).await;
 
                     rule_send_info(
@@ -161,9 +166,14 @@ impl RuleExecutor for Executor {
                     .rev()
                     .map(|v| v.2)
                     .collect();
-                let macd_slope = slope(&macd_hists).unwrap_or(0.0);
+                let (macd_slope, macd_slope_r2) =
+                    linear_regression(&macd_hists).unwrap_or((0.0, 0.0));
 
-                if macd_today.2 > 0.0 && macd_prev.2 < 0.0 && macd_slope > 0.0 && *rsi > rsi_high {
+                if macd_today.2 > 0.0
+                    && macd_prev.2 < 0.0
+                    && macd_slope * macd_slope_r2 > 0.0
+                    && *rsi > rsi_high
+                {
                     let ticker_title = get_ticker_title(&ticker).await;
 
                     rule_send_info(

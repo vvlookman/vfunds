@@ -6,10 +6,20 @@ use ta::{
     },
 };
 
-use crate::utils::{stats, stats::slope};
+use crate::utils::{math::linear_regression, stats};
 
 pub const DAYS_PER_YEAR: f64 = 365.2425;
 pub const TRADE_DAYS_PER_YEAR: f64 = 252.0;
+
+pub fn calc_annualized_momentum(daily_values: &[f64]) -> Option<f64> {
+    let ln_values: Vec<f64> = daily_values.iter().map(|v| v.ln()).collect();
+    if let Some((slope, r2)) = linear_regression(&ln_values) {
+        let arr = (slope * TRADE_DAYS_PER_YEAR).exp() - 1.0;
+        return Some(arr * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
+    }
+
+    None
+}
 
 pub fn calc_annualized_return_rate(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
@@ -128,11 +138,6 @@ pub fn calc_max_drawdown(values: &[f64]) -> Option<f64> {
     }
 
     None
-}
-
-pub fn calc_regression_momentum(daily_values: &[f64]) -> Option<f64> {
-    let ln_values: Vec<f64> = daily_values.iter().map(|&v| v.ln()).collect();
-    slope(&ln_values).map(|v| if v.is_finite() { Some(v) } else { None })?
 }
 
 pub fn calc_profit_factor(daily_values: &[f64]) -> Option<f64> {

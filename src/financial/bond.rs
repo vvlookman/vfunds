@@ -275,7 +275,7 @@ mod tests {
         let detail = fetch_conv_bond_detail(&ticker).await.unwrap();
 
         assert_eq!(detail.ticker.symbol, "110098");
-        assert_eq!(detail.title, "南药转债");
+        assert_eq!(detail.name, "南药转债");
     }
 
     #[tokio::test]
