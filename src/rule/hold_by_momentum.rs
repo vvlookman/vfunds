@@ -55,6 +55,11 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(21);
+        let regression_r2_adjust = self
+            .options
+            .get("regression_r2_adjust")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let volatility_quantile_upper = self
             .options
             .get("volatility_quantile_upper")
@@ -113,7 +118,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let momentum = calc_annualized_momentum(&prices);
+                    let momentum = calc_annualized_momentum(&prices, regression_r2_adjust);
                     let volatility = calc_annualized_volatility(&prices);
 
                     if let Some(fail_factor_name) = match (momentum, volatility) {

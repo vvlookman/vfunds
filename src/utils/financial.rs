@@ -10,11 +10,16 @@ use crate::utils::{math::linear_regression, stats};
 
 pub const TRADE_DAYS_PER_YEAR: f64 = 250.0;
 
-pub fn calc_annualized_momentum(daily_values: &[f64]) -> Option<f64> {
+pub fn calc_annualized_momentum(daily_values: &[f64], adjust_with_r2: bool) -> Option<f64> {
     let ln_values: Vec<f64> = daily_values.iter().map(|v| v.ln()).collect();
     if let Some((slope, r2)) = linear_regression(&ln_values) {
         let arr = (slope * TRADE_DAYS_PER_YEAR).exp() - 1.0;
-        return Some(arr * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
+
+        if adjust_with_r2 {
+            return Some(arr * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
+        } else {
+            return Some(arr);
+        }
     }
 
     None
