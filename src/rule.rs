@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{cmp::Ordering, str::FromStr};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -85,8 +85,10 @@ mod size_by_macd_crossover;
 mod size_by_valuation;
 
 enum WeightMethod {
-    Equal,
-    Grad(f64),
+    Equal,     // Equal weight
+    Grad(f64), // Assign weights with exponential decay in sequence
+    Nmax(f64), // Only retain tickers close to the maximum indicator
+    Nmin(f64), // Only retain tickers close to the minimum indicator
 }
 
 impl FromStr for WeightMethod {
@@ -99,6 +101,16 @@ impl FromStr for WeightMethod {
             let num_str = &s[5..s.len() - 1];
             if let Ok(num) = num_str.parse::<f64>() {
                 return Ok(WeightMethod::Grad(num));
+            }
+        } else if s.starts_with("nmax(") && s.ends_with(')') {
+            let num_str = &s[5..s.len() - 1];
+            if let Ok(num) = num_str.parse::<f64>() {
+                return Ok(WeightMethod::Nmax(num));
+            }
+        } else if s.starts_with("nmin(") && s.ends_with(')') {
+            let num_str = &s[5..s.len() - 1];
+            if let Ok(num) = num_str.parse::<f64>() {
+                return Ok(WeightMethod::Nmin(num));
             }
         }
 
@@ -124,6 +136,34 @@ fn calc_weights(
             .enumerate()
             .map(|(i, (ticker, _))| (ticker.clone(), num.powi(-(i as i32))))
             .collect(),
+        WeightMethod::Nmax(num) => {
+            let max = tickers_indicator
+                .iter()
+                .map(|(_, v)| *v)
+                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                .unwrap_or(f64::MIN);
+            let threshold = max * num;
+
+            tickers_indicator
+                .iter()
+                .filter(|(_, v)| *v >= threshold)
+                .map(|(ticker, _)| (ticker.clone(), 1.0))
+                .collect()
+        }
+        WeightMethod::Nmin(num) => {
+            let min = tickers_indicator
+                .iter()
+                .map(|(_, v)| *v)
+                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                .unwrap_or(f64::MAX);
+            let threshold = min * num;
+
+            tickers_indicator
+                .iter()
+                .filter(|(_, v)| *v <= threshold)
+                .map(|(ticker, _)| (ticker.clone(), 1.0))
+                .collect()
+        }
     })
 }
 

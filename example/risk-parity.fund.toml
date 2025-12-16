@@ -11,15 +11,15 @@ description = "根据风险平价理论对持有的股票、债券、黄金进�
 
 [[rules]]
 name = "hold_by_risk_parity"
-frequency = "1m"
+frequency = "3m"
 
 [rules.options]
-lookback_trade_days = 21
-max_weight_scale = 2
-min_weight_scale = 0.25
+lookback_trade_days = 125
+max_weight_scale = 4
+min_weight_scale = 0.5
 
 [rules.search]
-frequency = ["1m", "2m", "3m", "6m", "1y"]
+frequency = ["1m", "2m", "3m"]
 lookback_trade_days = [21, 42, 63, 125, 188, 250]
 max_weight_scale = [2, 4, 8, 16]
 min_weight_scale = [0, 0.125, 0.25, 0.5]

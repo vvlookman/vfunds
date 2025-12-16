@@ -110,12 +110,12 @@ impl FromStr for Frequency {
             7 * weeks
         } else if let Some(stripped) = s.strip_suffix("m") {
             let months: u64 = stripped.parse()?;
-            (30.4375 * months as f64).round() as u64
+            (30.43685 * months as f64).round() as u64
         } else if let Some(stripped) = s.strip_suffix("y") {
             let years: u64 = stripped.parse()?;
-            (365.25 * years as f64).round() as u64
+            (365.2422 * years as f64).round() as u64
         } else {
-            0
+            s.parse()?
         };
 
         Ok(Frequency { days })
