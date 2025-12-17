@@ -8,6 +8,7 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
+    filter::filter_market_cap::is_circulating_ratio_low,
     financial::{
         KlineField,
         stock::{
@@ -53,6 +54,11 @@ impl RuleExecutor for Executor {
         let arr_quantile_lower = self
             .options
             .get("arr_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let circulating_ratio_lower = self
+            .options
+            .get("circulating_ratio_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let div_allot_weight = self
@@ -144,6 +150,10 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     if context.portfolio.reserved_cash.contains_key(ticker) {
+                        continue;
+                    }
+
+                    if is_circulating_ratio_low(ticker, date, circulating_ratio_lower).await? {
                         continue;
                     }
 

@@ -837,8 +837,8 @@ impl FundBacktestContext<'_> {
                 positions_value.insert(ticker.clone(), *units as f64 * price);
             } else {
                 return Err(VfError::NoData {
-                    code: "PRICE_NOT_EXISTS",
-                    message: format!("Price of '{ticker}' not exists"),
+                    code: "NO_PRICE_DATA",
+                    message: format!("Price data of '{ticker}' not exists"),
                 });
             }
         }

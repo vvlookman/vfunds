@@ -115,6 +115,7 @@ mod backtest;
 mod cache;
 mod data;
 mod ds;
+mod filter;
 mod financial;
 mod market;
 mod rule;

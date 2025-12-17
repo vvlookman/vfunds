@@ -140,7 +140,7 @@ fn calc_weights(
             let max = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
-                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
                 .unwrap_or(f64::MIN);
             let threshold = max * num;
 
@@ -154,7 +154,7 @@ fn calc_weights(
             let min = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
-                .max_by(|a, b| a.partial_cmp(&b).unwrap_or(Ordering::Equal))
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
                 .unwrap_or(f64::MAX);
             let threshold = min * num;
 

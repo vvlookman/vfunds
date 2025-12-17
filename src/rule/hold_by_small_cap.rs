@@ -7,12 +7,10 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
+    filter::{filter_market_cap::is_circulating_ratio_low, filter_st::is_st},
     financial::{
         KlineField,
-        stock::{
-            StockDetail, StockDividendAdjust, fetch_st_stocks, fetch_stock_detail,
-            fetch_stock_kline,
-        },
+        stock::{StockDetail, StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
         tool::calc_stock_market_cap,
     },
     rule::{
@@ -54,6 +52,11 @@ impl RuleExecutor for Executor {
             .get("arr_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
+        let circulating_ratio_lower = self
+            .options
+            .get("circulating_ratio_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let limit = self
             .options
             .get("limit")
@@ -67,11 +70,6 @@ impl RuleExecutor for Executor {
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let skip_st = self
-            .options
-            .get("skip_st")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let volatility_quantile_upper = self
@@ -94,15 +92,7 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let mut tickers_map = context.fund_definition.all_tickers_map(date).await?;
-
-        if skip_st {
-            let st_tickers = fetch_st_stocks(date, 30).await.unwrap_or(vec![]);
-            for ticker in st_tickers {
-                tickers_map.remove(&ticker);
-            }
-        }
-
+        let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
@@ -113,6 +103,14 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     if context.portfolio.reserved_cash.contains_key(ticker) {
+                        continue;
+                    }
+
+                    if is_st(ticker, date, 30).await? {
+                        continue;
+                    }
+
+                    if is_circulating_ratio_low(ticker, date, circulating_ratio_lower).await? {
                         continue;
                     }
 
