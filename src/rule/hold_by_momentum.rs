@@ -17,7 +17,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_momentum, calc_annualized_volatility},
+        financial::{calc_annualized_momentum, calc_annualized_volatility, calc_ema},
         stats::quantile,
     },
 };
@@ -54,7 +54,17 @@ impl RuleExecutor for Executor {
             .options
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
-            .unwrap_or(21);
+            .unwrap_or(20);
+        let ma_period = self
+            .options
+            .get("ma_period")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(20);
+        let momentum_lower = self
+            .options
+            .get("momentum_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let regression_r2_adjust = self
             .options
             .get("regression_r2_adjust")
@@ -125,14 +135,27 @@ impl RuleExecutor for Executor {
                         (None, _) => Some("momentum"),
                         (_, None) => Some("volatility"),
                         (Some(momentum), Some(volatility)) => {
-                            if momentum > 0.0 {
-                                tickers_factors.push((
-                                    ticker.clone(),
-                                    Factors {
-                                        momentum,
-                                        volatility,
-                                    },
-                                ));
+                            if momentum > momentum_lower {
+                                let ma_check = if ma_period > 0 {
+                                    let ma = calc_ema(&prices, ma_period as usize);
+                                    if let (Some(ma), Some(price)) = (ma.last(), prices.last()) {
+                                        price > ma
+                                    } else {
+                                        false
+                                    }
+                                } else {
+                                    true
+                                };
+
+                                if ma_check {
+                                    tickers_factors.push((
+                                        ticker.clone(),
+                                        Factors {
+                                            momentum,
+                                            volatility,
+                                        },
+                                    ));
+                                }
                             }
 
                             None
