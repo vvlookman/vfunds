@@ -85,10 +85,10 @@ mod size_by_macd_crossover;
 mod size_by_valuation;
 
 enum WeightMethod {
-    Equal,     // Equal weight
-    Grad(f64), // Assign weights with exponential decay in sequence
-    Nmax(f64), // Only retain tickers close to the maximum indicator
-    Nmin(f64), // Only retain tickers close to the minimum indicator
+    Equal,          // Equal weight
+    FilterMax(f64), // Only retain tickers close to the maximum indicator
+    FilterMin(f64), // Only retain tickers close to the minimum indicator
+    Grad(f64),      // Assign weights with exponential decay in sequence
 }
 
 impl FromStr for WeightMethod {
@@ -97,20 +97,20 @@ impl FromStr for WeightMethod {
         let s = method_str.trim().to_lowercase();
         if s == "equal" {
             return Ok(WeightMethod::Equal);
+        } else if s.starts_with("filter_max(") && s.ends_with(')') {
+            let num_str = &s[11..s.len() - 1];
+            if let Ok(num) = num_str.parse::<f64>() {
+                return Ok(WeightMethod::FilterMax(num));
+            }
+        } else if s.starts_with("filter_min(") && s.ends_with(')') {
+            let num_str = &s[11..s.len() - 1];
+            if let Ok(num) = num_str.parse::<f64>() {
+                return Ok(WeightMethod::FilterMin(num));
+            }
         } else if s.starts_with("grad(") && s.ends_with(')') {
             let num_str = &s[5..s.len() - 1];
             if let Ok(num) = num_str.parse::<f64>() {
                 return Ok(WeightMethod::Grad(num));
-            }
-        } else if s.starts_with("nmax(") && s.ends_with(')') {
-            let num_str = &s[5..s.len() - 1];
-            if let Ok(num) = num_str.parse::<f64>() {
-                return Ok(WeightMethod::Nmax(num));
-            }
-        } else if s.starts_with("nmin(") && s.ends_with(')') {
-            let num_str = &s[5..s.len() - 1];
-            if let Ok(num) = num_str.parse::<f64>() {
-                return Ok(WeightMethod::Nmin(num));
             }
         }
 
@@ -131,12 +131,7 @@ fn calc_weights(
             .iter()
             .map(|(ticker, _)| (ticker.clone(), 1.0))
             .collect(),
-        WeightMethod::Grad(num) => tickers_indicator
-            .iter()
-            .enumerate()
-            .map(|(i, (ticker, _))| (ticker.clone(), num.powi(-(i as i32))))
-            .collect(),
-        WeightMethod::Nmax(num) => {
+        WeightMethod::FilterMax(num) => {
             let max = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
@@ -150,7 +145,7 @@ fn calc_weights(
                 .map(|(ticker, _)| (ticker.clone(), 1.0))
                 .collect()
         }
-        WeightMethod::Nmin(num) => {
+        WeightMethod::FilterMin(num) => {
             let min = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
@@ -164,6 +159,11 @@ fn calc_weights(
                 .map(|(ticker, _)| (ticker.clone(), 1.0))
                 .collect()
         }
+        WeightMethod::Grad(num) => tickers_indicator
+            .iter()
+            .enumerate()
+            .map(|(i, (ticker, _))| (ticker.clone(), num.powi(-(i as i32))))
+            .collect(),
     })
 }
 

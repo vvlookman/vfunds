@@ -32,7 +32,7 @@ ma_period = 0
 momentum_lower = 0
 regression_r2_adjust = false
 volatility_quantile_upper = 1
-weight_method = "nmax(0.7)"
+weight_method = "filter_max(0.7)"
 
 [rules.search]
 frequency = ["2w", "3w", "1m", "2m", "3m", "4m"]
@@ -42,4 +42,11 @@ ma_period = [0, 63, 125, 250]
 momentum_lower = [-0.2, -0.1, 0, 0.1, 0.2]
 # regression_r2_adjust = [true, false]
 # volatility_quantile_upper = [0.8, 0.85, 0.9, 0.95, 1]
-# weight_method = ["equal", "nmax(0.9)", "nmax(0.8)", "nmax(0.7)", "nmax(0.6)"]
+# weight_method = [
+#   "equal",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+# ]
