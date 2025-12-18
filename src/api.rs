@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::NaiveDate;
+use chrono::{Local, NaiveDate};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -341,6 +341,10 @@ pub async fn output_backtest(
             }
         } else {
             let mut file = fs::File::create(path)?;
+
+            let now = Local::now().format("%Y-%m-%d %H:%M:%S %z");
+            writeln!(file, "### {now} ###")?;
+            writeln!(file)?;
 
             for log in backtest_logs.iter().rev() {
                 writeln!(file, "{log}")?;
