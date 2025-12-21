@@ -8,16 +8,17 @@ use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
-        KlineField,
-        stock::{StockDetail, StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
-        tool::{calc_stock_pb, calc_stock_pe_ttm, calc_stock_ps_ttm},
+        stock::{
+            StockDetail, StockReportPershareField, fetch_stock_detail, fetch_stock_report_pershare,
+        },
+        tool::calc_stock_pb,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
     },
     ticker::Ticker,
-    utils::financial::{TRADE_DAYS_PER_YEAR, calc_annualized_return_rate},
+    utils::stats::quantile,
 };
 
 pub struct Executor {
@@ -48,21 +49,16 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_years = self
+        let pb_quantile_upper = self
             .options
-            .get("lookback_years")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let min_trade_days = self
+            .get("pb_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let roe_quantile_lower = self
             .options
-            .get("min_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(126);
-        let px = self
-            .options
-            .get("px")
-            .and_then(|v| v.as_str())
-            .unwrap_or("pe");
+            .get("roe_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -77,15 +73,11 @@ impl RuleExecutor for Executor {
             if limit == 0 {
                 panic!("limit must > 0");
             }
-
-            if lookback_years == 0 {
-                panic!("lookback_years must > 0");
-            }
         }
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
                 let mut calc_count: usize = 0;
@@ -97,41 +89,33 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
-                    let prices: Vec<f64> = kline
-                        .get_latest_values::<f64>(
-                            date,
-                            false,
-                            &KlineField::Close.to_string(),
-                            (lookback_years as f64 * TRADE_DAYS_PER_YEAR) as u32,
-                        )
-                        .iter()
-                        .map(|&(_, v)| v)
-                        .collect();
-                    if prices.len() < min_trade_days as usize {
-                        continue;
-                    }
+                    let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
-                    if let Some(arr) = calc_annualized_return_rate(&prices) {
-                        if arr > 0.0 {
-                            if let Some(px) = match px {
-                                "pb" => calc_stock_pb(ticker, date).await?,
-                                "ps" => calc_stock_ps_ttm(ticker, date).await?,
-                                _ => calc_stock_pe_ttm(ticker, date).await?,
-                            } {
-                                if px > 0.0 {
-                                    indicators.push((ticker.clone(), arr / px));
-                                }
-                            } else {
-                                rule_send_warning(
-                                    rule_name,
-                                    &format!("[Px Calculation Failed] {ticker}"),
-                                    date,
-                                    event_sender,
-                                )
-                                .await;
+                    let roe = report_pershare.get_latest_value::<f64>(
+                        date,
+                        false,
+                        &StockReportPershareField::Roe.to_string(),
+                    );
+                    let pb = calc_stock_pb(ticker, date).await?;
+
+                    if let Some(fail_factor_name) = match (roe, pb) {
+                        (None, _) => Some("roe"),
+                        (_, None) => Some("pb"),
+                        (Some((_, roe)), Some(pb)) => {
+                            if roe > 0.0 && pb > 0.0 {
+                                tickers_factors.push((ticker.clone(), Factors { roe, pb }));
                             }
+
+                            None
                         }
+                    } {
+                        rule_send_warning(
+                            rule_name,
+                            &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
+                            date,
+                            event_sender,
+                        )
+                        .await;
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
@@ -150,6 +134,34 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
+            let factors_roe = tickers_factors
+                .iter()
+                .map(|(_, f)| f.roe)
+                .collect::<Vec<f64>>();
+            let roe_lower = quantile(&factors_roe, roe_quantile_lower);
+
+            let factors_pb = tickers_factors
+                .iter()
+                .map(|(_, f)| f.pb)
+                .collect::<Vec<f64>>();
+            let pb_upper = quantile(&factors_pb, pb_quantile_upper);
+
+            let mut indicators: Vec<(Ticker, f64)> = vec![];
+            for (ticker, factors) in tickers_factors {
+                if let Some(roe_lower) = roe_lower {
+                    if factors.roe < roe_lower {
+                        continue;
+                    }
+                }
+
+                if let Some(pb_upper) = pb_upper {
+                    if factors.pb > pb_upper {
+                        continue;
+                    }
+                }
+
+                indicators.push((ticker, factors.roe / factors.pb));
+            }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
             let top_indicators = indicators
@@ -211,4 +223,10 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    roe: f64,
+    pb: f64,
 }

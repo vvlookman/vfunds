@@ -1,0 +1,44 @@
+title = "高ROE低PB"
+description = "持有红利指数中高ROE低PB的股票"
+
+[[ticker_sources]]
+source = "000015.CSI" # 上证红利
+source_type = "index"
+
+[[ticker_sources]]
+source = "000922.CSI" # 中证红利100
+source_type = "index"
+
+[[ticker_sources]]
+source = "399324.CNI" # 深证红利
+source_type = "index"
+
+[[ticker_sources]]
+source = "399411.CNI" # 国证红利100
+source_type = "index"
+
+[[rules]]
+name = "hold_by_roe_pb"
+frequency = "6m"
+
+[rules.options]
+limit = 3
+pb_quantile_upper = 0.4
+roe_quantile_lower = 0.8
+skip_same_sector = false
+weight_method = "equal"
+
+[rules.search]
+# frequency = ["6m", "1y", "18m", "2y", "3y"]
+limit = [2, 3, 4, 5, 10]
+# pb_quantile_upper = [0.2, 0.4, 0.6, 0.8, 1]
+# roe_quantile_lower = [0, 0.2, 0.4, 0.6, 0.8]
+# skip_same_sector = [true, false]
+# weight_method = [
+#   "equal",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+# ]
