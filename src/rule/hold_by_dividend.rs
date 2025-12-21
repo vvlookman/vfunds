@@ -8,7 +8,7 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
-    filter::filter_market_cap::is_circulating_ratio_low,
+    filter::filter_st::is_st,
     financial::{
         KlineField,
         stock::{
@@ -54,11 +54,6 @@ impl RuleExecutor for Executor {
         let arr_quantile_lower = self
             .options
             .get("arr_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let circulating_ratio_lower = self
-            .options
-            .get("circulating_ratio_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let div_allot_weight = self
@@ -153,7 +148,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if is_circulating_ratio_low(ticker, date, circulating_ratio_lower).await? {
+                    if is_st(ticker, date, 30).await? {
                         continue;
                     }
 
@@ -243,7 +238,7 @@ impl RuleExecutor for Executor {
                                         let mut dividend = interest;
 
                                         if div_allot_weight != 0.0 && allot_num > 0.0 {
-                                            if let Some((_, price_no_adjust)) = kline_no_adjust
+                                            if let Some((_, price_div)) = kline_no_adjust
                                                 .get_latest_value::<f64>(
                                                     &div_date,
                                                     true,
@@ -251,25 +246,19 @@ impl RuleExecutor for Executor {
                                                 )
                                             {
                                                 dividend += allot_num
-                                                    * (price_no_adjust - allot_price)
-                                                    * div_allot_weight;
+                                                    * (price_div - allot_price)
+                                                    * div_allot_weight
+                                                    * price_no_adjust
+                                                    / price_div;
                                             }
                                         }
 
                                         if div_bonus_gift_weight != 0.0
                                             && (stock_bonus > 0.0 || stock_gift > 0.0)
                                         {
-                                            if let Some((_, price_no_adjust)) = kline_no_adjust
-                                                .get_latest_value::<f64>(
-                                                    &div_date,
-                                                    true,
-                                                    &KlineField::Close.to_string(),
-                                                )
-                                            {
-                                                dividend += (stock_bonus + stock_gift)
-                                                    * price_no_adjust
-                                                    * div_bonus_gift_weight;
-                                            }
+                                            dividend += (stock_bonus + stock_gift)
+                                                * price_no_adjust
+                                                * div_bonus_gift_weight;
                                         }
 
                                         dividends.push(dividend);
