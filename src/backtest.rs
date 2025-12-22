@@ -15,7 +15,7 @@ use tokio::sync::{
 };
 
 use crate::{
-    CHANNEL_BUFFER_DEFAULT, POSITION_TOLERANCE, WORKSPACE,
+    CHANNEL_BUFFER_DEFAULT, WORKSPACE,
     error::*,
     financial::{Portfolio, get_ticker_price, get_ticker_title, tool::fetch_trade_dates},
     rule::Rule,
@@ -274,6 +274,8 @@ pub struct BacktestOptions {
     pub pessimistic: bool,
     #[serde(default)]
     pub buffer_ratio: f64,
+    #[serde(default)]
+    pub position_tolerance: f64,
 
     pub risk_free_rate: f64,
     pub stamp_duty_rate: f64,
@@ -876,7 +878,7 @@ impl FundBacktestContext<'_> {
             let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
             let position_value = position_units as f64 * price;
             let delta_value = ticker_value - position_value;
-            if delta_value.abs() < position_value * POSITION_TOLERANCE {
+            if delta_value.abs() < position_value * self.options.position_tolerance {
                 return Ok(());
             }
 

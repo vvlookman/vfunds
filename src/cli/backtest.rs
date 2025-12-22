@@ -61,9 +61,17 @@ pub struct BacktestCommand {
         short = 'b',
         long = "buffer",
         default_value_t = 0.002,
-        help = "The buffer ratio, the default value is 0.002"
+        help = "Buffer ratio is the cash ratio reserved for transaction fees and other contingencies, the default value is 0.002"
     )]
     buffer_ratio: f64,
+
+    #[arg(
+        short = 't',
+        long = "tolerance",
+        default_value_t = 0.05,
+        help = "Position tolerance avoids extra costs from minor rebalancing, the default value is 0.05"
+    )]
+    position_tolerance: f64,
 
     #[arg(
         short = 'r',
@@ -188,6 +196,7 @@ impl BacktestCommand {
             end_date: self.end_date.unwrap_or(Local::now().date_naive()),
             pessimistic: self.pessimistic,
             buffer_ratio: self.buffer_ratio,
+            position_tolerance: self.position_tolerance,
             risk_free_rate: self.risk_free_rate,
             stamp_duty_rate: self.stamp_duty_rate,
             stamp_duty_min_fee: self.stamp_duty_min_fee,

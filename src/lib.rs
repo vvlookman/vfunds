@@ -108,7 +108,6 @@ macro_rules! mod_name {
 }
 
 const CANDIDATE_TICKER_RATIO: usize = 2;
-const POSITION_TOLERANCE: f64 = 0.02;
 const REQUIRED_DATA_COMPLETENESS: f64 = 0.9;
 
 mod backtest;
