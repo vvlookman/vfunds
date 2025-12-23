@@ -324,7 +324,7 @@ impl eframe::App for ResultViewer {
                                 for points in self.plot_orders_points.values() {
                                     plot_ui.points(
                                         Points::new("", points.clone())
-                                            .radius(1.6)
+                                            .radius(2.0)
                                             .color(egui::Color32::GOLD),
                                     );
                                 }
@@ -350,21 +350,18 @@ enum LoadEvent {
 }
 
 fn str_to_color(s: &str) -> egui::Color32 {
-    const GOLD_START: f64 = 30.0;
-    const GOLD_END: f64 = 120.0;
+    // Avoid GOLD color
+    const HUE_START: f64 = 70.0;
+    const HUE_END: f64 = 380.0;
 
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     s.hash(&mut hasher);
     let hash = hasher.finish();
 
     let hue_raw = (hash % 360) as f64;
-    let hue = if hue_raw >= GOLD_START {
-        hue_raw + GOLD_END - GOLD_START
-    } else {
-        hue_raw
-    } % 360.0;
+    let hue = HUE_START + (HUE_END - HUE_START) * (hue_raw / 360.0);
 
-    let (r, g, b) = hsv::hsv_to_rgb(hue, 0.8, 1.0);
+    let (r, g, b) = hsv::hsv_to_rgb(hue % 360.0, 0.8, 1.0);
 
     egui::Color32::from_rgb(r, g, b)
 }
