@@ -271,7 +271,7 @@ impl eframe::App for ResultViewer {
                     Plot::new("plot")
                         .label_formatter(|name, point| {
                             if name.is_empty() {
-                                "".to_string()
+                                format!("{:.2}%", point.y)
                             } else {
                                 format!(
                                     "[{}] {} {:.2}%",
