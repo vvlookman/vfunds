@@ -194,7 +194,7 @@ pub struct BacktestMetrics {
 }
 
 impl BacktestMetrics {
-    pub fn from_daily_data(
+    pub fn from_daily_value(
         trade_dates_value: &Vec<(NaiveDate, f64)>,
         options: &BacktestOptions,
     ) -> Self {
@@ -1132,7 +1132,7 @@ pub async fn backtest_fof(
                     options: options.clone(),
                     final_cash,
                     final_positions_value,
-                    metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
+                    metrics: BacktestMetrics::from_daily_value(&trade_dates_value, options),
                     order_dates,
                     trade_dates_value,
                 })
@@ -1176,13 +1176,72 @@ pub async fn backtest_fof_cv(
     tokio::spawn(async move {
         let process = async || -> VfResult<()> {
             if cv_options.cv_search {
+                let workspace = { WORKSPACE.read().await.clone() };
+
+                let mut funds_result_map: HashMap<NaiveDate, Vec<(usize, BacktestResult)>> =
+                    HashMap::new();
+                for (fund_index, (fund_name, _)) in fof_definition.funds.iter().enumerate() {
+                    let fund_path = workspace.join(format!("{fund_name}.fund.toml"));
+                    let fund_definition = FundDefinition::from_file(&fund_path)?;
+
+                    for cv_start_date in &cv_options.cv_start_dates {
+                        let mut fund_options = cv_options.base_options.clone();
+                        fund_options.start_date = *cv_start_date;
+
+                        let fund_backtest_start = Instant::now();
+                        let mut stream = backtest_fund(&fund_definition, &fund_options).await?;
+
+                        let _ = sender
+                            .send(BacktestEvent::Toast {
+                                title: format!(
+                                    "[{fund_name}] [{}~{}]",
+                                    date_to_str(cv_start_date),
+                                    date_to_str(&cv_options.base_options.end_date),
+                                ),
+                                message: "...".to_string(),
+                                date: None,
+                            })
+                            .await;
+
+                        while let Some(event) = stream.next().await {
+                            match event {
+                                BacktestEvent::Result(fund_result) => {
+                                    let result = (fund_index, *fund_result);
+                                    funds_result_map
+                                        .entry(*cv_start_date)
+                                        .and_modify(|v| {
+                                            v.push(result.clone());
+                                        })
+                                        .or_insert(vec![result]);
+                                }
+                                BacktestEvent::Error(_) => {
+                                    let _ = sender.send(event).await;
+                                }
+                                _ => {}
+                            }
+                        }
+
+                        let _ = sender
+                            .send(BacktestEvent::Info {
+                                title: format!(
+                                    "[{fund_name}] [{}~{}] {}",
+                                    date_to_str(&fund_options.start_date),
+                                    date_to_str(&fund_options.end_date),
+                                    secs_to_human_str(fund_backtest_start.elapsed().as_secs())
+                                ),
+                                message: "".to_string(),
+                                date: None,
+                            })
+                            .await;
+                    }
+                }
+
                 let all_search: Vec<(String, Vec<f64>)> = fof_definition
                     .search
                     .clone()
                     .into_iter()
                     .collect::<Vec<_>>();
 
-                let cv_start = Instant::now();
                 let cv_count = all_search.iter().map(|(_, v)| v.len()).product::<usize>()
                     * cv_options.cv_start_dates.len();
 
@@ -1200,60 +1259,107 @@ pub async fn backtest_fof_cv(
                     .multi_cartesian_product()
                     .enumerate()
                 {
-                    let mut fof_definition = fof_definition.clone();
-                    for (fund_name, weight) in &funds_weight {
-                        fof_definition.funds.insert(fund_name.clone(), *weight);
-                    }
-
                     let mut cv_results: HashMap<NaiveDate, BacktestResult> = HashMap::new();
                     for (j, cv_start_date) in cv_options.cv_start_dates.iter().enumerate() {
                         let mut options = cv_options.base_options.clone();
                         options.start_date = *cv_start_date;
 
-                        let mut stream = backtest_fof(&fof_definition, &options).await?;
+                        let _ = sender
+                            .send(BacktestEvent::Toast {
+                                title: format!(
+                                    "[CV {}/{cv_count}] [{}~{}]",
+                                    i * cv_options.cv_start_dates.len() + j + 1,
+                                    date_to_str(&options.start_date),
+                                    date_to_str(&options.end_date),
+                                ),
+                                message: "...".to_string(),
+                                date: None,
+                            })
+                            .await;
 
-                        while let Some(event) = stream.next().await {
-                            match event {
-                                BacktestEvent::Result(result) => {
-                                    let _ = sender
-                                        .send(BacktestEvent::Info {
-                                            title: format!(
-                                                "[CV {}/{cv_count} {}] [{}~{}]",
-                                                i * cv_options.cv_start_dates.len() + j + 1,
-                                                secs_to_human_str(cv_start.elapsed().as_secs()),
-                                                date_to_str(&options.start_date),
-                                                date_to_str(&options.end_date),
-                                            ),
-                                            message: format!(
-                                                "[ARR={} Sharpe={}] {}",
-                                                result
-                                                    .metrics
-                                                    .annualized_return_rate
-                                                    .map(|v| format!("{:.2}%", v * 100.0))
-                                                    .unwrap_or("-".to_string()),
-                                                result
-                                                    .metrics
-                                                    .sharpe_ratio
-                                                    .map(|v| format!("{v:.3}"))
-                                                    .unwrap_or("-".to_string()),
-                                                funds_weight
-                                                    .iter()
-                                                    .map(|(fund_name, weight)| {
-                                                        format!("{fund_name}={weight}")
-                                                    })
-                                                    .collect::<Vec<_>>()
-                                                    .join(" ")
-                                            ),
-                                            date: None,
-                                        })
-                                        .await;
-
-                                    cv_results.insert(*cv_start_date, *result);
-                                }
-                                _ => {
-                                    let _ = sender.send(event).await;
+                        if let Some(funds_result) = funds_result_map.get(cv_start_date) {
+                            let mut funds_result_weight: Vec<(BacktestResult, f64)> = vec![];
+                            for (fund_name, weight) in &funds_weight {
+                                if let Some(fund_index) = fof_definition
+                                    .funds
+                                    .iter()
+                                    .position(|(name, _)| name == fund_name)
+                                {
+                                    funds_result_weight
+                                        .push((funds_result[fund_index].1.clone(), *weight));
                                 }
                             }
+                            let funds_weight_sum: f64 =
+                                funds_result_weight.iter().map(|(_, weight)| *weight).sum();
+                            if funds_weight_sum <= 0.0 {
+                                continue;
+                            }
+
+                            let final_cash: f64 = funds_result_weight
+                                .iter()
+                                .map(|(result, weight)| {
+                                    result.final_cash * weight / funds_weight_sum
+                                })
+                                .sum();
+
+                            let mut final_positions_value: HashMap<Ticker, f64> = HashMap::new();
+                            for (fund_result, weight) in funds_result_weight.iter() {
+                                for (ticker, value) in &fund_result.final_positions_value {
+                                    let weighed_value = value * weight / funds_weight_sum;
+                                    final_positions_value
+                                        .entry(ticker.clone())
+                                        .and_modify(|v| *v += weighed_value)
+                                        .or_insert(weighed_value);
+                                }
+                            }
+
+                            let order_dates: Vec<NaiveDate> = {
+                                let mut order_dates_set: HashSet<NaiveDate> = HashSet::new();
+
+                                for (fund_result, _) in funds_result_weight.iter() {
+                                    for date in &fund_result.order_dates {
+                                        order_dates_set.insert(*date);
+                                    }
+                                }
+
+                                let mut order_dates: Vec<NaiveDate> =
+                                    order_dates_set.into_iter().collect();
+                                order_dates.sort_unstable();
+
+                                order_dates
+                            };
+
+                            let trade_dates_value: Vec<(NaiveDate, f64)> = {
+                                let mut trade_dates_value_map: BTreeMap<NaiveDate, f64> =
+                                    BTreeMap::new();
+
+                                for (fund_result, weight) in funds_result_weight.iter() {
+                                    for (date, value) in &fund_result.trade_dates_value {
+                                        let weighed_value = value * weight / funds_weight_sum;
+                                        trade_dates_value_map
+                                            .entry(*date)
+                                            .and_modify(|v| *v += weighed_value)
+                                            .or_insert(weighed_value);
+                                    }
+                                }
+
+                                trade_dates_value_map.into_iter().collect::<_>()
+                            };
+
+                            let cv_result = BacktestResult {
+                                title: Some(fof_definition.title.clone()),
+                                options: options.clone(),
+                                final_cash,
+                                final_positions_value,
+                                metrics: BacktestMetrics::from_daily_value(
+                                    &trade_dates_value,
+                                    &options,
+                                ),
+                                order_dates,
+                                trade_dates_value,
+                            };
+
+                            cv_results.insert(*cv_start_date, cv_result);
                         }
                     }
 
@@ -1608,7 +1714,7 @@ pub async fn backtest_fund(
                 options: options.clone(),
                 final_cash,
                 final_positions_value,
-                metrics: BacktestMetrics::from_daily_data(&trade_dates_value, options),
+                metrics: BacktestMetrics::from_daily_value(&trade_dates_value, options),
                 order_dates,
                 trade_dates_value,
             })
