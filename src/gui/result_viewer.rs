@@ -28,10 +28,10 @@ pub struct ResultViewer {
     plot_end_date: Option<NaiveDate>,
     plot_values_points: HashMap<String, Vec<[f64; 2]>>,
     plot_orders_points: HashMap<String, Vec<[f64; 2]>>,
-    plot_zero_points: Vec<[f64; 2]>,
+    plot_cost_line_points: Vec<[f64; 2]>,
 
     show_orders: bool,
-    show_zero: bool,
+    show_cost_line: bool,
     warning_message: Option<String>,
 }
 
@@ -87,10 +87,10 @@ impl ResultViewer {
             plot_end_date: None,
             plot_values_points: HashMap::new(),
             plot_orders_points: HashMap::new(),
-            plot_zero_points: vec![],
+            plot_cost_line_points: vec![],
 
             show_orders: true,
-            show_zero: false,
+            show_cost_line: false,
             warning_message: None,
         };
 
@@ -101,9 +101,9 @@ impl ResultViewer {
                 }
             }
 
-            if let Some(show_zero_str) = storage.get_string("show_zero") {
-                if let Ok(v) = show_zero_str.parse() {
-                    app.show_zero = v;
+            if let Some(show_cost_line_str) = storage.get_string("show_cost_line") {
+                if let Ok(v) = show_cost_line_str.parse() {
+                    app.show_cost_line = v;
                 }
             }
         }
@@ -116,7 +116,7 @@ impl ResultViewer {
 
         self.plot_values_points.clear();
         self.plot_orders_points.clear();
-        self.plot_zero_points.clear();
+        self.plot_cost_line_points.clear();
 
         let result_dir = self.result_dir.clone();
         let vfund_names = self.vfund_names.clone();
@@ -183,7 +183,7 @@ impl ResultViewer {
                             .insert(vfund_name.to_string(), orders_points);
                     }
 
-                    self.plot_zero_points = vec![
+                    self.plot_cost_line_points = vec![
                         [0.0, 100.0],
                         [(plot_end_date - plot_start_date).num_days() as f64, 100.0],
                     ];
@@ -219,7 +219,7 @@ impl eframe::App for ResultViewer {
                 .show_inside(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         ui.checkbox(&mut self.show_orders, "Show Orders");
-                        ui.checkbox(&mut self.show_zero, "Show Zero");
+                        ui.checkbox(&mut self.show_cost_line, "Show Cost Line");
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button("↻ Refresh").clicked() {
@@ -292,9 +292,9 @@ impl eframe::App for ResultViewer {
                         .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
                         .legend(Legend::default().position(Corner::LeftTop))
                         .show(ui, |plot_ui| {
-                            if self.show_zero {
+                            if self.show_cost_line {
                                 plot_ui.line(
-                                    Line::new("", self.plot_zero_points.clone())
+                                    Line::new("", self.plot_cost_line_points.clone())
                                         .width(0.8)
                                         .style(LineStyle::dashed_dense())
                                         .color(egui::Color32::DARK_GRAY),
@@ -337,7 +337,7 @@ impl eframe::App for ResultViewer {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("show_orders", self.show_orders.to_string());
-        storage.set_string("show_zero", self.show_zero.to_string());
+        storage.set_string("show_cost_line", self.show_cost_line.to_string());
         storage.flush();
     }
 }
