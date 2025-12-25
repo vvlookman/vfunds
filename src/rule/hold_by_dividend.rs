@@ -66,6 +66,11 @@ impl RuleExecutor for Executor {
             .get("div_bonus_gift_weight")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
+        let div_weight_yearly_decay = self
+            .options
+            .get("div_weight_yearly_decay")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let limit = self
             .options
             .get("limit")
@@ -261,7 +266,9 @@ impl RuleExecutor for Executor {
                                                 * div_bonus_gift_weight;
                                         }
 
-                                        dividends.push(dividend);
+                                        let weighted_dividend = dividend
+                                            * (1.0 - div_weight_yearly_decay).powi(i as i32);
+                                        dividends.push(weighted_dividend);
                                     }
                                 }
                             }
