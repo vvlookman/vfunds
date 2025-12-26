@@ -211,10 +211,10 @@ impl RuleExecutor for Executor {
                 }
 
                 if factors.market_cap > 0.0 {
-                    indicators.push((ticker, 1e8 / factors.market_cap));
+                    indicators.push((ticker, factors.market_cap / 1e8));
                 }
             }
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+            indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
 
             let top_indicators = indicators
                 .iter()
