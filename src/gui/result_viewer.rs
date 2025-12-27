@@ -29,6 +29,7 @@ pub struct ResultViewer {
     plot_values_points: HashMap<String, Vec<[f64; 2]>>,
     plot_orders_points: HashMap<String, Vec<[f64; 2]>>,
     plot_cost_line_points: Vec<[f64; 2]>,
+    hovered_plot_id: Option<egui::Id>,
 
     show_orders: bool,
     show_cost_line: bool,
@@ -88,9 +89,10 @@ impl ResultViewer {
             plot_values_points: HashMap::new(),
             plot_orders_points: HashMap::new(),
             plot_cost_line_points: vec![],
+            hovered_plot_id: None,
 
             show_orders: true,
-            show_cost_line: false,
+            show_cost_line: true,
             warning_message: None,
         };
 
@@ -268,68 +270,79 @@ impl eframe::App for ResultViewer {
                         .filter_map(|(_, output_result, _)| output_result.metrics.last_trade_date)
                         .max();
 
-                    Plot::new("plot")
-                        .label_formatter(|name, point| {
-                            if name.is_empty() {
-                                format!("{:.2}%", point.y)
-                            } else {
-                                format!(
-                                    "[{}] {} {:.2}%",
-                                    date_to_str(&(plot_start_date + Days::new(point.x as u64))),
-                                    name,
-                                    point.y
-                                )
-                            }
-                        })
-                        .allow_scroll(false)
-                        .show_grid(false)
-                        .x_axis_label(format!(
-                            "[{}] ~ [{}]",
-                            date_to_str(&plot_start_date),
-                            last_trade_date.map_or("-".to_string(), |date| date_to_str(&date))
-                        ))
-                        .x_axis_formatter(|_, _| "".to_string())
-                        .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
-                        .legend(Legend::default().position(Corner::LeftTop))
-                        .show(ui, |plot_ui| {
-                            if self.show_cost_line {
-                                plot_ui.line(
-                                    Line::new("", self.plot_cost_line_points.clone())
-                                        .width(0.8)
-                                        .style(LineStyle::dashed_dense())
-                                        .color(egui::Color32::DARK_GRAY),
-                                );
-                            }
-
-                            for (vfund_name, points) in &self.plot_values_points {
-                                let name = if let Some(Some(title)) = self
-                                    .results
-                                    .iter()
-                                    .find(|(n, _, _)| n == vfund_name)
-                                    .map(|(_, output_result, _)| output_result.title.clone())
-                                {
-                                    &format!("{vfund_name} [{title}]")
+                    let plot_response =
+                        Plot::new("plot")
+                            .label_formatter(|name, point| {
+                                if name.is_empty() {
+                                    format!("{:.2}%", point.y)
                                 } else {
-                                    vfund_name
-                                };
-
-                                plot_ui.line(
-                                    Line::new(name, points.clone())
-                                        .width(1.2)
-                                        .color(str_to_color(vfund_name)),
-                                );
-                            }
-
-                            if self.show_orders {
-                                for points in self.plot_orders_points.values() {
-                                    plot_ui.points(
-                                        Points::new("", points.clone())
-                                            .radius(2.0)
-                                            .color(egui::Color32::GOLD),
+                                    format!(
+                                        "[{}] {} {:.2}%",
+                                        date_to_str(&(plot_start_date + Days::new(point.x as u64))),
+                                        name,
+                                        point.y
+                                    )
+                                }
+                            })
+                            .allow_scroll(false)
+                            .show_grid(false)
+                            .x_axis_label(format!(
+                                "[{}] ~ [{}]",
+                                date_to_str(&plot_start_date),
+                                last_trade_date.map_or("-".to_string(), |date| date_to_str(&date))
+                            ))
+                            .x_axis_formatter(|_, _| "".to_string())
+                            .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
+                            .legend(Legend::default().position(Corner::LeftTop))
+                            .show(ui, |plot_ui| {
+                                if self.show_cost_line {
+                                    plot_ui.line(
+                                        Line::new("", self.plot_cost_line_points.clone())
+                                            .width(0.8)
+                                            .style(LineStyle::dashed_dense())
+                                            .color(egui::Color32::DARK_GRAY),
                                     );
                                 }
-                            }
-                        });
+
+                                for (vfund_name, points) in &self.plot_values_points {
+                                    let name = if let Some(Some(title)) =
+                                        self.results.iter().find(|(n, _, _)| n == vfund_name).map(
+                                            |(_, output_result, _)| output_result.title.clone(),
+                                        ) {
+                                        &format!("{vfund_name} [{title}]")
+                                    } else {
+                                        vfund_name
+                                    };
+
+                                    let plot_id = format!("{vfund_name}/line");
+
+                                    let (width, color) =
+                                        if self.hovered_plot_id == Some(plot_id.clone().into()) {
+                                            (1.2, egui::Color32::GOLD)
+                                        } else {
+                                            (0.8, str_to_color(vfund_name))
+                                        };
+
+                                    plot_ui.line(
+                                        Line::new(name, points.clone())
+                                            .id(plot_id)
+                                            .width(width)
+                                            .color(color),
+                                    );
+                                }
+
+                                if self.show_orders {
+                                    for points in self.plot_orders_points.values() {
+                                        plot_ui.points(
+                                            Points::new("", points.clone())
+                                                .radius(2.0)
+                                                .color(egui::Color32::GOLD),
+                                        );
+                                    }
+                                }
+                            });
+
+                    self.hovered_plot_id = plot_response.hovered_plot_item;
                 }
             });
         });
