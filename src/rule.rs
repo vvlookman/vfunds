@@ -38,8 +38,11 @@ impl Rule {
             "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
             "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
-            "size_by_macd_crossover" => Box::new(size_by_macd_crossover::Executor::new(definition)),
-            "size_by_valuation" => Box::new(size_by_valuation::Executor::new(definition)),
+            "resize_by_macd_crossover" => {
+                Box::new(resize_by_macd_crossover::Executor::new(definition))
+            }
+            "resize_by_spike" => Box::new(resize_by_spike::Executor::new(definition)),
+            "resize_by_valuation" => Box::new(resize_by_valuation::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
         };
 
@@ -79,8 +82,9 @@ mod hold_by_roe_pb;
 mod hold_by_small_cap;
 mod hold_by_stablity;
 mod hold_by_trend;
-mod size_by_macd_crossover;
-mod size_by_valuation;
+mod resize_by_macd_crossover;
+mod resize_by_spike;
+mod resize_by_valuation;
 
 enum WeightMethod {
     Equal,          // Equal weight

@@ -17,7 +17,9 @@ use tokio::sync::{
 use crate::{
     CHANNEL_BUFFER_DEFAULT, WORKSPACE,
     error::*,
-    financial::{Portfolio, get_ticker_price, get_ticker_title, tool::fetch_trade_dates},
+    financial::{
+        Portfolio, PriceType, get_ticker_price, get_ticker_title, tool::fetch_trade_dates,
+    },
     rule::Rule,
     spec::{FofDefinition, Frequency, FundDefinition, TickerSourceDefinition},
     ticker::Ticker,
@@ -386,7 +388,6 @@ impl FundBacktestContext<'_> {
 
                 let total_deploy_cash = self.portfolio.free_cash - buffer_cash;
                 if total_deploy_cash > 0.0 {
-                    let price_bias = if self.options.pessimistic { 1 } else { 0 };
                     for (ticker, units) in &self.portfolio.positions.clone() {
                         if let Some((weight, _)) = position_tickers_map.get(ticker) {
                             let deploy_cash = total_deploy_cash * weight / position_weight_sum;
@@ -394,19 +395,27 @@ impl FundBacktestContext<'_> {
                             let fee = calc_buy_fee(deploy_cash, self.options);
                             let delta_value = deploy_cash - fee;
                             if delta_value > 0.0 {
-                                if let Some(price) =
-                                    get_ticker_price(ticker, date, true, price_bias).await?
+                                let buy_price_type = if self.options.pessimistic {
+                                    PriceType::High
+                                } else {
+                                    PriceType::Mid
+                                };
+                                if let Some(buy_price) =
+                                    get_ticker_price(ticker, date, true, &buy_price_type).await?
                                 {
-                                    let ticker_value = *units as f64 * price + delta_value;
+                                    let target_units =
+                                        *units + (delta_value / buy_price).floor() as u64;
 
-                                    self.scale_position(
-                                        ticker,
-                                        ticker_value,
-                                        price_bias,
-                                        date,
-                                        event_sender,
-                                    )
-                                    .await?;
+                                    self.position_scale(ticker, target_units, date, event_sender)
+                                        .await?;
+                                } else {
+                                    let _ = event_sender
+                                        .send(BacktestEvent::Warning {
+                                            title: "".to_string(),
+                                            message: format!("Price of '{ticker}' not exists"),
+                                            date: Some(*date),
+                                        })
+                                        .await;
                                 }
                             }
                         }
@@ -432,31 +441,44 @@ impl FundBacktestContext<'_> {
                 .map(|(_, (weight, _))| *weight)
                 .sum::<f64>();
             if position_weight_sum > 0.0 {
-                let price_bias = if self.options.pessimistic { -1 } else { 0 };
                 for (ticker, units) in &self.portfolio.positions.clone() {
                     if let Some((weight, _)) = position_tickers_map.get(ticker) {
                         let raise_cash = cash * weight / position_weight_sum;
                         let fee = calc_sell_fee(raise_cash, self.options);
                         let delta_value = raise_cash + fee;
 
-                        if let Some(price) =
-                            get_ticker_price(ticker, date, true, price_bias).await?
+                        let sell_price_type = if self.options.pessimistic {
+                            PriceType::Low
+                        } else {
+                            PriceType::Mid
+                        };
+                        if let Some(sell_price) =
+                            get_ticker_price(ticker, date, true, &sell_price_type).await?
                         {
-                            let sell_units = (delta_value / price).ceil().min(*units as f64);
-                            let ticker_value = (*units as f64 - sell_units) * price;
-                            if ticker_value > 0.0 {
-                                self.scale_position(
+                            let sell_units =
+                                (delta_value / sell_price).ceil().min(*units as f64) as u64;
+                            let target_units = *units - sell_units;
+                            if target_units > 0 {
+                                self.position_scale(ticker, target_units, date, event_sender)
+                                    .await?;
+                            } else {
+                                self.position_close_with_price_type(
                                     ticker,
-                                    ticker_value,
-                                    price_bias,
+                                    false,
+                                    &sell_price_type,
                                     date,
                                     event_sender,
                                 )
                                 .await?;
-                            } else {
-                                self.position_close(ticker, false, date, event_sender)
-                                    .await?;
                             }
+                        } else {
+                            let _ = event_sender
+                                .send(BacktestEvent::Warning {
+                                    title: "".to_string(),
+                                    message: format!("Price of '{ticker}' not exists"),
+                                    date: Some(*date),
+                                })
+                                .await;
                         }
                     }
                 }
@@ -495,7 +517,7 @@ impl FundBacktestContext<'_> {
             let reserved_tickers: Vec<_> = self.portfolio.reserved_cash.keys().cloned().collect();
             for ticker in &reserved_tickers {
                 if !targets_weight.iter().any(|(t, _)| t == ticker) {
-                    if let Some(cash) = self.portfolio.reserved_cash.get(ticker) {
+                    if let Some((cash, _)) = self.portfolio.reserved_cash.get(ticker) {
                         self.portfolio.free_cash += cash;
                     }
 
@@ -513,55 +535,37 @@ impl FundBacktestContext<'_> {
             if targets_weight_sum > 0.0 {
                 let total_value = self.calc_total_value(date).await?;
 
-                let mut nodata_count = 0;
                 for (ticker, weight) in &targets_weight {
                     let ticker_value = total_value * (1.0 - self.options.buffer_ratio) * weight
                         / targets_weight_sum;
-                    if let Some(current_reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
+                    if let Some((current_reserved_cash, _)) =
+                        self.portfolio.reserved_cash.get(ticker)
+                    {
                         let delta_cash = ticker_value - current_reserved_cash;
 
                         self.portfolio.free_cash -= delta_cash;
                         self.portfolio
                             .reserved_cash
                             .entry(ticker.clone())
-                            .and_modify(|v| *v += delta_cash);
+                            .and_modify(|v| v.0 += delta_cash);
                     } else {
-                        if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
-                            let mut price_bias = 0;
-                            if self.options.pessimistic {
-                                if let Some(current_ticker_value) = self
-                                    .portfolio
-                                    .positions
-                                    .get(ticker)
-                                    .map(|units| *units as f64 * price)
-                                {
-                                    if ticker_value > current_ticker_value {
-                                        price_bias = 1;
-                                    } else if ticker_value < current_ticker_value {
-                                        price_bias = -1;
-                                    }
-                                }
-                            }
+                        if let Some(price) =
+                            get_ticker_price(ticker, date, true, &PriceType::Close).await?
+                        {
+                            let target_units = (ticker_value / price).floor() as u64;
 
-                            self.scale_position(
-                                ticker,
-                                ticker_value,
-                                price_bias,
-                                date,
-                                event_sender,
-                            )
-                            .await?;
+                            self.position_scale(ticker, target_units, date, event_sender)
+                                .await?;
                         } else {
-                            nodata_count += 1;
+                            let _ = event_sender
+                                .send(BacktestEvent::Warning {
+                                    title: "".to_string(),
+                                    message: format!("Price of '{ticker}' not exists"),
+                                    date: Some(*date),
+                                })
+                                .await;
                         }
                     }
-                }
-
-                if nodata_count == targets_weight.len() {
-                    return Err(VfError::NoData {
-                        code: "NO_ANY_TICKET_DATA",
-                        message: "All tickers have no data".to_string(),
-                    });
                 }
             }
         }
@@ -581,105 +585,6 @@ impl FundBacktestContext<'_> {
         Ok(())
     }
 
-    pub async fn position_open(
-        &mut self,
-        ticker: &Ticker,
-        cash: f64,
-        date: &NaiveDate,
-        event_sender: &Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        let price_bias = if self.options.pessimistic { 1 } else { 0 };
-        if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
-            let delta_value = cash - calc_buy_fee(cash, self.options);
-
-            let buy_units = (delta_value / price).floor();
-            if buy_units > 0.0 {
-                let value = buy_units * price;
-                let fee = calc_buy_fee(value, self.options);
-                let amount = value + fee;
-
-                self.portfolio.free_cash -= amount;
-                self.portfolio
-                    .positions
-                    .entry(ticker.clone())
-                    .and_modify(|v| *v += buy_units as u64)
-                    .or_insert(buy_units as u64);
-
-                self.order_dates.insert(*date);
-                let _ = event_sender
-                    .send(BacktestEvent::Buy {
-                        title: get_ticker_title(ticker).await,
-                        amount,
-                        price,
-                        units: buy_units as u64,
-                        date: *date,
-                    })
-                    .await;
-            }
-        } else {
-            let _ = event_sender
-                .send(BacktestEvent::Warning {
-                    title: "".to_string(),
-                    message: format!("Price of '{ticker}' not exists"),
-                    date: Some(*date),
-                })
-                .await;
-        }
-
-        Ok(())
-    }
-
-    pub async fn position_open_reserved(
-        &mut self,
-        ticker: &Ticker,
-        date: &NaiveDate,
-        event_sender: &Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        if let Some(reserved_cash) = self.portfolio.reserved_cash.get(ticker) {
-            let price_bias = if self.options.pessimistic { 1 } else { 0 };
-            if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
-                let delta_value = reserved_cash - calc_buy_fee(*reserved_cash, self.options);
-
-                let buy_units = (delta_value / price).floor();
-                if buy_units > 0.0 {
-                    let value = buy_units * price;
-                    let fee = calc_buy_fee(value, self.options);
-                    let amount = value + fee;
-
-                    self.portfolio.free_cash += *reserved_cash - amount;
-                    self.portfolio.reserved_cash.remove(ticker);
-
-                    self.portfolio
-                        .positions
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v += buy_units as u64)
-                        .or_insert(buy_units as u64);
-
-                    self.order_dates.insert(*date);
-                    let _ = event_sender
-                        .send(BacktestEvent::Buy {
-                            title: get_ticker_title(ticker).await,
-                            amount,
-                            price,
-                            units: buy_units as u64,
-                            date: *date,
-                        })
-                        .await;
-                }
-            } else {
-                let _ = event_sender
-                    .send(BacktestEvent::Warning {
-                        title: "".to_string(),
-                        message: format!("Price of '{ticker}' not exists"),
-                        date: Some(*date),
-                    })
-                    .await;
-            }
-        }
-
-        Ok(())
-    }
-
     pub async fn position_close(
         &mut self,
         ticker: &Ticker,
@@ -687,12 +592,35 @@ impl FundBacktestContext<'_> {
         date: &NaiveDate,
         event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<f64> {
+        let sell_price_type = if self.options.pessimistic {
+            PriceType::Low
+        } else {
+            PriceType::Mid
+        };
+
+        self.position_close_with_price_type(
+            ticker,
+            make_reserved,
+            &sell_price_type,
+            date,
+            event_sender,
+        )
+        .await
+    }
+
+    pub async fn position_close_with_price_type(
+        &mut self,
+        ticker: &Ticker,
+        make_reserved: bool,
+        sell_price_type: &PriceType,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<f64> {
         let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
         let cash = if position_units > 0 {
-            let price_bias = if self.options.pessimistic { -1 } else { 0 };
-            if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
+            if let Some(sell_price) = get_ticker_price(ticker, date, true, sell_price_type).await? {
                 let sell_units = position_units as f64;
-                let value = sell_units * price;
+                let value = sell_units * sell_price;
                 let fee = calc_sell_fee(value, self.options);
                 let amount = value - fee;
 
@@ -700,8 +628,8 @@ impl FundBacktestContext<'_> {
                     self.portfolio
                         .reserved_cash
                         .entry(ticker.clone())
-                        .and_modify(|v| *v += amount)
-                        .or_insert(amount);
+                        .and_modify(|v| v.0 += amount)
+                        .or_insert((amount, *date));
                 } else {
                     self.portfolio.free_cash += amount;
                 }
@@ -712,7 +640,7 @@ impl FundBacktestContext<'_> {
                     .send(BacktestEvent::Sell {
                         title: get_ticker_title(ticker).await,
                         amount,
-                        price,
+                        price: sell_price,
                         units: sell_units as u64,
                         date: *date,
                     })
@@ -735,6 +663,269 @@ impl FundBacktestContext<'_> {
         };
 
         Ok(cash)
+    }
+
+    pub async fn position_entry_reserved(
+        &mut self,
+        ticker: &Ticker,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let buy_price_type = if self.options.pessimistic {
+            PriceType::High
+        } else {
+            PriceType::Mid
+        };
+
+        self.position_entry_reserved_with_price_type(ticker, &buy_price_type, date, event_sender)
+            .await
+    }
+
+    pub async fn position_entry_reserved_with_price_type(
+        &mut self,
+        ticker: &Ticker,
+        buy_price_type: &PriceType,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        if let Some((reserved_cash, _)) = self.portfolio.reserved_cash.get(ticker) {
+            if let Some(buy_price) = get_ticker_price(ticker, date, true, buy_price_type).await? {
+                let delta_value = reserved_cash - calc_buy_fee(*reserved_cash, self.options);
+
+                let buy_units = (delta_value / buy_price).floor() as u64;
+                if buy_units > 0 {
+                    let value = buy_units as f64 * buy_price;
+                    let fee = calc_buy_fee(value, self.options);
+                    let amount = value + fee;
+
+                    self.portfolio.free_cash += *reserved_cash - amount;
+                    self.portfolio.reserved_cash.remove(ticker);
+
+                    self.portfolio
+                        .positions
+                        .entry(ticker.clone())
+                        .and_modify(|v| *v += buy_units)
+                        .or_insert(buy_units);
+
+                    self.order_dates.insert(*date);
+                    let _ = event_sender
+                        .send(BacktestEvent::Buy {
+                            title: get_ticker_title(ticker).await,
+                            amount,
+                            price: buy_price,
+                            units: buy_units as u64,
+                            date: *date,
+                        })
+                        .await;
+                }
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
+                    .await;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn position_open(
+        &mut self,
+        ticker: &Ticker,
+        cash: f64,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let buy_price_type = if self.options.pessimistic {
+            PriceType::High
+        } else {
+            PriceType::Mid
+        };
+
+        self.position_open_with_price_type(ticker, cash, &buy_price_type, date, event_sender)
+            .await
+    }
+
+    pub async fn position_open_with_price_type(
+        &mut self,
+        ticker: &Ticker,
+        cash: f64,
+        buy_price_type: &PriceType,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        if let Some(buy_price) = get_ticker_price(ticker, date, true, buy_price_type).await? {
+            let delta_value = cash - calc_buy_fee(cash, self.options);
+
+            let buy_units = (delta_value / buy_price).floor() as u64;
+            if buy_units > 0 {
+                let value = buy_units as f64 * buy_price;
+                let fee = calc_buy_fee(value, self.options);
+                let amount = value + fee;
+
+                self.portfolio.free_cash -= amount;
+                self.portfolio
+                    .positions
+                    .entry(ticker.clone())
+                    .and_modify(|v| *v += buy_units)
+                    .or_insert(buy_units);
+
+                self.order_dates.insert(*date);
+                let _ = event_sender
+                    .send(BacktestEvent::Buy {
+                        title: get_ticker_title(ticker).await,
+                        amount,
+                        price: buy_price,
+                        units: buy_units,
+                        date: *date,
+                    })
+                    .await;
+            }
+        } else {
+            let _ = event_sender
+                .send(BacktestEvent::Warning {
+                    title: "".to_string(),
+                    message: format!("Price of '{ticker}' not exists"),
+                    date: Some(*date),
+                })
+                .await;
+        }
+
+        Ok(())
+    }
+
+    pub async fn position_scale(
+        &mut self,
+        ticker: &Ticker,
+        target_units: u64,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let buy_price_type = if self.options.pessimistic {
+            PriceType::High
+        } else {
+            PriceType::Mid
+        };
+
+        let sell_price_type = if self.options.pessimistic {
+            PriceType::Low
+        } else {
+            PriceType::Mid
+        };
+
+        self.position_scale_with_price_type(
+            ticker,
+            target_units,
+            &buy_price_type,
+            &sell_price_type,
+            date,
+            event_sender,
+        )
+        .await
+    }
+
+    pub async fn position_scale_with_price_type(
+        &mut self,
+        ticker: &Ticker,
+        target_units: u64,
+        buy_price_type: &PriceType,
+        sell_price_type: &PriceType,
+        date: &NaiveDate,
+        event_sender: &Sender<BacktestEvent>,
+    ) -> VfResult<()> {
+        let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
+        let delta_units: i64 = target_units as i64 - position_units as i64;
+        if (delta_units as f64).abs()
+            < (position_units as f64 * self.options.position_tolerance).abs()
+        {
+            return Ok(());
+        }
+
+        let ticker_title = get_ticker_title(ticker).await;
+        if delta_units > 0 {
+            if let Some(buy_price) = get_ticker_price(ticker, date, true, buy_price_type).await? {
+                let total_value = self.calc_total_value(date).await?;
+                let buffer_cash = total_value * self.options.buffer_ratio;
+                let available_cash = self.portfolio.free_cash - buffer_cash;
+
+                let value = (delta_units as f64 * buy_price).min(available_cash);
+                let buy_units = (value / buy_price).floor() as u64;
+
+                if buy_units > 0 {
+                    let fee = calc_buy_fee(value, self.options);
+                    let amount = value + fee;
+
+                    self.portfolio.free_cash -= amount;
+
+                    self.portfolio
+                        .positions
+                        .entry(ticker.clone())
+                        .and_modify(|v| *v += buy_units)
+                        .or_insert(buy_units);
+
+                    self.order_dates.insert(*date);
+                    let _ = event_sender
+                        .send(BacktestEvent::Buy {
+                            title: ticker_title,
+                            amount,
+                            price: buy_price,
+                            units: buy_units,
+                            date: *date,
+                        })
+                        .await;
+                }
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
+                    .await;
+            }
+        } else {
+            if let Some(sell_price) = get_ticker_price(ticker, date, true, sell_price_type).await? {
+                let sell_units = delta_units.unsigned_abs();
+                let value = sell_units as f64 * sell_price;
+                let fee = calc_sell_fee(value, self.options);
+                let amount = value - fee;
+
+                self.portfolio.free_cash += amount;
+
+                if sell_units == position_units {
+                    self.portfolio.positions.remove(ticker);
+                } else {
+                    self.portfolio
+                        .positions
+                        .entry(ticker.clone())
+                        .and_modify(|v| *v -= sell_units);
+                }
+
+                self.order_dates.insert(*date);
+                let _ = event_sender
+                    .send(BacktestEvent::Sell {
+                        title: ticker_title,
+                        amount,
+                        price: sell_price,
+                        units: sell_units,
+                        date: *date,
+                    })
+                    .await;
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
+                    .await;
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn resume(
@@ -828,14 +1019,20 @@ impl FundBacktestContext<'_> {
     }
 
     fn calc_cash(&self) -> f64 {
-        self.portfolio.free_cash + self.portfolio.reserved_cash.values().sum::<f64>()
+        self.portfolio.free_cash
+            + self
+                .portfolio
+                .reserved_cash
+                .values()
+                .map(|(cash, _)| cash)
+                .sum::<f64>()
     }
 
     async fn calc_positions_value(&self, date: &NaiveDate) -> VfResult<HashMap<Ticker, f64>> {
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
 
         for (ticker, units) in &self.portfolio.positions {
-            if let Some(price) = get_ticker_price(ticker, date, true, 0).await? {
+            if let Some(price) = get_ticker_price(ticker, date, true, &PriceType::Close).await? {
                 positions_value.insert(ticker.clone(), *units as f64 * price);
             } else {
                 return Err(VfError::NoData {
@@ -864,94 +1061,6 @@ impl FundBacktestContext<'_> {
             .into_iter()
             .filter(|(ticker, _)| self.portfolio.positions.contains_key(ticker))
             .collect::<HashMap<_, _>>())
-    }
-
-    async fn scale_position(
-        &mut self,
-        ticker: &Ticker,
-        ticker_value: f64,
-        price_bias: i32,
-        date: &NaiveDate,
-        event_sender: &Sender<BacktestEvent>,
-    ) -> VfResult<()> {
-        if let Some(price) = get_ticker_price(ticker, date, true, price_bias).await? {
-            let position_units = *self.portfolio.positions.get(ticker).unwrap_or(&0);
-            let position_value = position_units as f64 * price;
-            let delta_value = ticker_value - position_value;
-            if delta_value.abs() < position_value * self.options.position_tolerance {
-                return Ok(());
-            }
-
-            let ticker_title = get_ticker_title(ticker).await;
-            if delta_value > 0.0 {
-                let buy_units = (delta_value / price).floor();
-                if buy_units > 0.0 {
-                    let value = buy_units * price;
-                    let fee = calc_buy_fee(value, self.options);
-                    let amount = value + fee;
-
-                    self.portfolio.free_cash -= amount;
-
-                    self.portfolio
-                        .positions
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v += buy_units as u64)
-                        .or_insert(buy_units as u64);
-
-                    self.order_dates.insert(*date);
-                    let _ = event_sender
-                        .send(BacktestEvent::Buy {
-                            title: ticker_title,
-                            amount,
-                            price,
-                            units: buy_units as u64,
-                            date: *date,
-                        })
-                        .await;
-                }
-            } else {
-                let sell_value = delta_value.abs();
-
-                let sell_units = (sell_value / price).floor().min(position_units as f64);
-                if sell_units > 0.0 {
-                    let value = sell_units * price;
-                    let fee = calc_sell_fee(value, self.options);
-                    let amount = value - fee;
-
-                    self.portfolio.free_cash += amount;
-
-                    if sell_units as u64 == position_units {
-                        self.portfolio.positions.remove(ticker);
-                    } else {
-                        self.portfolio
-                            .positions
-                            .entry(ticker.clone())
-                            .and_modify(|v| *v -= sell_units as u64);
-                    }
-
-                    self.order_dates.insert(*date);
-                    let _ = event_sender
-                        .send(BacktestEvent::Sell {
-                            title: ticker_title,
-                            amount,
-                            price,
-                            units: sell_units as u64,
-                            date: *date,
-                        })
-                        .await;
-                }
-            }
-        } else {
-            let _ = event_sender
-                .send(BacktestEvent::Warning {
-                    title: "".to_string(),
-                    message: format!("Price of '{ticker}' not exists"),
-                    date: Some(*date),
-                })
-                .await;
-        }
-
-        Ok(())
     }
 }
 
@@ -1655,16 +1764,28 @@ pub async fn backtest_fund(
                                     .collect::<Vec<_>>()
                                 {
                                     if let (Some(price_period_start), Some(price)) = (
-                                        get_ticker_price(&ticker, period_start_date, true, 0)
+                                        get_ticker_price(
+                                            &ticker,
+                                            period_start_date,
+                                            true,
+                                            &PriceType::Close,
+                                        )
+                                        .await?,
+                                        get_ticker_price(&ticker, &date, true, &PriceType::Close)
                                             .await?,
-                                        get_ticker_price(&ticker, &date, true, 0).await?,
                                     ) {
                                         let period_profit_pct = 100.0
                                             * (price - price_period_start)
                                             / price_period_start;
                                         if period_profit_pct > frequency_take_profit_pct as f64 {
                                             context
-                                                .position_close(&ticker, false, &date, &sender)
+                                                .position_close_with_price_type(
+                                                    &ticker,
+                                                    false,
+                                                    &PriceType::Close,
+                                                    &date,
+                                                    &sender,
+                                                )
                                                 .await?;
                                         }
                                     }

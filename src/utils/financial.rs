@@ -91,6 +91,22 @@ pub fn calc_bollinger_band_position(
     None
 }
 
+pub fn calc_efficiency_factor(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let start_value = daily_values[0];
+        let end_value = daily_values[daily_values.len() - 1];
+
+        let daily_changes = stats::pct_change(daily_values);
+        let total_movement: f64 = daily_changes.iter().map(|&v| v.abs()).sum();
+
+        if total_movement > 0.0 {
+            return Some((end_value - start_value).abs() / total_movement);
+        }
+    }
+
+    None
+}
+
 pub fn calc_ema(daily_values: &[f64], period: usize) -> Vec<f64> {
     let mut results: Vec<f64> = vec![];
 
@@ -103,6 +119,39 @@ pub fn calc_ema(daily_values: &[f64], period: usize) -> Vec<f64> {
     }
 
     results
+}
+
+pub fn calc_ema_bias(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let ema_values = calc_ema(daily_values, daily_values.len());
+        if !ema_values.is_empty() {
+            return Some(daily_values[daily_values.len() - 1] / ema_values[ema_values.len() - 1]);
+        }
+    }
+
+    None
+}
+
+pub fn calc_ema_bias_momentum(
+    daily_values: &[f64],
+    ema_period: usize,
+    adjust_with_r2: bool,
+) -> Option<f64> {
+    if daily_values.len() > ema_period && ema_period != 0 {
+        let bias_values = daily_values
+            .windows(ema_period)
+            .filter_map(calc_ema_bias)
+            .collect::<Vec<f64>>();
+        if let Some((slope, r2)) = linear_regression(&bias_values) {
+            if adjust_with_r2 {
+                return Some(slope * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
+            } else {
+                return Some(slope);
+            }
+        }
+    }
+
+    None
 }
 
 pub fn calc_macd(daily_values: &[f64], periods: (usize, usize, usize)) -> Vec<(f64, f64, f64)> {

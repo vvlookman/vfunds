@@ -287,7 +287,7 @@ impl RuleExecutor for Executor {
                                     .await;
 
                                     context
-                                        .position_open_reserved(ticker, date, event_sender)
+                                        .position_entry_reserved(ticker, date, event_sender)
                                         .await?;
                                 } else {
                                     rule_send_info(

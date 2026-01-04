@@ -12,7 +12,7 @@ name = "hold"
 frequency = "1y"
 
 [[rules]]
-name = "size_by_valuation"
+name = "resize_by_valuation"
 frequency = "4w"
 
 [rules.options]

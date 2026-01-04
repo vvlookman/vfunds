@@ -22,7 +22,7 @@ name = "hold_by_dividend"
 frequency = "6m"
 
 [rules.options]
-arr_quantile_lower = 0.2
+arr_quantile_lower = 0.3
 div_allot_weight = 0
 div_bonus_gift_weight = 0.25
 div_weight_yearly_decay = 0
@@ -40,7 +40,7 @@ weight_method = "filter_max(0.7)"
 # arr_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
 # div_allot_weight = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
 # div_bonus_gift_weight = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
-div_weight_yearly_decay = [-0.2, -0.1, 0, 0.1, 0.2, 0.3]
+# div_weight_yearly_decay = [-0.2, -0.1, 0, 0.1, 0.2, 0.3]
 # limit = [2, 3, 4, 5, 10]
 # lookback_trade_days = [250, 500, 750, 1000, 1250]
 # lookback_div_years = [1, 2, 3, 4, 5]
