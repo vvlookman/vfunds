@@ -354,7 +354,7 @@ impl BacktestCommand {
                         }
                     }
                     Err(err) => {
-                        spinner.finish_with_message(format!("{} ", err.to_string().red()));
+                        errors.insert("".to_string(), err);
                     }
                 }
             };
@@ -386,8 +386,12 @@ impl BacktestCommand {
             }
         }
 
-        for (vfund_tranche, err) in &errors {
-            logger.println(format!("[{vfund_tranche}] [!] {}", err.to_string().red()));
+        for (title, err) in &errors {
+            if title.is_empty() {
+                logger.println(format!("[!] {}", err.to_string().red()));
+            } else {
+                logger.println(format!("[{title}] [!] {}", err.to_string().red()));
+            }
         }
 
         if errors.is_empty() {
