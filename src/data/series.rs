@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use num_traits::NumCast;
-use polars::prelude::*;
+use polars::{polars_utils::float::IsFloat, prelude::*};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
@@ -89,7 +89,7 @@ impl DailySeries {
         dates
     }
 
-    pub fn get_latest_value<T: NumCast>(
+    pub fn get_latest_value<T: NumCast + IsFloat>(
         &self,
         date: &NaiveDate,
         include_today: bool,
@@ -137,7 +137,7 @@ impl DailySeries {
         None
     }
 
-    pub fn get_latest_values<T: NumCast>(
+    pub fn get_latest_values<T: NumCast + IsFloat>(
         &self,
         date: &NaiveDate,
         include_today: bool,
@@ -195,7 +195,7 @@ impl DailySeries {
         vec![]
     }
 
-    pub fn get_latest_values_with_label<T: NumCast>(
+    pub fn get_latest_values_with_label<T: NumCast + IsFloat>(
         &self,
         date: &NaiveDate,
         include_today: bool,
@@ -262,7 +262,7 @@ impl DailySeries {
         vec![]
     }
 
-    pub fn get_value<T: NumCast>(
+    pub fn get_value<T: NumCast + IsFloat>(
         &self,
         date: &NaiveDate,
         field_name: &str,
