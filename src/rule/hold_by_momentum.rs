@@ -17,8 +17,8 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_momentum, calc_annualized_volatility, calc_ema},
-        stats::quantile,
+        financial::{calc_annualized_momentum, calc_efficiency_factor, calc_ema_bias_momentum},
+        math::normalize_zscore,
     },
 };
 
@@ -45,6 +45,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let bias_weight = self
+            .options
+            .get("bias_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let efficiency_weight = self
+            .options
+            .get("efficiency_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let limit = self
             .options
             .get("limit")
@@ -60,21 +70,11 @@ impl RuleExecutor for Executor {
             .get("ma_period")
             .and_then(|v| v.as_u64())
             .unwrap_or(20);
-        let momentum_lower = self
-            .options
-            .get("momentum_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let regression_r2_adjust = self
             .options
             .get("regression_r2_adjust")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let volatility_quantile_upper = self
-            .options
-            .get("volatility_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let weight_method = self
             .options
             .get("weight_method")
@@ -129,38 +129,29 @@ impl RuleExecutor for Executor {
                     }
 
                     let momentum = calc_annualized_momentum(&prices, regression_r2_adjust);
-                    let volatility = calc_annualized_volatility(&prices);
+                    let bias_momentum =
+                        calc_ema_bias_momentum(&prices, ma_period as usize, regression_r2_adjust);
+                    let efficiency_factor = calc_efficiency_factor(&prices);
 
-                    if let Some(fail_factor_name) = match (momentum, volatility) {
-                        (None, _) => Some("momentum"),
-                        (_, None) => Some("volatility"),
-                        (Some(momentum), Some(volatility)) => {
-                            if momentum > momentum_lower {
-                                let ma_check = if ma_period > 0 {
-                                    let ma = calc_ema(&prices, ma_period as usize);
-                                    if let (Some(ma), Some(price)) = (ma.last(), prices.last()) {
-                                        price > ma
-                                    } else {
-                                        false
-                                    }
-                                } else {
-                                    true
-                                };
+                    if let Some(fail_factor_name) =
+                        match (momentum, bias_momentum, efficiency_factor) {
+                            (None, _, _) => Some("momentum"),
+                            (_, None, _) => Some("bias_momentum"),
+                            (_, _, None) => Some("efficiency_factor"),
+                            (Some(momentum), Some(bias_momentum), Some(efficiency_factor)) => {
+                                tickers_factors.push((
+                                    ticker.clone(),
+                                    Factors {
+                                        momentum,
+                                        bias_momentum,
+                                        efficiency_momentum: efficiency_factor * momentum,
+                                    },
+                                ));
 
-                                if ma_check {
-                                    tickers_factors.push((
-                                        ticker.clone(),
-                                        Factors {
-                                            momentum,
-                                            volatility,
-                                        },
-                                    ));
-                                }
+                                None
                             }
-
-                            None
                         }
-                    } {
+                    {
                         rule_send_warning(
                             rule_name,
                             &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
@@ -186,21 +177,36 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            let factors_volatility = tickers_factors
-                .iter()
-                .map(|(_, f)| f.volatility)
-                .collect::<Vec<f64>>();
-            let volatility_upper = quantile(&factors_volatility, volatility_quantile_upper);
+            let normalized_factors_momentum = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.momentum)
+                    .collect::<Vec<f64>>(),
+            );
+            let normalized_factors_bias_momentum = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.bias_momentum)
+                    .collect::<Vec<f64>>(),
+            );
+            let normalized_factors_efficiency_momentum = normalize_zscore(
+                &tickers_factors
+                    .iter()
+                    .map(|(_, f)| f.efficiency_momentum)
+                    .collect::<Vec<f64>>(),
+            );
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
-            for (ticker, factors) in tickers_factors {
-                if let Some(volatility_upper) = volatility_upper {
-                    if factors.volatility > volatility_upper {
-                        continue;
-                    }
-                }
+            for (i, (ticker, _)) in tickers_factors.iter().enumerate() {
+                let momentum = normalized_factors_momentum[i];
+                let bias_momentum = normalized_factors_bias_momentum[i];
+                let efficiency_momentum = normalized_factors_efficiency_momentum[i];
 
-                indicators.push((ticker, factors.momentum));
+                let indicator = momentum
+                    + bias_weight * bias_momentum
+                    + efficiency_weight * efficiency_momentum;
+
+                indicators.push((ticker.clone(), indicator));
             }
             indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
@@ -238,5 +244,6 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     momentum: f64,
-    volatility: f64,
+    bias_momentum: f64,
+    efficiency_momentum: f64,
 }
