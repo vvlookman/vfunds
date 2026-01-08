@@ -2,19 +2,19 @@ title = "高ROE低PB"
 description = "持有红利指数中高ROE低PB的股票"
 
 [[ticker_sources]]
-source = "000015.CSI" # 上证红利
+source = "000015.CSI"  # 上证红利
 source_type = "index"
 
 [[ticker_sources]]
-source = "000922.CSI" # 中证红利100
+source = "000922.CSI"  # 中证红利100
 source_type = "index"
 
 [[ticker_sources]]
-source = "399324.CNI" # 深证红利
+source = "399324.CNI"  # 深证红利
 source_type = "index"
 
 [[ticker_sources]]
-source = "399411.CNI" # 国证红利100
+source = "399411.CNI"  # 国证红利100
 source_type = "index"
 
 [[rules]]

@@ -1,3 +1,5 @@
+//! Close and re-enter position after price spike peak
+
 use std::collections::HashMap;
 
 use async_trait::async_trait;
@@ -7,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     error::VfResult,
     financial::{
-        KlineField, PriceType, get_ticker_title,
+        KlineField, get_ticker_title,
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
@@ -64,9 +66,10 @@ impl RuleExecutor for Executor {
                 .iter()
                 .map(|&(_, v)| v)
                 .collect();
-            if let Some((_, price)) = kline.get_value::<f64>(date, &KlineField::Close.to_string()) {
+            if let Some((_, price)) = kline.get_value::<f64>(date, &KlineField::High.to_string()) {
                 for latest_price in latest_prices {
-                    if price > latest_price * (1.0 + spike_rise_threshold) {
+                    let price_knock_out = latest_price * (1.0 + spike_rise_threshold);
+                    if price > price_knock_out {
                         let ticker_title = get_ticker_title(&ticker).await;
 
                         rule_send_info(
@@ -78,10 +81,10 @@ impl RuleExecutor for Executor {
                         .await;
 
                         context
-                            .position_close_with_price_type(
+                            .position_close_with_price(
                                 &ticker,
                                 true,
-                                &PriceType::Close,
+                                price_knock_out,
                                 date,
                                 event_sender,
                             )
@@ -98,9 +101,10 @@ impl RuleExecutor for Executor {
                 let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
                 if let (Some((_, reserved_price)), Some((_, price))) = (
                     kline.get_value::<f64>(&reserved_date, &KlineField::Close.to_string()),
-                    kline.get_value::<f64>(date, &KlineField::Close.to_string()),
+                    kline.get_value::<f64>(date, &KlineField::Low.to_string()),
                 ) {
-                    if price < reserved_price * (1.0 - spike_fall_threshold) {
+                    let price_knock_in = reserved_price * (1.0 - spike_fall_threshold);
+                    if price < price_knock_in {
                         let ticker_title = get_ticker_title(&ticker).await;
 
                         rule_send_info(
@@ -112,9 +116,9 @@ impl RuleExecutor for Executor {
                         .await;
 
                         context
-                            .position_entry_reserved_with_price_type(
+                            .position_entry_reserved_with_price(
                                 &ticker,
-                                &PriceType::Close,
+                                price_knock_in,
                                 date,
                                 event_sender,
                             )

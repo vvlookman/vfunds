@@ -1,8 +1,6 @@
 title = "小盘股优选"
 description = "优选中小板指的低市值股票"
-
-# 大概率过拟合，暂时先不开启
-# options.suspend_months = [1]
+options.suspend_months = []  # 大概率过拟合，暂时先不开启 options.suspend_months = [1]
 
 [[ticker_sources]]
 source = "399101.CNI"
@@ -22,7 +20,7 @@ volatility_quantile_upper = 0.8
 weight_method = "equal"
 
 [rules.search]
-frequency = ["15d", "1m", "2m", "3m"]
+# frequency = ["15d", "1m", "2m", "3m"]
 # limit = [3, 4, 5, 7, 10]
 # arr_quantile_lower = [0, 0.1, 0.2, 0.3]
 # circulating_ratio_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
@@ -30,16 +28,17 @@ frequency = ["15d", "1m", "2m", "3m"]
 # skip_same_sector = [true, false]
 # volatility_quantile_upper = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 
+# 注意在交易日观察，如果某个标的尖峰上涨超过阈值，则清仓并在后续重新建仓
 [[rules]]
 name = "resize_by_spike"
 frequency = "1d"
 
 [rules.options]
-spike_days = 4
-spike_fall_threshold = 0.4
-spike_rise_threshold = 0.4
+spike_days = 3
+spike_fall_threshold = 0.1
+spike_rise_threshold = 0.2
 
 [rules.search]
-# spike_days = [1, 2, 3, 4]
-# spike_fall_threshold = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
-# spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
+# spike_days = [1, 2, 3, 4, 5]
+spike_fall_threshold = [0, 0.1, 0.2, 0.3]
+spike_rise_threshold = [0.1, 0.2, 0.3]

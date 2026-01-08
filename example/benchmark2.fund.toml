@@ -1,6 +1,5 @@
 title = "红利低波"
 description = "用作红利基准的中证红利低波动指数基金"
-
 tickers = ["512890"]
 
 [[rules]]

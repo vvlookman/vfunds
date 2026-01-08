@@ -26,15 +26,17 @@ pub fn pct_change(values: &[f64]) -> Vec<f64> {
 }
 
 pub fn quantile(values: &[f64], quantile: f64) -> Option<f64> {
-    if values.is_empty() {
-        return None;
-    }
-
     if !(0.0..=1.0).contains(&quantile) {
         return None;
     }
 
     let mut sorted = values.to_vec();
+    sorted.retain(|&x| x.is_finite());
+
+    if sorted.is_empty() {
+        return None;
+    }
+
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
 
     let n = sorted.len();

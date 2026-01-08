@@ -21,17 +21,7 @@ pub async fn http_get(
         url
     };
 
-    let retry_policy = ExponentialBackoff::builder()
-        .retry_bounds(Duration::from_secs(1), Duration::from_secs(timeout_secs))
-        .jitter(Jitter::Bounded)
-        .base(2)
-        .build_with_total_retry_duration_and_max_retries(
-            Duration::from_secs(max_retries as u64 * timeout_secs),
-            max_retries,
-        );
-    let client = ClientBuilder::new(reqwest::Client::new())
-        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .build();
+    let client = create_retry_client(timeout_secs, max_retries);
 
     let mut request_builder = client
         .request(Method::GET, request_url)
@@ -82,22 +72,12 @@ pub async fn http_post(
         url
     };
 
-    let retry_policy = ExponentialBackoff::builder()
-        .retry_bounds(Duration::from_secs(1), Duration::from_secs(timeout_secs))
-        .jitter(Jitter::Bounded)
-        .base(2)
-        .build_with_total_retry_duration_and_max_retries(
-            Duration::from_secs(max_retries as u64 * timeout_secs),
-            max_retries,
-        );
-    let client = ClientBuilder::new(reqwest::Client::new())
-        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
-        .build();
+    let client = create_retry_client(timeout_secs, max_retries);
 
     let mut request_builder = client
         .request(Method::POST, request_url)
-        .timeout(Duration::from_secs(timeout_secs));
-    request_builder = request_builder.body(body.to_string());
+        .timeout(Duration::from_secs(timeout_secs))
+        .body(body.to_string());
 
     if let Some(headers) = headers {
         for (k, v) in headers {
@@ -126,6 +106,23 @@ pub fn join_url(base_url: &str, extend_url: &str) -> Result<String, url::ParseEr
         .extend(extend_url.split('/').filter(|s| !s.is_empty()));
 
     Ok(url.to_string())
+}
+
+fn create_retry_client(
+    timeout_secs: u64,
+    max_retries: u32,
+) -> reqwest_middleware::ClientWithMiddleware {
+    let retry_policy = ExponentialBackoff::builder()
+        .retry_bounds(Duration::from_secs(1), Duration::from_secs(timeout_secs))
+        .jitter(Jitter::Bounded)
+        .base(2)
+        .build_with_total_retry_duration_and_max_retries(
+            Duration::from_secs(max_retries as u64 * timeout_secs),
+            max_retries,
+        );
+    ClientBuilder::new(reqwest::Client::new())
+        .with(RetryTransientMiddleware::new_with_policy(retry_policy))
+        .build()
 }
 
 #[cfg(test)]

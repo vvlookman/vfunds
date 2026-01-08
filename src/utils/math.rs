@@ -119,14 +119,16 @@ pub fn normalize_zscore(values: &[f64]) -> Vec<f64> {
         / n)
         .sqrt();
 
-    if std == 0.0 {
-        values.to_vec()
-    } else {
-        values
-            .iter()
-            .map(|&v| if v.is_finite() { (v - mean) / std } else { v })
-            .collect()
-    }
+    values
+        .iter()
+        .map(|&v| {
+            if v.is_finite() {
+                if std == 0.0 { 0.0 } else { (v - mean) / std }
+            } else {
+                v
+            }
+        })
+        .collect()
 }
 
 pub fn transpose(mat: &[Vec<f64>]) -> Vec<Vec<f64>> {
@@ -166,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_linear_regression() {
-        assert!((linear_regression(&vec![1.0, 2.0, 3.0]).unwrap().0 - 1.0).abs() < 1e-6);
+        assert!((linear_regression(&vec![0.0, 2.0, 4.0]).unwrap().0 - 2.0).abs() < 1e-6);
     }
 
     #[test]
