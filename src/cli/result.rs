@@ -79,6 +79,7 @@ impl ResultCommand {
                         viewport: egui::ViewportBuilder::default()
                             .with_icon(icon)
                             .with_maximized(true),
+                        persistence_path: Some(self.output_dir.join(".result_viewer")),
                         ..Default::default()
                     };
 

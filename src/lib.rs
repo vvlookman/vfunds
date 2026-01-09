@@ -128,23 +128,17 @@ static CACHE_NO_EXPIRE: LazyLock<bool> = LazyLock::new(|| {
     v == "true" || v == "t" || v == "yes" || v == "y"
 });
 
-static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
-        Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),
-        None => env::current_dir().expect("Unable to get current directory!"),
-    }
-    .join("cache.db")
-});
+static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| DATA_PATH.join("cache.db"));
 
-static CONFIG_PATH: LazyLock<PathBuf> = LazyLock::new(|| {
-    match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
-        Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),
-        None => env::current_dir().expect("Unable to get current directory!"),
-    }
-    .join("config.toml")
-});
+static CONFIG_PATH: LazyLock<PathBuf> = LazyLock::new(|| DATA_PATH.join("config.toml"));
 
 static CONFIG: LazyLock<RwLock<Config>> = LazyLock::new(|| RwLock::new(Config::default()));
+
+static DATA_PATH: LazyLock<PathBuf> =
+    LazyLock::new(|| match ProjectDirs::from("", "", env!("CARGO_PKG_NAME")) {
+        Some(proj_dirs) => proj_dirs.data_dir().to_path_buf(),
+        None => env::current_dir().expect("Unable to get current directory!"),
+    });
 
 static PROGRESS_INTERVAL_SECS: u64 = 1;
 
