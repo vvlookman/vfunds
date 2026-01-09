@@ -2,14 +2,14 @@ title = "A FOF"
 description = "按权重组合虚拟基金"
 
 [funds]
-high-dividend = 1
-high-momentum = 2
-permanent = 2
+high-dividend = 2
+high-momentum = 5
+permanent = 5
 strong-small-cap = 1
 
-# 交叉验证偏重夏普，指定参数 -A 0
+# 交叉验证偏重夏普，指定参数 -A 0.1
 [search]
-high-dividend = [1, 2, 3]
-high-momentum = [1, 2, 3]
-permanent = [1, 2, 3]
-strong-small-cap = [1, 2, 3]
+high-dividend = [1, 2, 3, 5]
+high-momentum = [1, 2, 3, 5]
+permanent = [1, 2, 3, 5]
+strong-small-cap = [1, 2, 3, 5]
