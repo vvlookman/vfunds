@@ -12,12 +12,13 @@ tickers = [
   "159222",  # 国证自由现金流ETF
   "513100",  # 纳斯达克100ETF
   "513500",  # 标普500ETF
-  "518880",  # 黄金ETF
   "511260",  # 十年国债ETF
   "511180",  # 可转债ETF
+  "518880",  # 黄金ETF
   "516650",  # 有色金属ETF
   "162411",  # 华宝油气LOF
   "159985",  # 豆粕期货ETF
+  "512200",  # 房地产ETF
 ]
 
 [[rules]]
@@ -25,12 +26,12 @@ name = "hold_by_momentum"
 frequency = "1m"
 
 [rules.options]
-bias_weight = -0.8
-efficiency_weight = 0
+bias_weight = -0.4
+efficiency_weight = 0.2
 limit = 2
 lookback_trade_days = 250
 ma_period = 21
-regression_r2_adjust = true
+regression_r2_adjust = false
 weight_method = "filter_max(0.5)"
 
 [rules.search]
@@ -58,10 +59,10 @@ frequency = "1d"
 
 [rules.options]
 spike_days = 1
-spike_fall_threshold = 0.02
+spike_fall_threshold = 0
 spike_rise_threshold = 0.055
 
 [rules.search]
-spike_days = [1, 2, 3]
-spike_fall_threshold = [-0.01, -0.005, 0, 0.005, 0.01, 0.015, 0.02]
-spike_rise_threshold = [0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06]
+# spike_days = [1, 2, 3]
+# spike_fall_threshold = [-0.01, -0.005, 0, 0.005, 0.01, 0.015, 0.02]
+# spike_rise_threshold = [0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06]
