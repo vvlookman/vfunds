@@ -30,5 +30,6 @@ LOG="vfunds=debug" CACHE_NO_EXPIRE=true cargo run -- backtest -w ./example -s 20
 ## Release
 
 ```sh
-cargo build --release -Z unstable-options --artifact-dir ~/bin # Build binary and copy to a desitination path
+cargo build --release
+codesign -s "DevCodeSign" --identifier "vfunds" ./target/release/vfunds
 ```
