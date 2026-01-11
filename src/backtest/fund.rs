@@ -1314,6 +1314,104 @@ pub async fn backtest_fund_cv(
     Ok(BacktestStream { receiver })
 }
 
+pub async fn backtest_funds(
+    funds: &[(String, FundDefinition)],
+    options: &BacktestOptions,
+    sender: &Sender<BacktestEvent>,
+) -> VfResult<Vec<(String, BacktestResult)>> {
+    let mut funds_result: Vec<(String, BacktestResult)> = vec![];
+
+    for (fund_name, fund_definition) in funds.iter() {
+        let mut stream = backtest_fund(fund_definition, options).await?;
+
+        while let Some(event) = stream.next().await {
+            match event {
+                BacktestEvent::Buy {
+                    title,
+                    amount,
+                    price,
+                    units,
+                    date,
+                } => {
+                    let _ = sender
+                        .send(BacktestEvent::Buy {
+                            title: format!("[{fund_name}] {title}"),
+                            amount,
+                            price,
+                            units,
+                            date,
+                        })
+                        .await;
+                }
+                BacktestEvent::Sell {
+                    title,
+                    amount,
+                    price,
+                    units,
+                    date,
+                } => {
+                    let _ = sender
+                        .send(BacktestEvent::Sell {
+                            title: format!("[{fund_name}] {title}"),
+                            amount,
+                            price,
+                            units,
+                            date,
+                        })
+                        .await;
+                }
+                BacktestEvent::Info {
+                    title,
+                    message,
+                    date,
+                } => {
+                    let _ = sender
+                        .send(BacktestEvent::Info {
+                            title: format!("[{fund_name}] {title}"),
+                            message,
+                            date,
+                        })
+                        .await;
+                }
+                BacktestEvent::Warning {
+                    title,
+                    message,
+                    date,
+                } => {
+                    let _ = sender
+                        .send(BacktestEvent::Warning {
+                            title: format!("[{fund_name}] {title}"),
+                            message,
+                            date,
+                        })
+                        .await;
+                }
+                BacktestEvent::Toast {
+                    title,
+                    message,
+                    date,
+                } => {
+                    let _ = sender
+                        .send(BacktestEvent::Toast {
+                            title: format!("[{fund_name}] {title}"),
+                            message,
+                            date,
+                        })
+                        .await;
+                }
+                BacktestEvent::Result(fund_result) => {
+                    funds_result.push((fund_name.to_string(), *fund_result));
+                }
+                BacktestEvent::Error(_) => {
+                    let _ = sender.send(event).await;
+                }
+            }
+        }
+    }
+
+    Ok(funds_result)
+}
+
 #[derive(Clone)]
 struct RuleFrequency {
     rule_name: String,
