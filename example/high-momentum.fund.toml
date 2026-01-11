@@ -36,6 +36,8 @@ weight_method = "filter_max(0.5)"
 
 [rules.search]
 # frequency = ["2w", "3w", "1m", "2m", "3m", "4m"]
+
+[rules.search.options]
 # bias_weight = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
 # efficiency_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
 # limit = [1, 2, 3, 4, 5]

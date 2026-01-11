@@ -20,6 +20,8 @@ weight_method = "equal"
 
 [rules.search]
 # frequency = ["1m", "2m", "3m", "6m", "9m", "1y"]
+
+[rules.search.options]
 # factor_market_cap_weight = [0, 1, 2, 3, 5]
 # factor_turnover_ratio_weight = [0, 1, 2, 3, 5]
 # factor_volatility_weight = [0, 1, 2, 3, 5]

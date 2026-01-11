@@ -26,6 +26,8 @@ watch_period_days = 28
 
 [rules.search]
 frequency = ["1w", "2w", "4w", "8w"]
+
+[rules.search.options]
 allow_short = [true, false]
 lookback_years = [5, 6]
 pe_quantile_lower = [0.4, 0.5]

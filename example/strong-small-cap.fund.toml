@@ -21,6 +21,8 @@ weight_method = "equal"
 
 [rules.search]
 # frequency = ["15d", "1m", "2m", "3m"]
+
+[rules.search.options]
 # limit = [3, 4, 5, 7, 10]
 # arr_quantile_lower = [0, 0.1, 0.2, 0.3]
 # circulating_ratio_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]

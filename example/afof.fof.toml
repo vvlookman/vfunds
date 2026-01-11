@@ -1,5 +1,6 @@
 title = "A FOF"
 description = "按权重组合虚拟基金"
+frequency = "1y"
 
 [funds]
 high-dividend = 2
@@ -7,8 +8,10 @@ high-momentum = 5
 permanent = 5
 strong-small-cap = 1
 
-# 交叉验证偏重夏普，指定参数 -A 0.1
 [search]
+# frequency = ["3m", "6m", "1y"]
+
+[search.funds]
 high-dividend = [1, 2, 3, 5]
 high-momentum = [1, 2, 3, 5]
 permanent = [1, 2, 3, 5]

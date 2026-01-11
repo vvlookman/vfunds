@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    backtest::{BacktestEvent, FundBacktestContext},
+    backtest::{BacktestEvent, fund::FundBacktestContext},
     error::{VfError, VfResult},
     financial::get_ticker_title,
     spec::RuleDefinition,

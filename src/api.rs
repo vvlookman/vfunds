@@ -72,9 +72,11 @@ pub async fn backtest(
 
     for (vfund_name, vfund) in vfunds {
         let stream = match vfund {
-            Vfund::Fof(fof_definition) => backtest::backtest_fof(&fof_definition, options).await?,
+            Vfund::Fof(fof_definition) => {
+                backtest::fof::backtest_fof(&fof_definition, options).await?
+            }
             Vfund::Fund(fund_definition) => {
-                backtest::backtest_fund(&fund_definition, options).await?
+                backtest::fund::backtest_fund(&fund_definition, options).await?
             }
         };
         streams.push((vfund_name, stream));
@@ -106,10 +108,10 @@ pub async fn backtest_cv(
     for (vfund_name, vfund) in vfunds {
         let stream = match vfund {
             Vfund::Fof(fof_definition) => {
-                backtest::backtest_fof_cv(&fof_definition, cv_options).await?
+                backtest::fof::backtest_fof_cv(&fof_definition, cv_options).await?
             }
             Vfund::Fund(fund_definition) => {
-                backtest::backtest_fund_cv(&fund_definition, cv_options).await?
+                backtest::fund::backtest_fund_cv(&fund_definition, cv_options).await?
             }
         };
         streams.push((vfund_name, stream));

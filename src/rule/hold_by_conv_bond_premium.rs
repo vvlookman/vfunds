@@ -93,7 +93,8 @@ impl RuleExecutor for Executor {
         let conv_bond_issues = fetch_conv_bonds(date, max_tenor_months as u32).await?;
         if !conv_bond_issues.is_empty() {
             let filter_analysis_date = *date - Days::new(7);
-            let filter_expire_date = *date + Days::new(min_remaining_days.max(self.frequency.days));
+            let filter_expire_date =
+                *date + Days::new(min_remaining_days.max(self.frequency.to_days()));
 
             let conv_bonds_issue_size = conv_bond_issues
                 .iter()

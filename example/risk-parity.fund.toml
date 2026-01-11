@@ -20,6 +20,8 @@ min_weight_scale = 0.5
 
 [rules.search]
 frequency = ["1m", "2m", "3m"]
+
+[rules.search.options]
 lookback_trade_days = [21, 42, 63, 125, 188, 250]
 max_weight_scale = [2, 4, 8, 16]
 min_weight_scale = [0, 0.125, 0.25, 0.5]

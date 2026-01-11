@@ -15,16 +15,29 @@ pub struct FofDefinition {
     pub description: Option<String>,
 
     #[serde(default)]
+    #[serde(deserialize_with = "deserialize_frequency")]
+    pub frequency: Frequency,
+
+    #[serde(default)]
     pub funds: HashMap<String, f64>,
 
     #[serde(default)]
-    pub search: HashMap<String, Vec<f64>>,
+    pub search: FofSearch,
 }
 
 impl FofDefinition {
     pub fn from_file(path: &Path) -> VfResult<Self> {
         confy::load_path(path).map_err(Into::into)
     }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct FofSearch {
+    #[serde(default)]
+    pub frequency: Vec<String>,
+
+    #[serde(default)]
+    pub funds: HashMap<String, Vec<f64>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -97,7 +110,8 @@ impl FundDefinition {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
 pub struct Frequency {
-    pub days: u64,
+    days: u64,
+    string: String,
 }
 
 impl FromStr for Frequency {
@@ -118,7 +132,20 @@ impl FromStr for Frequency {
             s.parse()?
         };
 
-        Ok(Frequency { days })
+        Ok(Frequency {
+            days,
+            string: s.to_string(),
+        })
+    }
+}
+
+impl Frequency {
+    pub fn to_days(&self) -> u64 {
+        self.days
+    }
+
+    pub fn to_str(&self) -> &str {
+        &self.string
     }
 }
 
@@ -136,13 +163,20 @@ pub struct RuleDefinition {
     pub frequency: Frequency,
 
     #[serde(default)]
-    pub frequency_take_profit_pct: u32,
-
-    #[serde(default)]
     pub options: HashMap<String, serde_json::Value>,
 
     #[serde(default)]
-    pub search: HashMap<String, serde_json::Value>,
+    pub search: RuleSearch,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RuleSearch {
+    #[serde(default)]
+    #[serde(deserialize_with = "deserialize_frequency_vec")]
+    pub frequency: Vec<Frequency>,
+
+    #[serde(default)]
+    pub options: HashMap<String, Vec<serde_json::Value>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -178,4 +212,32 @@ where
     let s = String::deserialize(deserializer)?.to_lowercase();
 
     Frequency::from_str(&s).map_err(serde::de::Error::custom)
+}
+
+fn deserialize_frequency_vec<'de, D>(deserializer: D) -> Result<Vec<Frequency>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let strs: Vec<String> = Vec::deserialize(deserializer)?;
+
+    strs.into_iter()
+        .map(|s| Frequency::from_str(&s).map_err(serde::de::Error::custom))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_fof_definition() {
+        assert!(FofDefinition::from_file(&PathBuf::from("example/afof.fof.toml")).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_fund_definition() {
+        assert!(FundDefinition::from_file(&PathBuf::from("example/conv-bond.fund.toml")).is_ok());
+    }
 }

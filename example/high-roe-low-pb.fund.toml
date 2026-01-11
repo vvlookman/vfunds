@@ -30,6 +30,8 @@ weight_method = "equal"
 
 [rules.search]
 # frequency = ["6m", "1y", "18m", "2y", "3y"]
+
+[rules.search.options]
 limit = [2, 3, 4, 5, 10]
 # pb_quantile_upper = [0.2, 0.4, 0.6, 0.8, 1]
 # roe_quantile_lower = [0, 0.2, 0.4, 0.6, 0.8]
