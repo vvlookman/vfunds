@@ -93,7 +93,7 @@ pub async fn get_ticker_price(
             }
         }
         TickerType::Stock => {
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
             if *price_type == PriceType::Mid {
                 if let Some((date_high, high)) = kline.get_latest_value::<f64>(
                     date,

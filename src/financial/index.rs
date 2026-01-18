@@ -28,9 +28,9 @@ pub enum IndexIndicatorField {
 /// - 000905.SH 中证500
 /// - 399005.SZ 中小板指
 /// - 399006.SZ 创业板指
-pub async fn fetch_index_indicators_daily(index: &TickersIndex) -> VfResult<DailySeries> {
+pub async fn fetch_index_indicators(index: &TickersIndex) -> VfResult<DailySeries> {
     let cache_key = format!("{index}");
-    if let Some(result) = INDEX_INDICATORS_DAILY_CACHE.get(&cache_key) {
+    if let Some(result) = INDEX_INDICATORS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
@@ -81,7 +81,7 @@ pub async fn fetch_index_indicators_daily(index: &TickersIndex) -> VfResult<Dail
     );
 
     let result = DailySeries::from_tushare_json(&json, "trade_date", &fields)?;
-    INDEX_INDICATORS_DAILY_CACHE.insert(cache_key, result.clone());
+    INDEX_INDICATORS_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
@@ -144,8 +144,7 @@ pub async fn fetch_index_tickers(index: &TickersIndex, date: &NaiveDate) -> VfRe
     Ok(tickers)
 }
 
-static INDEX_INDICATORS_DAILY_CACHE: LazyLock<DashMap<String, DailySeries>> =
-    LazyLock::new(DashMap::new);
+static INDEX_INDICATORS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static INDEX_TICKERS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
 
 #[cfg(test)]
@@ -155,9 +154,9 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_fetch_index_indicators_daily() {
+    async fn test_fetch_index_indicators() {
         let index = TickersIndex::from_str("000001.SH").unwrap();
-        let series = fetch_index_indicators_daily(&index).await.unwrap();
+        let series = fetch_index_indicators(&index).await.unwrap();
 
         assert!(series.get_dates().len() > 3000);
     }

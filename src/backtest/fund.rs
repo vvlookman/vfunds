@@ -833,8 +833,13 @@ pub async fn backtest_fund(
                             }
                         }
 
-                        if rule.exec(&mut context, &date, &sender).await.is_ok() {
-                            rules_period_start_date.insert(rule_index, date);
+                        match rule.exec(&mut context, &date, &sender).await {
+                            Ok(_) => {
+                                rules_period_start_date.insert(rule_index, date);
+                            }
+                            Err(err) => {
+                                return Err(err);
+                            }
                         }
                     }
 

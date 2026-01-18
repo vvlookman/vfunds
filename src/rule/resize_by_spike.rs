@@ -55,7 +55,7 @@ impl RuleExecutor for Executor {
             .unwrap_or(0.03);
 
         for (ticker, _units) in context.portfolio.positions.clone() {
-            let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+            let kline = fetch_stock_kline(&ticker, StockDividendAdjust::Forward).await?;
             let latest_prices: Vec<f64> = kline
                 .get_latest_values::<f64>(
                     date,
@@ -98,7 +98,7 @@ impl RuleExecutor for Executor {
 
         for (ticker, (_, reserved_date)) in context.portfolio.reserved_cash.clone() {
             if *date > reserved_date {
-                let kline = fetch_stock_kline(&ticker, StockDividendAdjust::ForwardProp).await?;
+                let kline = fetch_stock_kline(&ticker, StockDividendAdjust::Forward).await?;
                 if let (Some((_, reserved_price)), Some((_, price))) = (
                     kline.get_value::<f64>(&reserved_date, &KlineField::Close.to_string()),
                     kline.get_value::<f64>(date, &KlineField::Low.to_string()),

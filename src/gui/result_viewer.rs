@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{Days, NaiveDate};
 use eframe::egui;
-use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotMemory, PlotPoint, PlotPoints, Points};
+use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotPoint, PlotPoints, Points};
 use tokio::sync::mpsc;
 
 use crate::{

@@ -18,7 +18,7 @@ use crate::{
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
     ticker::Ticker,
     utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::normalize_zscore},
@@ -204,6 +204,18 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    tickers_map.len(),
+                    tickers_factors.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
 
             let normalized_market_cap_values = normalize_zscore(
                 &tickers_factors

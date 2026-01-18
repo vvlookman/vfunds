@@ -148,8 +148,9 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
                     }
                 }
 
-                if let Some(ticker) =
-                    Ticker::from_tushare_str(json_item["ts_code"].as_str().unwrap_or_default())
+                if let Some(ticker) = json_item["ts_code"]
+                    .as_str()
+                    .and_then(Ticker::from_tushare_str)
                 {
                     let result = ConvBondDetail {
                         ticker,
@@ -217,8 +218,9 @@ pub async fn fetch_conv_bonds(
                     }
                 }
 
-                if let Some(ticker) =
-                    Ticker::from_tushare_str(json_item["ts_code"].as_str().unwrap_or_default())
+                if let Some(ticker) = json_item["ts_code"]
+                    .as_str()
+                    .and_then(Ticker::from_tushare_str)
                 {
                     let cb = ConvBondIssue {
                         ticker,

@@ -2,7 +2,6 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate};
-use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
@@ -18,11 +17,10 @@ use crate::{
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
-        datetime::date_to_str,
         financial::{calc_annualized_return_rate, calc_annualized_volatility},
         stats::quantile,
     },
@@ -135,12 +133,6 @@ impl RuleExecutor for Executor {
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
-            debug!(
-                "[{}] [{rule_name}] Tickers({})={tickers_map:?}",
-                date_to_str(date),
-                tickers_map.len()
-            );
-
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
                 let mut last_time = Instant::now();
@@ -157,7 +149,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
@@ -329,6 +321,18 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    tickers_map.len(),
+                    tickers_factors.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
 
             let factors_arr = tickers_factors
                 .iter()

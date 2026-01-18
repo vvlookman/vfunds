@@ -14,7 +14,7 @@ pub async fn call_api(
     fields: Option<&str>,
     expire_days: i64,
 ) -> VfResult<serde_json::Value> {
-    let cache_key = format!("tushare:{api_name}?{params}");
+    let cache_key = format!("[TUSHARE]{api_name}?{params}");
 
     if let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
         let bytes: Vec<u8> = compress::decode(&data)?;

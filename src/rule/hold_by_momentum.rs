@@ -13,7 +13,7 @@ use crate::{
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
@@ -104,7 +104,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
@@ -176,6 +176,18 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    tickers_map.len(),
+                    tickers_factors.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
 
             let normalized_factors_momentum = normalize_zscore(
                 &tickers_factors

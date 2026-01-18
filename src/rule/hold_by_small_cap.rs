@@ -10,12 +10,15 @@ use crate::{
     filter::{filter_market_cap::is_circulating_ratio_low, filter_st::is_st},
     financial::{
         KlineField,
-        stock::{StockDetail, StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
+        stock::{
+            StockDetail, StockDividendAdjust, StockIndicatorField, fetch_stock_detail,
+            fetch_stock_indicators, fetch_stock_kline,
+        },
         tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
     ticker::Ticker,
     utils::{
@@ -67,6 +70,11 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(126);
+        let pb_quantile_upper = self
+            .options
+            .get("pb_quantile_upper")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -114,7 +122,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
@@ -142,23 +150,34 @@ impl RuleExecutor for Executor {
                     let arr = calc_annualized_return_rate(&prices);
                     let volatility = calc_annualized_volatility(&prices);
 
-                    if let Some(fail_factor_name) = match (market_cap, arr, volatility) {
-                        (None, _, _) => Some("market_cap"),
-                        (_, None, _) => Some("arr"),
-                        (_, _, None) => Some("volatility"),
-                        (Some(market_cap), Some(arr), Some(volatility)) => {
-                            tickers_factors.push((
-                                ticker.clone(),
-                                Factors {
-                                    market_cap,
-                                    arr,
-                                    volatility,
-                                },
-                            ));
+                    let stock_indicators = fetch_stock_indicators(ticker).await?;
+                    let pb_with_date = stock_indicators.get_latest_value::<f64>(
+                        date,
+                        false,
+                        &StockIndicatorField::Pb.to_string(),
+                    );
 
-                            None
+                    if let Some(fail_factor_name) =
+                        match (market_cap, arr, pb_with_date, volatility) {
+                            (None, _, _, _) => Some("market_cap"),
+                            (_, None, _, _) => Some("arr"),
+                            (_, _, None, _) => Some("pb"),
+                            (_, _, _, None) => Some("volatility"),
+                            (Some(market_cap), Some(arr), Some((_, pb)), Some(volatility)) => {
+                                tickers_factors.push((
+                                    ticker.clone(),
+                                    Factors {
+                                        market_cap,
+                                        arr,
+                                        pb,
+                                        volatility,
+                                    },
+                                ));
+
+                                None
+                            }
                         }
-                    } {
+                    {
                         rule_send_warning(
                             rule_name,
                             &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
@@ -184,11 +203,29 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    tickers_map.len(),
+                    tickers_factors.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
+
             let factors_arr = tickers_factors
                 .iter()
                 .map(|(_, f)| f.arr)
                 .collect::<Vec<f64>>();
             let arr_lower = quantile(&factors_arr, arr_quantile_lower);
+
+            let factors_pb = tickers_factors
+                .iter()
+                .map(|(_, f)| f.pb)
+                .collect::<Vec<f64>>();
+            let pb_upper = quantile(&factors_pb, pb_quantile_upper);
 
             let factors_volatility = tickers_factors
                 .iter()
@@ -200,6 +237,12 @@ impl RuleExecutor for Executor {
             for (ticker, factors) in tickers_factors {
                 if let Some(arr_lower) = arr_lower {
                     if factors.arr < arr_lower {
+                        continue;
+                    }
+                }
+
+                if let Some(pb_upper) = pb_upper {
+                    if factors.pb > pb_upper {
                         continue;
                     }
                 }
@@ -281,5 +324,6 @@ impl RuleExecutor for Executor {
 struct Factors {
     market_cap: f64,
     arr: f64,
+    pb: f64,
     volatility: f64,
 }

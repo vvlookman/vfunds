@@ -18,7 +18,7 @@ pub async fn call_api(
     params: &serde_json::Value,
     expire_days: i64,
 ) -> VfResult<serde_json::Value> {
-    let cache_key = format!("qmt:{path}?{params}");
+    let cache_key = format!("[QMT]{path}?{params}");
 
     let bytes: VfResult<Vec<u8>> =
         if let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {

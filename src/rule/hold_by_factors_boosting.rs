@@ -166,7 +166,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
                     let score_prices_with_date = kline.get_latest_values::<f64>(
                         date,
                         false,
@@ -397,7 +397,7 @@ async fn calc_factors(
 ) -> VfResult<Vec<f64>> {
     let mut factors: Vec<f64> = vec![];
 
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
     let report_capital = fetch_stock_report_capital(ticker).await?;
 
     for i in 1..=steps {

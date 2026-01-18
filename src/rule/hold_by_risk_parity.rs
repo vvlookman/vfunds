@@ -78,7 +78,7 @@ impl RuleExecutor for Executor {
                     continue;
                 }
 
-                let kline = fetch_stock_kline(ticker, StockDividendAdjust::ForwardProp).await?;
+                let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
                 let prices: Vec<f64> = kline
                     .get_latest_values::<f64>(
                         date,
