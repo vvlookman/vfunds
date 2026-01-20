@@ -303,6 +303,49 @@ impl DailySeries {
         None
     }
 
+    pub fn get_values<T: NumCast + IsFloat>(&self, field_name: &str) -> Vec<(NaiveDate, T)> {
+        if let Some(origin_field_name) = self.value_field_names.get(field_name) {
+            let filter = col(origin_field_name).is_finite();
+
+            if let Ok(df) = self
+                .df
+                .clone()
+                .lazy()
+                .filter(filter)
+                .sort(
+                    [&self.date_field_name],
+                    SortMultipleOptions::default().with_order_descending(false),
+                )
+                .collect()
+            {
+                if let (Ok(col_date), Ok(col_val)) = (
+                    df.column(&self.date_field_name),
+                    df.column(origin_field_name),
+                ) {
+                    let mut vals = vec![];
+
+                    for i in 0..col_date.len() {
+                        if let (Ok(cell_date), Ok(cell_val)) = (col_date.get(i), col_val.get(i)) {
+                            if let (Some(date_days_after_epoch), Some(val)) =
+                                (cell_date.extract::<i32>(), cell_val.extract::<T>())
+                            {
+                                if let Some(date) =
+                                    NaiveDate::from_epoch_days(date_days_after_epoch)
+                                {
+                                    vals.push((date, val));
+                                }
+                            }
+                        }
+                    }
+
+                    return vals;
+                }
+            }
+        }
+
+        vec![]
+    }
+
     pub fn slice_by_date_range(
         &self,
         date_from: &NaiveDate,
