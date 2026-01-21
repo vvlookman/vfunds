@@ -3,7 +3,6 @@ description = "持有动量最高的ETF"
 tickers = [
   "159593",  # 中证A50ETF
   "159338",  # 中证A500ETF
-  "510500",  # 中证500ETF
   "159949",  # 创业板50ETF
   "159758",  # 红利质量ETF
   "159263",  # 价值ETF
@@ -18,7 +17,8 @@ tickers = [
   "516650",  # 有色金属ETF
   "162411",  # 华宝油气LOF
   "159985",  # 豆粕期货ETF
-  "512200",  # 房地产ETF
+  # "159870",  # 化工ETF
+  # "512200",  # 房地产ETF
 ]
 
 [[rules]]
@@ -26,33 +26,33 @@ name = "hold_by_momentum"
 frequency = "1m"
 
 [rules.options]
-bias_weight = -0.4
+bias_weight = -0.6
 efficiency_weight = 0.2
 limit = 2
 lookback_trade_days = 250
 ma_period = 21
 regression_r2_adjust = false
-weight_method = "filter_max(0.5)"
+weight_method = "filter_max(0.7)"
 
 [rules.search]
 # frequency = ["2w", "3w", "1m", "2m", "3m", "4m"]
 
 [rules.search.options]
-# bias_weight = [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1]
-# efficiency_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
+bias_weight = [-1, -0.8, -0.6, -0.4, -0.2, 0]
+efficiency_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
 # limit = [1, 2, 3, 4, 5]
 # lookback_trade_days = [63, 125, 250, 375, 500]
-# ma_period = [21, 42, 63, 125]
+ma_period = [21, 42, 63, 125]
 # regression_r2_adjust = [true, false]
-# weight_method = [
-#   "equal",
-#   "filter_max(0.9)",
-#   "filter_max(0.8)",
-#   "filter_max(0.7)",
-#   "filter_max(0.6)",
-#   "filter_max(0.5)",
-#   "filter_max(0.4)",
-# ]
+weight_method = [
+  "equal",
+  "filter_max(0.9)",
+  "filter_max(0.8)",
+  "filter_max(0.7)",
+  "filter_max(0.6)",
+  "filter_max(0.5)",
+  "filter_max(0.4)",
+]
 
 # 注意在交易日观察，如果某个标的尖峰上涨超过阈值，则清仓并在后续重新建仓
 [[rules]]
@@ -61,10 +61,10 @@ frequency = "1d"
 
 [rules.options]
 spike_days = 1
-spike_fall_threshold = 0
-spike_rise_threshold = 0.055
+spike_fall_threshold = 0.015
+spike_rise_threshold = 0.05
 
-[rules.search]
+# [rules.search.options]
 # spike_days = [1, 2, 3]
-# spike_fall_threshold = [-0.01, -0.005, 0, 0.005, 0.01, 0.015, 0.02]
+# spike_fall_threshold = [0, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
 # spike_rise_threshold = [0.03, 0.035, 0.04, 0.045, 0.05, 0.055, 0.06]

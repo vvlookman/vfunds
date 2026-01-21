@@ -15,17 +15,17 @@ frequency = "1w"
 
 [rules.options]
 allow_short = false
-lookback_years = 10
+lookback_years = 6
 pb_quantile_lower = 0.1
 pb_quantile_upper = 0.95
-pe_quantile_lower = 0.4
+pe_quantile_lower = 0.1
 pe_quantile_upper = 0.95
 ticker_watch_index = { "510300" = "000001.SH", "159949" = "399006.SZ" }
 
 [rules.search.options]
 # allow_short = [true, false]
-# lookback_years = [8, 10, 12]
+lookback_years = [5, 6, 7, 8, 10, 12]
 pb_quantile_lower = [0.1, 0.2, 0.3, 0.4]
-pb_quantile_upper = [0.8, 0.9, 0.95]
+# pb_quantile_upper = [0.8, 0.9, 0.95]
 pe_quantile_lower = [0.1, 0.2, 0.3, 0.4]
-pe_quantile_upper = [0.8, 0.9, 0.95]
+# pe_quantile_upper = [0.8, 0.9, 0.95]
