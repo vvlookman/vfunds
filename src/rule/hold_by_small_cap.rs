@@ -14,7 +14,6 @@ use crate::{
             StockDetail, StockDividendAdjust, StockIndicatorField, fetch_stock_detail,
             fetch_stock_indicators, fetch_stock_kline,
         },
-        tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
@@ -146,30 +145,34 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let market_cap = calc_stock_market_cap(ticker, date).await?;
-                    let arr = calc_annualized_return_rate(&prices);
-                    let volatility = calc_annualized_volatility(&prices);
-
                     let stock_indicators = fetch_stock_indicators(ticker).await?;
+                    let market_cap_with_date = stock_indicators.get_latest_value::<f64>(
+                        date,
+                        false,
+                        &StockIndicatorField::MarketValueCirculating.to_string(),
+                    );
                     let pb_with_date = stock_indicators.get_latest_value::<f64>(
                         date,
                         false,
                         &StockIndicatorField::Pb.to_string(),
                     );
 
+                    let arr = calc_annualized_return_rate(&prices);
+                    let volatility = calc_annualized_volatility(&prices);
+
                     if let Some(fail_factor_name) =
-                        match (market_cap, arr, pb_with_date, volatility) {
+                        match (market_cap_with_date, pb_with_date, arr, volatility) {
                             (None, _, _, _) => Some("market_cap"),
-                            (_, None, _, _) => Some("arr"),
-                            (_, _, None, _) => Some("pb"),
+                            (_, None, _, _) => Some("pb"),
+                            (_, _, None, _) => Some("arr"),
                             (_, _, _, None) => Some("volatility"),
-                            (Some(market_cap), Some(arr), Some((_, pb)), Some(volatility)) => {
+                            (Some((_, market_cap)), Some((_, pb)), Some(arr), Some(volatility)) => {
                                 tickers_factors.push((
                                     ticker.clone(),
                                     Factors {
                                         market_cap,
-                                        arr,
                                         pb,
+                                        arr,
                                         volatility,
                                     },
                                 ));
@@ -323,7 +326,7 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     market_cap: f64,
-    arr: f64,
     pb: f64,
+    arr: f64,
     volatility: f64,
 }
