@@ -43,7 +43,13 @@ impl FundBacktestContext<'_> {
                 .map(|(_, (weight, _))| *weight)
                 .sum::<f64>();
             if position_weight_sum > 0.0 {
-                let total_value = self.calc_total_value(date).await?;
+                let buy_price_type = if self.options.pessimistic {
+                    PriceType::High
+                } else {
+                    PriceType::Mid
+                };
+
+                let total_value = self.calc_total_value(date, &buy_price_type).await?;
                 let buffer_cash = total_value * self.options.buffer_ratio;
 
                 let total_deploy_cash = self.portfolio.free_cash - buffer_cash;
@@ -55,11 +61,6 @@ impl FundBacktestContext<'_> {
                             let fee = calc_buy_fee(deploy_cash, self.options);
                             let delta_value = deploy_cash - fee;
                             if delta_value > 0.0 {
-                                let buy_price_type = if self.options.pessimistic {
-                                    PriceType::High
-                                } else {
-                                    PriceType::Mid
-                                };
                                 if let Some(buy_price) =
                                     get_ticker_price(ticker, date, true, &buy_price_type).await?
                                 {
@@ -101,17 +102,18 @@ impl FundBacktestContext<'_> {
                 .map(|(_, (weight, _))| *weight)
                 .sum::<f64>();
             if position_weight_sum > 0.0 {
+                let sell_price_type = if self.options.pessimistic {
+                    PriceType::Low
+                } else {
+                    PriceType::Mid
+                };
+
                 for (ticker, units) in &self.portfolio.positions.clone() {
                     if let Some((weight, _)) = position_tickers_map.get(ticker) {
                         let raise_cash = cash * weight / position_weight_sum;
                         let fee = calc_sell_fee(raise_cash, self.options);
                         let delta_value = raise_cash + fee;
 
-                        let sell_price_type = if self.options.pessimistic {
-                            PriceType::Low
-                        } else {
-                            PriceType::Mid
-                        };
                         if let Some(sell_price) =
                             get_ticker_price(ticker, date, true, &sell_price_type).await?
                         {
@@ -158,12 +160,6 @@ impl FundBacktestContext<'_> {
         date: &NaiveDate,
         event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
-        // Make sure weight is valid
-        let targets_weight: Vec<&(Ticker, f64)> = targets_weight
-            .iter()
-            .filter(|(_, weight)| weight.is_finite())
-            .collect();
-
         // Close unneeded positions and reserved cash
         {
             let position_tickers: Vec<_> = self.portfolio.positions.keys().cloned().collect();
@@ -186,18 +182,34 @@ impl FundBacktestContext<'_> {
             }
         }
 
+        // Only keep tickers with price data
+        let mut tickers_weight_price: Vec<(Ticker, f64, f64)> = vec![];
+        for (ticker, weight) in targets_weight {
+            if let Some(price) = get_ticker_price(ticker, date, true, &PriceType::Mid).await? {
+                tickers_weight_price.push((ticker.clone(), *weight, price));
+            } else {
+                let _ = event_sender
+                    .send(BacktestEvent::Warning {
+                        title: "".to_string(),
+                        message: format!("Price of '{ticker}' not exists"),
+                        date: Some(*date),
+                    })
+                    .await;
+            }
+        }
+
         // Scale positions and reserved cash
         {
-            let targets_weight_sum = targets_weight
+            let targets_weight_sum = tickers_weight_price
                 .iter()
-                .map(|(_, weight)| *weight)
+                .map(|(_, weight, _)| *weight)
                 .sum::<f64>();
             if targets_weight_sum > 0.0 {
-                let total_value = self.calc_total_value(date).await?;
+                let total_value = self.calc_total_value(date, &PriceType::Mid).await?;
+                let positions_value = total_value * (1.0 - self.options.buffer_ratio);
 
-                for (ticker, weight) in &targets_weight {
-                    let ticker_value = total_value * (1.0 - self.options.buffer_ratio) * weight
-                        / targets_weight_sum;
+                for (ticker, weight, price) in &tickers_weight_price {
+                    let ticker_value = positions_value * weight / targets_weight_sum;
                     if let Some((current_reserved_cash, _)) =
                         self.portfolio.reserved_cash.get(ticker)
                     {
@@ -209,29 +221,24 @@ impl FundBacktestContext<'_> {
                             .entry(ticker.clone())
                             .and_modify(|v| v.0 += delta_cash);
                     } else {
-                        if let Some(price) =
-                            get_ticker_price(ticker, date, true, &PriceType::Close).await?
-                        {
-                            let target_units = (ticker_value / price).floor() as u64;
+                        let target_units = (ticker_value / price).floor() as u64;
 
-                            self.position_scale(ticker, target_units, date, event_sender)
-                                .await?;
-                        } else {
-                            let _ = event_sender
-                                .send(BacktestEvent::Warning {
-                                    title: "".to_string(),
-                                    message: format!("Price of '{ticker}' not exists"),
-                                    date: Some(*date),
-                                })
-                                .await;
-                        }
+                        self.position_scale_with_price_type(
+                            ticker,
+                            target_units,
+                            &PriceType::Mid,
+                            &PriceType::Mid,
+                            date,
+                            event_sender,
+                        )
+                        .await?;
                     }
                 }
             }
         }
 
         let cash = self.calc_cash();
-        let positions_value = self.calc_positions_value(date).await?;
+        let positions_value = self.calc_positions_value(date, &PriceType::Close).await?;
 
         let _ = notify_portfolio(
             event_sender,
@@ -546,36 +553,30 @@ impl FundBacktestContext<'_> {
         let ticker_title = get_ticker_title(ticker).await;
         if delta_units > 0 {
             if let Some(buy_price) = get_ticker_price(ticker, date, true, buy_price_type).await? {
-                let total_value = self.calc_total_value(date).await?;
-                let buffer_cash = total_value * self.options.buffer_ratio;
-                let available_cash = self.portfolio.free_cash - buffer_cash;
+                let buy_units = delta_units as u64;
+                let value = buy_units as f64 * buy_price;
 
-                let value = (delta_units as f64 * buy_price).min(available_cash);
-                let buy_units = (value / buy_price).floor() as u64;
+                let fee = calc_buy_fee(value, self.options);
+                let amount = value + fee;
 
-                if buy_units > 0 {
-                    let fee = calc_buy_fee(value, self.options);
-                    let amount = value + fee;
+                self.portfolio.free_cash -= amount;
 
-                    self.portfolio.free_cash -= amount;
+                self.portfolio
+                    .positions
+                    .entry(ticker.clone())
+                    .and_modify(|v| *v += buy_units)
+                    .or_insert(buy_units);
 
-                    self.portfolio
-                        .positions
-                        .entry(ticker.clone())
-                        .and_modify(|v| *v += buy_units)
-                        .or_insert(buy_units);
-
-                    self.order_dates.insert(*date);
-                    let _ = event_sender
-                        .send(BacktestEvent::Buy {
-                            title: ticker_title,
-                            amount,
-                            price: buy_price,
-                            units: buy_units,
-                            date: *date,
-                        })
-                        .await;
-                }
+                self.order_dates.insert(*date);
+                let _ = event_sender
+                    .send(BacktestEvent::Buy {
+                        title: ticker_title,
+                        amount,
+                        price: buy_price,
+                        units: buy_units,
+                        date: *date,
+                    })
+                    .await;
             } else {
                 let _ = event_sender
                     .send(BacktestEvent::Warning {
@@ -589,6 +590,7 @@ impl FundBacktestContext<'_> {
             if let Some(sell_price) = get_ticker_price(ticker, date, true, sell_price_type).await? {
                 let sell_units = delta_units.unsigned_abs();
                 let value = sell_units as f64 * sell_price;
+
                 let fee = calc_sell_fee(value, self.options);
                 let amount = value - fee;
 
@@ -652,7 +654,7 @@ impl FundBacktestContext<'_> {
                 .await;
 
             let cash = self.calc_cash();
-            let positions_value = self.calc_positions_value(date).await?;
+            let positions_value = self.calc_positions_value(date, &PriceType::Close).await?;
 
             let _ = notify_portfolio(
                 event_sender,
@@ -695,7 +697,7 @@ impl FundBacktestContext<'_> {
                 .await;
 
             let cash = self.calc_cash();
-            let positions_value = self.calc_positions_value(date).await?;
+            let positions_value = self.calc_positions_value(date, &PriceType::Close).await?;
 
             let _ = notify_portfolio(
                 event_sender,
@@ -727,11 +729,15 @@ impl FundBacktestContext<'_> {
                 .sum::<f64>()
     }
 
-    async fn calc_positions_value(&self, date: &NaiveDate) -> VfResult<HashMap<Ticker, f64>> {
+    async fn calc_positions_value(
+        &self,
+        date: &NaiveDate,
+        price_type: &PriceType,
+    ) -> VfResult<HashMap<Ticker, f64>> {
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
 
         for (ticker, units) in &self.portfolio.positions {
-            if let Some(price) = get_ticker_price(ticker, date, true, &PriceType::Close).await? {
+            if let Some(price) = get_ticker_price(ticker, date, true, price_type).await? {
                 positions_value.insert(ticker.clone(), *units as f64 * price);
             } else {
                 return Err(VfError::NoData {
@@ -744,8 +750,8 @@ impl FundBacktestContext<'_> {
         Ok(positions_value)
     }
 
-    async fn calc_total_value(&self, date: &NaiveDate) -> VfResult<f64> {
-        let positions_value = self.calc_positions_value(date).await?;
+    async fn calc_total_value(&self, date: &NaiveDate, price_type: &PriceType) -> VfResult<f64> {
+        let positions_value = self.calc_positions_value(date, price_type).await?;
         let total_value = self.calc_cash() + positions_value.values().sum::<f64>();
 
         Ok(total_value)
@@ -843,14 +849,18 @@ pub async fn backtest_fund(
                         }
                     }
 
-                    if let Ok(total_value) = context.calc_total_value(&date).await {
+                    if let Ok(total_value) =
+                        context.calc_total_value(&date, &PriceType::Close).await
+                    {
                         trade_dates_value.push((date, total_value));
                     }
                 }
             }
 
             let final_cash = context.calc_cash();
-            let final_positions_value = context.calc_positions_value(&options.end_date).await?;
+            let final_positions_value = context
+                .calc_positions_value(&options.end_date, &PriceType::Close)
+                .await?;
 
             let _ = notify_portfolio(
                 &sender,
