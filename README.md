@@ -30,6 +30,5 @@ LOG="vfunds=debug" CACHE_NO_EXPIRE=true cargo run -- backtest -w ./example -s 20
 ## Release
 
 ```sh
-cargo build --release
-codesign -s "DevCodeSign" --identifier "vfunds" ./target/release/vfunds
+./release.sh
 ```
