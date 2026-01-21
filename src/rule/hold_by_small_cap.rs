@@ -21,7 +21,7 @@ use crate::{
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_return_rate, calc_annualized_volatility},
+        financial::{TRADE_DAYS_PER_YEAR, calc_annualized_return_rate, calc_annualized_volatility},
         stats::quantile,
     },
 };
@@ -113,7 +113,8 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    if is_st(ticker, date, 30).await? {
+                    let lookback_days = lookback_trade_days as f64 * 365.0 / TRADE_DAYS_PER_YEAR;
+                    if is_st(ticker, date, lookback_days as u64).await? {
                         continue;
                     }
 
@@ -257,7 +258,7 @@ impl RuleExecutor for Executor {
                 }
 
                 if factors.market_cap > 0.0 {
-                    indicators.push((ticker, factors.market_cap / 1e8));
+                    indicators.push((ticker, factors.market_cap / 1e4));
                 }
             }
             indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
