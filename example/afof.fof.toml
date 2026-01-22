@@ -6,7 +6,7 @@ frequency = "3m"
 high-dividend = 2
 high-momentum = 5
 permanent = 1
-strong-small-cap = 2
+strong-small-cap = 5
 
 [search]
 frequency = ["3m", "6m", "1y"]
