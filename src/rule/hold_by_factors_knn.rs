@@ -3,9 +3,12 @@ use std::{cmp::Ordering, collections::HashMap};
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
 use smartcore::{
-    linalg::basic::matrix::DenseMatrix,
+    linalg::basic::{
+        arrays::{Array, Array2},
+        matrix::DenseMatrix,
+    },
     metrics::r2,
-    xgboost::{XGRegressor, XGRegressorParameters},
+    neighbors::knn_regressor::{KNNRegressor, KNNRegressorParameters},
 };
 use tokio::{sync::mpsc::Sender, time::Instant};
 
@@ -14,10 +17,7 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField,
-        stock::{
-            StockDividendAdjust, StockIndicatorField, StockReportPershareField,
-            fetch_stock_indicators, fetch_stock_kline, fetch_stock_report_pershare,
-        },
+        stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
@@ -26,7 +26,7 @@ use crate::{
     ticker::Ticker,
     utils::{
         financial::*,
-        smartcore::{validate_array, validate_matrix},
+        smartcore::{normalize_zscore_matrix, validate_array, validate_matrix},
     },
 };
 
@@ -57,6 +57,7 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let k = self.options.get("k").and_then(|v| v.as_u64()).unwrap_or(3);
         let limit = self
             .options
             .get("limit")
@@ -67,6 +68,11 @@ impl RuleExecutor for Executor {
             .get("metric_r2_threshold")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.8);
+        let score_lower = self
+            .options
+            .get("score_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let train_trade_days = self
             .options
             .get("train_trade_days")
@@ -77,36 +83,6 @@ impl RuleExecutor for Executor {
             .get("weight_method")
             .and_then(|v| v.as_str())
             .unwrap_or("equal");
-        let xgboost_gamma = self
-            .options
-            .get("xgboost_gamma")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let xgboost_lambda = self
-            .options
-            .get("xgboost_lambda")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let xgboost_learning_rate = self
-            .options
-            .get("xgboost_learning_rate")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
-        let xgboost_max_depth = self
-            .options
-            .get("xgboost_max_depth")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let xgboost_min_child_weight = self
-            .options
-            .get("xgboost_min_child_weight")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let xgboost_n_estimators = self
-            .options
-            .get("xgboost_n_estimators")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50);
         {
             if limit == 0 {
                 panic!("limit must > 0");
@@ -132,8 +108,8 @@ impl RuleExecutor for Executor {
 
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
 
-                    let mut factors_and_score: Vec<(Vec<f64>, f64)> = vec![];
                     let mut ticker_factor_invalid: bool = false;
+                    let mut factors_and_score: Vec<(Vec<f64>, f64)> = vec![];
                     'calc_factors_loop: for i in 0..train_trade_days {
                         let post_train_prices_with_date = kline.get_latest_values::<f64>(
                             date,
@@ -193,83 +169,60 @@ impl RuleExecutor for Executor {
                     }
 
                     if !ticker_factor_invalid {
-                        let train_len = (factors_and_score.len() as f64 * 0.8).floor() as usize;
-                        let train_factors_and_score = factors_and_score[0..train_len].to_vec();
-                        let test_factors_and_score = factors_and_score[train_len..].to_vec();
+                        let predict_factors = calc_factors(ticker, date).await?;
 
-                        if !train_factors_and_score.is_empty() && !test_factors_and_score.is_empty()
-                        {
-                            if let Ok(x_train) = DenseMatrix::from_2d_array(
-                                &train_factors_and_score
-                                    .iter()
-                                    .map(|(factors, _)| factors.as_slice())
-                                    .collect::<Vec<&[f64]>>(),
-                            ) && let Ok(x_test) = DenseMatrix::from_2d_array(
-                                &test_factors_and_score
-                                    .iter()
-                                    .map(|(factors, _)| factors.as_slice())
-                                    .collect::<Vec<&[f64]>>(),
-                            ) {
-                                let y_train = train_factors_and_score
+                        let mut all_factors: Vec<Vec<f64>> = factors_and_score
+                            .iter()
+                            .map(|(factors, _)| factors.clone())
+                            .collect();
+                        all_factors.push(predict_factors.iter().map(|(_, v)| *v).collect());
+
+                        if let Ok(x) = DenseMatrix::from_2d_vec(&all_factors) {
+                            if let Some(x) = normalize_zscore_matrix(&x) {
+                                let (nrows, ncols) = x.shape();
+
+                                let train_test_nrows = nrows - 1;
+                                let train_nrows = (train_test_nrows as f64 * 0.8).floor() as usize;
+
+                                let x_train =
+                                    DenseMatrix::from_slice(&*x.slice(0..train_nrows, 0..ncols));
+                                let x_test = DenseMatrix::from_slice(
+                                    &*x.slice(train_nrows..train_test_nrows, 0..ncols),
+                                );
+                                let x_pred = DenseMatrix::from_slice(
+                                    &*x.slice(train_test_nrows..nrows, 0..ncols),
+                                );
+
+                                let y = factors_and_score
                                     .iter()
                                     .map(|(_, score)| *score)
                                     .collect::<Vec<f64>>();
-                                let y_test = test_factors_and_score
-                                    .iter()
-                                    .map(|(_, score)| *score)
-                                    .collect::<Vec<f64>>();
+                                let y_train = y[0..train_nrows].to_vec();
+                                let y_test = y[train_nrows..].to_vec();
 
                                 if validate_matrix(&x_train).is_ok()
                                     && validate_matrix(&x_test).is_ok()
+                                    && validate_matrix(&x_pred).is_ok()
                                     && validate_array(&y_train).is_ok()
                                     && validate_array(&y_test).is_ok()
                                 {
-                                    let parameters = XGRegressorParameters::default()
-                                        .with_gamma(xgboost_gamma)
-                                        .with_lambda(xgboost_lambda)
-                                        .with_learning_rate(xgboost_learning_rate)
-                                        .with_max_depth(xgboost_max_depth as u16)
-                                        .with_min_child_weight(xgboost_min_child_weight as usize)
-                                        .with_n_estimators(xgboost_n_estimators as usize)
-                                        .with_seed(0)
-                                        .with_subsample(1.0);
+                                    let parameters =
+                                        KNNRegressorParameters::default().with_k(k as usize);
 
                                     if let Ok(model) =
-                                        XGRegressor::fit(&x_train, &y_train, parameters)
+                                        KNNRegressor::fit(&x_train, &y_train, parameters)
                                     {
                                         if let Ok(y_test_pred) = model.predict(&x_test) {
                                             let r2_score = r2(&y_test, &y_test_pred);
                                             if r2_score > metric_r2_threshold
                                                 && r2_score < 1.0 - 1e-8
                                             {
-                                                let predict_factors =
-                                                    calc_factors(ticker, date).await?;
-                                                if !predict_factors.is_empty()
-                                                    && !predict_factors
-                                                        .iter()
-                                                        .any(|(_, v)| !v.is_finite())
-                                                {
-                                                    if let Ok(x_predict) =
-                                                        DenseMatrix::from_2d_vec(&vec![
-                                                            predict_factors
-                                                                .iter()
-                                                                .map(|(_, factor)| *factor)
-                                                                .collect(),
-                                                        ])
-                                                    {
-                                                        if let Ok(y_predict) =
-                                                            model.predict(&x_predict)
-                                                        {
-                                                            if let Some(score) = y_predict.first() {
-                                                                if *score > 0.0 {
-                                                                    let indicator =
-                                                                        score * r2_score;
-                                                                    indicators.push((
-                                                                        ticker.clone(),
-                                                                        indicator,
-                                                                    ));
-                                                                }
-                                                            }
+                                                if let Ok(y_pred) = model.predict(&x_pred) {
+                                                    if let Some(score) = y_pred.first() {
+                                                        if *score > score_lower {
+                                                            let indicator = score * r2_score;
+                                                            indicators
+                                                                .push((ticker.clone(), indicator));
                                                         }
                                                     }
                                                 }
@@ -349,12 +302,10 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
     let mut factors: Vec<(String, f64)> = vec![];
 
     let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
-    let indicators = fetch_stock_indicators(ticker).await?;
-    let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
     // Momentum
     {
-        for days in &[20, 40, 60, 120, 240] {
+        for days in &[10, 20, 40, 60, 120, 240] {
             let prices_days: Vec<f64> = kline
                 .get_latest_values::<f64>(end_date, false, &KlineField::Close.to_string(), *days)
                 .iter()
@@ -367,62 +318,9 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
         }
     }
 
-    // Valuation
-    {
-        for field in &[
-            StockIndicatorField::Pb,
-            StockIndicatorField::Pe,
-            StockIndicatorField::PeTtm,
-            StockIndicatorField::Ps,
-            StockIndicatorField::PsTtm,
-        ] {
-            factors.push((
-                field.to_string(),
-                indicators
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
-                    .map(|(_, v)| v)
-                    .unwrap_or(f64::NAN),
-            ));
-        }
-    }
-
-    // Quality
-    {
-        for field in &[
-            StockReportPershareField::Bps,
-            StockReportPershareField::Cfps,
-            StockReportPershareField::Eps,
-            StockReportPershareField::Roe,
-        ] {
-            factors.push((
-                field.to_string(),
-                report_pershare
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
-                    .map(|(_, v)| v)
-                    .unwrap_or(f64::NAN),
-            ));
-        }
-    }
-
-    // Liquidity
-    {
-        for field in &[
-            StockIndicatorField::TurnoverRate,
-            StockIndicatorField::VolumeRatio,
-        ] {
-            factors.push((
-                field.to_string(),
-                indicators
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
-                    .map(|(_, v)| v)
-                    .unwrap_or(f64::NAN),
-            ));
-        }
-    }
-
     // Volatility
     {
-        for days in &[20, 40, 60, 120, 240] {
+        for days in &[10, 20, 40, 60, 120, 240] {
             let prices_days: Vec<f64> = kline
                 .get_latest_values::<f64>(end_date, false, &KlineField::Close.to_string(), *days)
                 .iter()
@@ -432,16 +330,12 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
                 format!("Volatility{days}T"),
                 calc_annualized_volatility(&prices_days).unwrap_or(f64::NAN),
             ));
-            factors.push((
-                format!("MaxDrawdown{days}T"),
-                calc_max_drawdown(&prices_days).unwrap_or(f64::NAN),
-            ));
         }
     }
 
     // Bias
     {
-        for days in &[20, 40, 60, 120, 240] {
+        for days in &[10, 20, 40, 60, 120, 240] {
             let prices_days: Vec<f64> = kline
                 .get_latest_values::<f64>(end_date, false, &KlineField::Close.to_string(), *days)
                 .iter()

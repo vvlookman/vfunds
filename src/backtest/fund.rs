@@ -737,13 +737,22 @@ impl FundBacktestContext<'_> {
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
 
         for (ticker, units) in &self.portfolio.positions {
-            if let Some(price) = get_ticker_price(ticker, date, true, price_type).await? {
-                positions_value.insert(ticker.clone(), *units as f64 * price);
-            } else {
-                return Err(VfError::NoData {
-                    code: "NO_PRICE_DATA",
-                    message: format!("Price data of '{ticker}' not exists"),
-                });
+            match get_ticker_price(ticker, date, true, price_type).await {
+                Ok(Some(price)) => {
+                    positions_value.insert(ticker.clone(), *units as f64 * price);
+                }
+                Ok(None) => {
+                    return Err(VfError::NoData {
+                        code: "NO_PRICE_DATA",
+                        message: format!(
+                            "Price data of '{ticker}' @{} not exists",
+                            date_to_str(date)
+                        ),
+                    });
+                }
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
 

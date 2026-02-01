@@ -12,7 +12,7 @@ use crate::{
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info,
     },
     spec::Frequency,
     ticker::Ticker,
@@ -185,6 +185,18 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    conv_bond_issues.len(),
+                    tickers_factors.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
 
             let factors_straight_premium = tickers_factors
                 .iter()

@@ -1,0 +1,36 @@
+title = "多因子相似"
+description = "基于对多个因子寻找KNN相似后从国证300中选择股票并持有"
+
+[[ticker_sources]]
+source = "399312.CNI"
+source_type = "index"
+
+[[rules]]
+name = "hold_by_factors_knn"
+frequency = "1m"
+
+[rules.options]
+k = 3
+limit = 3
+metric_r2_threshold = 0.7
+score_lower = 0.1
+train_trade_days = 120
+weight_method = "filter_max(0.7)"
+
+[rules.search]
+# frequency = ["1w", "2w", "1m", "3m", "6m", "9m", "1y"]
+
+[rules.search.options]
+# k = [3, 5, 8]
+# limit = [2, 3, 4, 5]
+metric_r2_threshold = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9]
+# score_lower = [0, 0.05, 0.1, 0.15, 0.2]
+# train_trade_days = [60, 120, 240, 480]
+# weight_method = [
+#   "equal",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+# ]

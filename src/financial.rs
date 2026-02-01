@@ -11,6 +11,8 @@ use crate::{
     ticker::{Ticker, TickerType},
 };
 
+pub const MIN_PRICE: f64 = 0.01;
+
 pub mod bond;
 pub mod index;
 pub mod sector;
@@ -71,8 +73,8 @@ pub async fn get_ticker_price(
                     include_today,
                     &ConvBondDailyField::Low.to_string(),
                 ) {
-                    if date_high == date_low && high > 0.0 && low > 0.0 {
-                        Ok(Some((high + low) / 2.0))
+                    if date_high == date_low {
+                        Ok(Some(((high + low) / 2.0).max(MIN_PRICE)))
                     } else {
                         Ok(None)
                     }
@@ -89,7 +91,7 @@ pub async fn get_ticker_price(
 
                 Ok(daily
                     .get_latest_value::<f64>(date, include_today, &price_field.to_string())
-                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
+                    .map(|(_, price)| price.max(MIN_PRICE)))
             }
         }
         TickerType::Stock => {
@@ -102,8 +104,8 @@ pub async fn get_ticker_price(
                 ) && let Some((date_low, low)) =
                     kline.get_latest_value::<f64>(date, include_today, &KlineField::Low.to_string())
                 {
-                    if date_high == date_low && high > 0.0 && low > 0.0 {
-                        Ok(Some((high + low) / 2.0))
+                    if date_high == date_low {
+                        Ok(Some(((high + low) / 2.0).max(MIN_PRICE)))
                     } else {
                         Ok(None)
                     }
@@ -120,7 +122,7 @@ pub async fn get_ticker_price(
 
                 Ok(kline
                     .get_latest_value::<f64>(date, include_today, &price_field.to_string())
-                    .and_then(|(_, price)| if price > 0.0 { Some(price) } else { None }))
+                    .map(|(_, price)| price.max(MIN_PRICE)))
             }
         }
     }

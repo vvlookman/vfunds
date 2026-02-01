@@ -9,16 +9,22 @@ use ta::{
 use crate::utils::{math::linear_regression, stats};
 
 pub const TRADE_DAYS_PER_YEAR: f64 = 250.0;
+pub const DAYS_PER_YEAR: f64 = 365.2425;
 
 pub fn calc_annualized_momentum(daily_values: &[f64], adjust_with_r2: bool) -> Option<f64> {
     let ln_values: Vec<f64> = daily_values.iter().map(|v| v.ln()).collect();
     if let Some((slope, r2)) = linear_regression(&ln_values) {
         let arr = (slope * TRADE_DAYS_PER_YEAR).exp() - 1.0;
-
-        if adjust_with_r2 {
-            return Some(arr * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
-        } else {
-            return Some(arr);
+        if arr.is_finite() {
+            if adjust_with_r2 {
+                if r2 > 0.0 {
+                    return Some(arr * r2.sqrt());
+                } else {
+                    return None;
+                }
+            } else {
+                return Some(arr);
+            }
         }
     }
 

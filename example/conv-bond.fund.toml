@@ -3,8 +3,7 @@ description = "持有满足一定条件且最有性价比的可转债"
 
 [[rules]]
 name = "hold_by_conv_bond_premium"
-frequency = "2m"
-frequency_take_profit_pct = 0
+frequency = "3m"
 
 [rules.options]
 issue_size_quantile_lower = 0.2
@@ -17,8 +16,8 @@ straight_premium_quantile_upper = 0.8
 frequency = ["1w", "2w", "1m", "2m", "3m", "4m", "6m"]
 
 [rules.search.options]
-issue_size_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
-# limit = [2, 3, 4, 5, 10, 20]
+# issue_size_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+limit = [2, 3, 4, 5, 10, 20]
 # min_remaining_days = [30, 60, 90, 180, 360]
-# remain_lower = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+remain_lower = [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # straight_premium_quantile_upper = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]

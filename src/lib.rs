@@ -125,7 +125,7 @@ static CACHE_NO_EXPIRE: LazyLock<bool> = LazyLock::new(|| {
         .as_deref()
         .unwrap_or_default()
         .to_lowercase();
-    v == "true" || v == "t" || v == "yes" || v == "y"
+    v == "true" || v == "t" || v == "yes" || v == "y" || v == "1"
 });
 
 static CACHE_PATH: LazyLock<PathBuf> = LazyLock::new(|| DATA_PATH.join("cache.db"));

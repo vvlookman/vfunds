@@ -32,6 +32,7 @@ impl Rule {
             "hold_by_factors_boosting" => {
                 Box::new(hold_by_factors_boosting::Executor::new(definition))
             }
+            "hold_by_factors_knn" => Box::new(hold_by_factors_knn::Executor::new(definition)),
             "hold_by_momentum" => Box::new(hold_by_momentum::Executor::new(definition)),
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
             "hold_by_roe_pb" => Box::new(hold_by_roe_pb::Executor::new(definition)),
@@ -79,6 +80,7 @@ mod hold;
 mod hold_by_conv_bond_premium;
 mod hold_by_dividend;
 mod hold_by_factors_boosting;
+mod hold_by_factors_knn;
 mod hold_by_momentum;
 mod hold_by_risk_parity;
 mod hold_by_roe_pb;
