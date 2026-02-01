@@ -1,5 +1,5 @@
 title = "高ROE低PB"
-description = "持有红利指数中高ROE低PB的股票"
+description = "持有红利股中高ROE低PB的股票"
 
 [[ticker_sources]]
 source = "000015.CSI"  # 上证红利
@@ -19,22 +19,22 @@ source_type = "index"
 
 [[rules]]
 name = "hold_by_roe_pb"
-frequency = "6m"
+frequency = "1m"
 
 [rules.options]
-limit = 3
-pb_quantile_upper = 0.4
-roe_quantile_lower = 0.8
+limit = 2
+pb_upper = 0.3
+roe_quantile_lower = 0.4
 skip_same_sector = false
-weight_method = "equal"
+weight_method = "filter_max(0.8)"
 
 [rules.search]
-# frequency = ["6m", "1y", "18m", "2y", "3y"]
+# frequency = ["2w", "1m", "2m", "3m", "6m"]
 
 [rules.search.options]
-limit = [2, 3, 4, 5, 10]
-# pb_quantile_upper = [0.2, 0.4, 0.6, 0.8, 1]
-# roe_quantile_lower = [0, 0.2, 0.4, 0.6, 0.8]
+# limit = [2, 3, 4, 5]
+pb_upper = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+roe_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # skip_same_sector = [true, false]
 # weight_method = [
 #   "equal",

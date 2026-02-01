@@ -49,9 +49,9 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let pb_quantile_upper = self
+        let pb_upper = self
             .options
-            .get("pb_quantile_upper")
+            .get("pb_upper")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
         let roe_quantile_lower = self
@@ -152,12 +152,6 @@ impl RuleExecutor for Executor {
                 .collect::<Vec<f64>>();
             let roe_lower = quantile(&factors_roe, roe_quantile_lower);
 
-            let factors_pb = tickers_factors
-                .iter()
-                .map(|(_, f)| f.pb)
-                .collect::<Vec<f64>>();
-            let pb_upper = quantile(&factors_pb, pb_quantile_upper);
-
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
                 if let Some(roe_lower) = roe_lower {
@@ -166,10 +160,8 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                if let Some(pb_upper) = pb_upper {
-                    if factors.pb > pb_upper {
-                        continue;
-                    }
+                if factors.pb > pb_upper {
+                    continue;
                 }
 
                 indicators.push((ticker, factors.roe / factors.pb));

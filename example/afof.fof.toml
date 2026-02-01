@@ -5,14 +5,16 @@ frequency = "3m"
 [funds]
 high-dividend = 2
 high-momentum = 5
+high-roe-low-pb = 1
 permanent = 1
 strong-small-cap = 5
 
 [search]
-frequency = ["3m", "6m", "1y"]
+# frequency = ["3m", "6m", "1y"]
 
 [search.funds]
 high-dividend = [1, 2, 3, 5]
 high-momentum = [1, 2, 3, 5]
+# high-roe-low-pb = [1, 2, 3, 5] 目前看波动太大，小仓位尝试
 permanent = [1, 2, 3, 5]
 strong-small-cap = [1, 2, 3, 5]
