@@ -1,10 +1,10 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     hash::{Hash, Hasher},
     path::{Path, PathBuf},
 };
 
-use chrono::{Days, NaiveDate};
+use chrono::NaiveDate;
 use eframe::egui;
 use egui_plot::{Corner, Legend, Line, LineStyle, Plot, PlotPoint, PlotPoints, Points};
 use tokio::sync::mpsc;
@@ -24,8 +24,8 @@ pub struct ResultViewer {
     load_event_receiver: mpsc::Receiver<LoadEvent>,
     results: Vec<(String, BacktestOutputResult, BacktestDailyValues)>,
 
-    plot_start_date: Option<NaiveDate>,
-    plot_end_date: Option<NaiveDate>,
+    plot_trade_dates: Vec<NaiveDate>,
+    plot_trade_dates_index: HashMap<NaiveDate, usize>,
     plot_values_points: HashMap<String, Vec<PlotPoint>>,
     plot_orders_points: HashMap<String, Vec<PlotPoint>>,
     plot_cost_line_points: Vec<PlotPoint>,
@@ -86,8 +86,8 @@ impl ResultViewer {
             load_event_receiver,
             results: vec![],
 
-            plot_start_date: None,
-            plot_end_date: None,
+            plot_trade_dates: vec![],
+            plot_trade_dates_index: HashMap::new(),
             plot_values_points: HashMap::new(),
             plot_orders_points: HashMap::new(),
             plot_cost_line_points: vec![],
@@ -157,29 +157,37 @@ impl ResultViewer {
     fn on_load_results(&mut self, event: LoadEvent) {
         match event {
             LoadEvent::Finished(results) => {
-                self.plot_start_date = results
-                    .iter()
-                    .map(|(_, output_result, _)| output_result.options.start_date)
-                    .min();
-                self.plot_end_date = results
-                    .iter()
-                    .filter_map(|(_, output_result, _)| output_result.metrics.last_trade_date)
-                    .max();
+                let mut trade_dates_set: HashSet<NaiveDate> = HashSet::new();
+                for (_, _, daily_values) in &results {
+                    for (date, _) in daily_values {
+                        trade_dates_set.insert(*date);
+                    }
+                }
+                let mut trade_dates: Vec<NaiveDate> = trade_dates_set.into_iter().collect();
+                trade_dates.sort();
 
-                if let (Some(plot_start_date), Some(plot_end_date)) =
-                    (self.plot_start_date, self.plot_end_date)
-                {
+                let mut trade_dates_index: HashMap<NaiveDate, usize> = HashMap::new();
+                for (i, date) in trade_dates.iter().enumerate() {
+                    trade_dates_index.insert(*date, i);
+                }
+
+                if !trade_dates.is_empty() {
+                    self.plot_trade_dates = trade_dates;
+                    self.plot_trade_dates_index = trade_dates_index;
+
                     for (vfund_name, output_result, daily_values) in &results {
                         let mut values_points: Vec<PlotPoint> = vec![];
                         let mut orders_points: Vec<PlotPoint> = vec![];
 
                         for (date, value) in daily_values {
-                            let x = (*date - plot_start_date).num_days() as f64;
-                            let y = *value / output_result.options.init_cash * 100.0;
-                            values_points.push(PlotPoint::new(x, y));
+                            if let Some(date_index) = self.plot_trade_dates_index.get(date) {
+                                let x = *date_index as f64;
+                                let y = *value / output_result.options.init_cash * 100.0;
+                                values_points.push(PlotPoint::new(x, y));
 
-                            if output_result.order_dates.contains(date) {
-                                orders_points.push(PlotPoint::new(x, y));
+                                if output_result.order_dates.contains(date) {
+                                    orders_points.push(PlotPoint::new(x, y));
+                                }
                             }
                         }
 
@@ -191,7 +199,7 @@ impl ResultViewer {
 
                     self.plot_cost_line_points = vec![
                         PlotPoint::new(0.0, 100.0),
-                        PlotPoint::new((plot_end_date - plot_start_date).num_days() as f64, 100.0),
+                        PlotPoint::new(self.plot_trade_dates.len() as f64 - 1.0, 100.0),
                     ];
                 }
 
@@ -283,32 +291,27 @@ impl eframe::App for ResultViewer {
                 });
 
             egui::CentralPanel::default().show_inside(ui, |ui| {
-                if let Some(plot_start_date) = self.plot_start_date {
-                    let last_trade_date = self
-                        .results
-                        .iter()
-                        .filter_map(|(_, output_result, _)| output_result.metrics.last_trade_date)
-                        .max();
-
+                if let Some(first_trade_date) = self.plot_trade_dates.first()
+                    && let Some(last_trade_date) = self.plot_trade_dates.last()
+                {
                     let plot = Plot::new(plot_id)
                         .label_formatter(|name, point| {
                             if name.is_empty() {
                                 format!("{:.2}%", point.y)
                             } else {
-                                format!(
-                                    "[{}] {} {:.2}%",
-                                    date_to_str(&(plot_start_date + Days::new(point.x as u64))),
-                                    name,
-                                    point.y
-                                )
+                                if let Some(date) = self.plot_trade_dates.get(point.x as usize) {
+                                    format!("[{}] {} {:.2}%", date_to_str(date), name, point.y)
+                                } else {
+                                    format!("{} {:.2}%", name, point.y)
+                                }
                             }
                         })
                         .allow_scroll(false)
                         .show_grid(false)
                         .x_axis_label(format!(
                             "[{}] ~ [{}]",
-                            date_to_str(&plot_start_date),
-                            last_trade_date.map_or("-".to_string(), |date| date_to_str(&date))
+                            date_to_str(first_trade_date),
+                            date_to_str(last_trade_date)
                         ))
                         .x_axis_formatter(|_, _| "".to_string())
                         .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
