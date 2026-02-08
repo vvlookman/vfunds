@@ -6,7 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, STALE_DAYS_LONG, STALE_DAYS_SHORT,
     error::VfResult,
     financial::{
         KlineField, get_ticker_title,
@@ -368,11 +368,13 @@ impl Executor {
                 if let (Some((_, price)), Some((_, total_captical))) = (
                     kline.get_latest_value::<f64>(
                         &watch_date,
+                        STALE_DAYS_SHORT,
                         false,
                         &KlineField::Close.to_string(),
                     ),
                     report_capital.get_latest_value::<f64>(
                         &watch_date,
+                        STALE_DAYS_LONG,
                         false,
                         &StockReportCapitalField::Total.to_string(),
                     ),

@@ -5,7 +5,7 @@ use chrono::{Datelike, Duration, NaiveDate};
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_SHORT,
     error::VfResult,
     filter::filter_st::is_st,
     financial::{
@@ -238,6 +238,7 @@ impl RuleExecutor for Executor {
                                             if let Some((_, price_div)) = kline_no_adjust
                                                 .get_latest_value::<f64>(
                                                     &div_date,
+                                                    STALE_DAYS_SHORT,
                                                     true,
                                                     &KlineField::Close.to_string(),
                                                 )

@@ -5,7 +5,7 @@ use chrono::{Days, NaiveDate};
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_SHORT,
     error::VfResult,
     financial::bond::{
         ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail, fetch_conv_bonds,
@@ -141,16 +141,19 @@ impl RuleExecutor for Executor {
                     ) = (
                         daily.get_latest_value::<f64>(
                             date,
+                            STALE_DAYS_SHORT,
                             false,
                             &ConvBondDailyField::Close.to_string(),
                         ),
                         daily.get_latest_value::<f64>(
                             date,
+                            STALE_DAYS_SHORT,
                             false,
                             &ConvBondDailyField::StraightPremium.to_string(),
                         ),
                         daily.get_latest_value::<f64>(
                             date,
+                            STALE_DAYS_SHORT,
                             false,
                             &ConvBondDailyField::ConversionPremium.to_string(),
                         ),

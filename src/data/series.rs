@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::NaiveDate;
+use chrono::{Duration, NaiveDate};
 use num_traits::NumCast;
 use polars::{polars_utils::float::IsFloat, prelude::*};
 use serde::Serialize;
@@ -139,6 +139,7 @@ impl DailySeries {
     pub fn get_latest_value<T: NumCast + IsFloat>(
         &self,
         date: &NaiveDate,
+        max_stale_days: u32,
         include_today: bool,
         field_name: &str,
     ) -> Option<(NaiveDate, T)> {
@@ -172,8 +173,12 @@ impl DailySeries {
                         if let (Some(date_days_after_epoch), Some(val)) =
                             (cell_date.extract::<i32>(), cell_val.extract::<T>())
                         {
-                            if let Some(date) = NaiveDate::from_epoch_days(date_days_after_epoch) {
-                                return Some((date, val));
+                            if let Some(val_date) =
+                                NaiveDate::from_epoch_days(date_days_after_epoch)
+                            {
+                                if *date - val_date <= Duration::days(max_stale_days as i64) {
+                                    return Some((val_date, val));
+                                }
                             }
                         }
                     }
@@ -218,6 +223,9 @@ impl DailySeries {
                     df.column(&self.date_field_name),
                     df.column(origin_field_name),
                 ) {
+                    // <Days> ~= 1.5 * <Trade days>
+                    let max_stale_days = (1.6 * count as f64).ceil() as i64;
+
                     let mut vals = vec![];
 
                     for i in 0..col_date.len() {
@@ -225,10 +233,12 @@ impl DailySeries {
                             if let (Some(date_days_after_epoch), Some(val)) =
                                 (cell_date.extract::<i32>(), cell_val.extract::<T>())
                             {
-                                if let Some(date) =
+                                if let Some(val_date) =
                                     NaiveDate::from_epoch_days(date_days_after_epoch)
                                 {
-                                    vals.push((date, val));
+                                    if *date - val_date <= Duration::days(max_stale_days) {
+                                        vals.push((val_date, val));
+                                    }
                                 }
                             }
                         }
@@ -276,6 +286,9 @@ impl DailySeries {
                 .tail(count)
                 .collect()
             {
+                // <Days> ~= 1.5 * <Trade days>
+                let max_stale_days = (1.6 * count as f64).ceil() as i64;
+
                 let mut vals = vec![];
 
                 if let (Ok(col_date), Ok(col_val), Ok(col_label)) = (
@@ -292,10 +305,12 @@ impl DailySeries {
                                 cell_val.extract::<T>(),
                                 cell_label.get_str(),
                             ) {
-                                if let Some(date) =
+                                if let Some(val_date) =
                                     NaiveDate::from_epoch_days(date_days_after_epoch)
                                 {
-                                    vals.push((date, val, label.map(|s| s.to_string())));
+                                    if *date - val_date <= Duration::days(max_stale_days) {
+                                        vals.push((val_date, val, label.map(|s| s.to_string())));
+                                    }
                                 }
                             }
                         }

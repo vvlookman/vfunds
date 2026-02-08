@@ -6,7 +6,7 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
     error::VfResult,
     financial::{
         KlineField,
@@ -148,6 +148,7 @@ impl RuleExecutor for Executor {
                     let market_cap = calc_stock_market_cap(ticker, date).await?;
                     let circulating_capital_with_date = report_capital.get_latest_value::<f64>(
                         date,
+                        STALE_DAYS_LONG,
                         false,
                         &StockReportCapitalField::Circulating.to_string(),
                     );

@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_LONG,
     error::VfResult,
     financial::{
         stock::{
@@ -93,6 +93,7 @@ impl RuleExecutor for Executor {
 
                     let roe = report_pershare.get_latest_value::<f64>(
                         date,
+                        STALE_DAYS_LONG,
                         false,
                         &StockReportPershareField::Roe.to_string(),
                     );

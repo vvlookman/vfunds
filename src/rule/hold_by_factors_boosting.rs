@@ -10,7 +10,7 @@ use smartcore::{
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_LONG, STALE_DAYS_SHORT,
     error::VfResult,
     financial::{
         KlineField,
@@ -379,7 +379,7 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
             factors.push((
                 field.to_string(),
                 indicators
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
+                    .get_latest_value::<f64>(end_date, STALE_DAYS_SHORT, false, &field.to_string())
                     .map(|(_, v)| v)
                     .unwrap_or(f64::NAN),
             ));
@@ -397,7 +397,7 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
             factors.push((
                 field.to_string(),
                 report_pershare
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
+                    .get_latest_value::<f64>(end_date, STALE_DAYS_LONG, false, &field.to_string())
                     .map(|(_, v)| v)
                     .unwrap_or(f64::NAN),
             ));
@@ -413,7 +413,7 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
             factors.push((
                 field.to_string(),
                 indicators
-                    .get_latest_value::<f64>(end_date, false, &field.to_string())
+                    .get_latest_value::<f64>(end_date, STALE_DAYS_SHORT, false, &field.to_string())
                     .map(|(_, v)| v)
                     .unwrap_or(f64::NAN),
             ));

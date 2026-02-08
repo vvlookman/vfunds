@@ -5,7 +5,7 @@ use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_SHORT,
     error::VfResult,
     filter::{filter_market_cap::is_circulating_ratio_low, filter_st::is_st},
     financial::stock::{
@@ -108,11 +108,13 @@ impl RuleExecutor for Executor {
                     let stock_indicators = fetch_stock_indicators(ticker).await?;
                     let market_cap_with_date = stock_indicators.get_latest_value::<f64>(
                         date,
+                        STALE_DAYS_SHORT,
                         false,
                         &StockIndicatorField::MarketValueCirculating.to_string(),
                     );
                     let pb_with_date = stock_indicators.get_latest_value::<f64>(
                         date,
+                        STALE_DAYS_SHORT,
                         false,
                         &StockIndicatorField::Pb.to_string(),
                     );

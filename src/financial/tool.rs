@@ -4,6 +4,7 @@ use chrono::NaiveDate;
 use serde_json::json;
 
 use crate::{
+    STALE_DAYS_LONG, STALE_DAYS_SHORT,
     ds::tushare,
     error::VfResult,
     financial::{
@@ -24,9 +25,15 @@ pub async fn calc_stock_market_cap(ticker: &Ticker, date: &NaiveDate) -> VfResul
     let report_capital = fetch_stock_report_capital(ticker).await?;
 
     if let (Some((_, price)), Some((_, total_capital))) = (
-        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string()),
+        kline.get_latest_value::<f64>(
+            date,
+            STALE_DAYS_SHORT,
+            false,
+            &KlineField::Close.to_string(),
+        ),
         report_capital.get_latest_value::<f64>(
             date,
+            STALE_DAYS_LONG,
             false,
             &StockReportCapitalField::Total.to_string(),
         ),
@@ -43,9 +50,15 @@ pub async fn calc_stock_pb(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option
     let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
     if let (Some((_, price)), Some((_, bps))) = (
-        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string()),
+        kline.get_latest_value::<f64>(
+            date,
+            STALE_DAYS_SHORT,
+            false,
+            &KlineField::Close.to_string(),
+        ),
         report_pershare.get_latest_value::<f64>(
             date,
+            STALE_DAYS_LONG,
             false,
             &StockReportPershareField::Bps.to_string(),
         ),
@@ -62,7 +75,12 @@ pub async fn calc_stock_pe_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Op
     let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
     if let (Some((_, price)), eps_values) = (
-        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string()),
+        kline.get_latest_value::<f64>(
+            date,
+            STALE_DAYS_SHORT,
+            false,
+            &KlineField::Close.to_string(),
+        ),
         report_pershare.get_latest_values_with_label::<f64>(
             date,
             false,
@@ -122,9 +140,15 @@ pub async fn calc_stock_ps_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Op
     let report_income = fetch_stock_report_income(ticker).await?;
 
     if let (Some((_, price)), Some((_, total_captical)), revenues) = (
-        kline.get_latest_value::<f64>(date, false, &KlineField::Close.to_string()),
+        kline.get_latest_value::<f64>(
+            date,
+            STALE_DAYS_SHORT,
+            false,
+            &KlineField::Close.to_string(),
+        ),
         report_capital.get_latest_value::<f64>(
             date,
+            STALE_DAYS_LONG,
             false,
             &StockReportCapitalField::Total.to_string(),
         ),

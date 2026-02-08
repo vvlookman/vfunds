@@ -710,6 +710,7 @@ mod tests {
     use chrono::Local;
 
     use super::*;
+    use crate::STALE_DAYS_SHORT;
 
     #[tokio::test]
     async fn test_fetch_st_stocks() {
@@ -736,6 +737,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
+                STALE_DAYS_SHORT,
                 false,
                 &StockDividendField::PriceAdjustmentFactor.to_string(),
             )
@@ -752,6 +754,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
+                STALE_DAYS_SHORT,
                 false,
                 &StockIndicatorField::VolumeRatio.to_string(),
             )
@@ -770,6 +773,7 @@ mod tests {
         let (_, data) = dataset
             .get_latest_value::<f64>(
                 &Local::now().date_naive(),
+                STALE_DAYS_SHORT,
                 false,
                 &KlineField::Close.to_string(),
             )
@@ -788,14 +792,24 @@ mod tests {
                 .await
                 .unwrap();
             let (_, data_qmt) = dataset_qmt
-                .get_latest_value::<f64>(&date, false, &KlineField::Close.to_string())
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
                 .unwrap();
 
             let dataset_tushare = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward)
                 .await
                 .unwrap();
             let (_, data_tushare) = dataset_tushare
-                .get_latest_value::<f64>(&date, false, &KlineField::Close.to_string())
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
                 .unwrap();
 
             assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
@@ -806,14 +820,24 @@ mod tests {
                 .await
                 .unwrap();
             let (_, data_qmt) = dataset_qmt
-                .get_latest_value::<f64>(&date, false, &KlineField::Close.to_string())
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
                 .unwrap();
 
             let dataset_tushare = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward)
                 .await
                 .unwrap();
             let (_, data_tushare) = dataset_tushare
-                .get_latest_value::<f64>(&date, false, &KlineField::Close.to_string())
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
                 .unwrap();
 
             assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);

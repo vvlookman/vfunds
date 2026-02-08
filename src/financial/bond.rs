@@ -267,7 +267,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::utils::datetime::date_from_str;
+    use crate::{STALE_DAYS_SHORT, utils::datetime::date_from_str};
 
     #[tokio::test]
     async fn test_fetch_conv_bond_daily() {
@@ -277,6 +277,7 @@ mod tests {
         let (_, data) = series
             .get_latest_value::<f64>(
                 &date_from_str("2025-08-08").unwrap(),
+                STALE_DAYS_SHORT,
                 false,
                 &ConvBondDailyField::ConversionPremium.to_string(),
             )

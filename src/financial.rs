@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 
 use crate::{
+    STALE_DAYS_SHORT,
     data::series::DailySeries,
     error::VfResult,
     financial::{
@@ -77,10 +78,12 @@ pub async fn get_ticker_price(
             if *price_type == PriceType::Mid {
                 if let Some((date_high, high)) = daily.get_latest_value::<f64>(
                     date,
+                    STALE_DAYS_SHORT,
                     include_today,
                     &ConvBondDailyField::High.to_string(),
                 ) && let Some((date_low, low)) = daily.get_latest_value::<f64>(
                     date,
+                    STALE_DAYS_SHORT,
                     include_today,
                     &ConvBondDailyField::Low.to_string(),
                 ) {
@@ -101,7 +104,12 @@ pub async fn get_ticker_price(
                 };
 
                 Ok(daily
-                    .get_latest_value::<f64>(date, include_today, &price_field.to_string())
+                    .get_latest_value::<f64>(
+                        date,
+                        STALE_DAYS_SHORT,
+                        include_today,
+                        &price_field.to_string(),
+                    )
                     .map(|(_, price)| price.max(MIN_PRICE)))
             }
         }
@@ -110,11 +118,15 @@ pub async fn get_ticker_price(
             if *price_type == PriceType::Mid {
                 if let Some((date_high, high)) = kline.get_latest_value::<f64>(
                     date,
+                    STALE_DAYS_SHORT,
                     include_today,
                     &KlineField::High.to_string(),
-                ) && let Some((date_low, low)) =
-                    kline.get_latest_value::<f64>(date, include_today, &KlineField::Low.to_string())
-                {
+                ) && let Some((date_low, low)) = kline.get_latest_value::<f64>(
+                    date,
+                    STALE_DAYS_SHORT,
+                    include_today,
+                    &KlineField::Low.to_string(),
+                ) {
                     if date_high == date_low {
                         Ok(Some(((high + low) / 2.0).max(MIN_PRICE)))
                     } else {
@@ -132,7 +144,12 @@ pub async fn get_ticker_price(
                 };
 
                 Ok(kline
-                    .get_latest_value::<f64>(date, include_today, &price_field.to_string())
+                    .get_latest_value::<f64>(
+                        date,
+                        STALE_DAYS_SHORT,
+                        include_today,
+                        &price_field.to_string(),
+                    )
                     .map(|(_, price)| price.max(MIN_PRICE)))
             }
         }
