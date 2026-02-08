@@ -201,7 +201,7 @@ impl RuleExecutor for Executor {
                             if let Ok(year_dividends) =
                                 stock_dividends.slice_by_date_range(&year_date_from, &year_date_to)
                             {
-                                let div_dates = year_dividends.get_dates();
+                                let div_dates = year_dividends.all_dates();
 
                                 for div_date in div_dates {
                                     if let (

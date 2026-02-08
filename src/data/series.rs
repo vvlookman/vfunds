@@ -71,7 +71,7 @@ impl DailySeries {
         }
     }
 
-    pub fn get_dates(&self) -> Vec<NaiveDate> {
+    pub fn all_dates(&self) -> Vec<NaiveDate> {
         let mut dates = vec![];
 
         if let Ok(col_date) = self.df.column(&self.date_field_name) {
@@ -87,6 +87,53 @@ impl DailySeries {
         }
 
         dates
+    }
+
+    pub fn all_values<T: NumCast + IsFloat>(&self) -> Vec<(NaiveDate, HashMap<String, T>)> {
+        let mut rows = vec![];
+
+        let column_names = self.df.get_column_names();
+        if let Ok(columns) = self.df.columns(&column_names) {
+            let row_count = self.df.height();
+
+            let field_map: HashMap<String, String> = self
+                .value_field_names
+                .iter()
+                .map(|(k, v)| (v.clone(), k.clone()))
+                .collect();
+
+            for i in 0..row_count {
+                let mut row_date: Option<NaiveDate> = None;
+                let mut row_values: HashMap<String, T> = HashMap::new();
+
+                for (j, col) in columns.iter().enumerate() {
+                    let column_name = column_names[j];
+                    if column_name == &self.date_field_name {
+                        if let Ok(cell_date) = col.get(i) {
+                            if let Some(date_days_after_epoch) = cell_date.extract::<i32>() {
+                                if let Some(date) =
+                                    NaiveDate::from_epoch_days(date_days_after_epoch)
+                                {
+                                    row_date = Some(date);
+                                }
+                            }
+                        }
+                    } else if let Some(field_name) = field_map.get(column_name.as_str()) {
+                        if let Ok(cell_value) = col.get(i) {
+                            if let Some(val) = cell_value.extract::<T>() {
+                                row_values.insert(field_name.clone(), val);
+                            }
+                        }
+                    }
+                }
+
+                if let Some(date) = row_date {
+                    rows.push((date, row_values));
+                }
+            }
+        }
+
+        rows
     }
 
     pub fn get_latest_value<T: NumCast + IsFloat>(
@@ -367,6 +414,23 @@ impl DailySeries {
 
             date_field_name: self.date_field_name.clone(),
             value_field_names: self.value_field_names.clone(),
+        })
+    }
+
+    pub fn subset_by_columns(
+        &self,
+        select_field_names: &HashMap<String, String>,
+    ) -> VfResult<Self> {
+        let mut columns: Vec<Expr> = select_field_names.values().map(col).collect();
+        columns.push(col(&self.date_field_name));
+
+        let df = self.df.clone().lazy().select(columns).collect()?;
+
+        Ok(Self {
+            df,
+
+            date_field_name: self.date_field_name.clone(),
+            value_field_names: select_field_names.clone(),
         })
     }
 

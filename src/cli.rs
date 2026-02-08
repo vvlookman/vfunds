@@ -3,6 +3,7 @@ use clap::Subcommand;
 mod backtest;
 mod check;
 mod config;
+mod kline;
 mod list;
 mod result;
 
@@ -19,11 +20,13 @@ pub enum Commands {
     #[clap(subcommand)]
     Config(Box<config::ConfigCommand>),
 
+    #[command(about = "Show kline of ticker")]
+    Kline(Box<kline::KlineCommand>),
+
     #[command(about = "List all virtual funds")]
     #[clap(visible_aliases = &["ls"])]
     List(Box<list::ListCommand>),
 
     #[command(about = "Show backtest results of virtual funds")]
-    #[clap(visible_aliases = &["show", "view"])]
     Result(Box<result::ResultCommand>),
 }

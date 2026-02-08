@@ -295,6 +295,7 @@ impl eframe::App for ResultViewer {
                     && let Some(last_trade_date) = self.plot_trade_dates.last()
                 {
                     let plot = Plot::new(plot_id)
+                        .allow_scroll(false)
                         .label_formatter(|name, point| {
                             if name.is_empty() {
                                 format!("{:.2}%", point.y)
@@ -306,7 +307,7 @@ impl eframe::App for ResultViewer {
                                 }
                             }
                         })
-                        .allow_scroll(false)
+                        .legend(Legend::default().position(Corner::LeftTop))
                         .show_grid(false)
                         .x_axis_label(format!(
                             "[{}] ~ [{}]",
@@ -314,8 +315,7 @@ impl eframe::App for ResultViewer {
                             date_to_str(last_trade_date)
                         ))
                         .x_axis_formatter(|_, _| "".to_string())
-                        .y_axis_formatter(|y, _| format!("{:.0}%", y.value))
-                        .legend(Legend::default().position(Corner::LeftTop));
+                        .y_axis_formatter(|y, _| format!("{:.0}%", y.value));
 
                     let plot_response = plot.show(ui, |plot_ui| {
                         if self.show_cost_line {

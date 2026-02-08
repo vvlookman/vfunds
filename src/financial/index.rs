@@ -158,6 +158,6 @@ mod tests {
         let index = TickersIndex::from_str("000001.SH").unwrap();
         let series = fetch_index_indicators(&index).await.unwrap();
 
-        assert!(series.get_dates().len() > 3000);
+        assert!(series.all_dates().len() > 3000);
     }
 }

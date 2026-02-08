@@ -8,6 +8,7 @@ use crate::{
     data::series::*,
     ds::tushare,
     error::*,
+    financial::KlineField,
     ticker::Ticker,
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -178,6 +179,19 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
         code: "INVALID_JSON",
         message: "Invalid Tushare JSON".to_string(),
     })
+}
+
+pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailySeries> {
+    let daily = fetch_conv_bond_daily(ticker).await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(KlineField::Open.to_string(), "open".to_string());
+    fields.insert(KlineField::Close.to_string(), "close".to_string());
+    fields.insert(KlineField::High.to_string(), "high".to_string());
+    fields.insert(KlineField::Low.to_string(), "low".to_string());
+    fields.insert(KlineField::Volume.to_string(), "vol".to_string());
+
+    daily.subset_by_columns(&fields)
 }
 
 pub async fn fetch_conv_bonds(

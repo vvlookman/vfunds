@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 
 use crate::{
+    data::series::DailySeries,
     error::VfResult,
     financial::{
-        bond::{ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail},
+        bond::{
+            ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail,
+            fetch_conv_bond_kline,
+        },
         stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
     },
     ticker::{Ticker, TickerType},
@@ -52,6 +56,13 @@ pub enum PriceType {
     High,
     Low,
     Mid, // (High + Low) / 2
+}
+
+pub async fn get_ticker_kline(ticker: &Ticker) -> VfResult<DailySeries> {
+    match ticker.r#type {
+        TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
+        TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Forward).await,
+    }
 }
 
 pub async fn get_ticker_price(

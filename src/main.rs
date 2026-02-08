@@ -59,6 +59,9 @@ async fn main() {
         Commands::Config(cmd) => {
             cmd.exec().await;
         }
+        Commands::Kline(cmd) => {
+            cmd.exec().await;
+        }
         Commands::List(cmd) => {
             cmd.exec().await;
         }

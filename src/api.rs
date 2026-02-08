@@ -3,6 +3,7 @@ use std::{
     fs,
     io::{ErrorKind, Write},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use chrono::{Local, NaiveDate};
@@ -11,11 +12,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     CONFIG, CONFIG_PATH, Config, VERSION, WORKSPACE, backtest,
+    data::series::DailySeries,
     ds::*,
     error::*,
+    financial::get_ticker_kline,
     spec::{FofDefinition, FundDefinition},
-    utils,
-    utils::datetime::{date_from_str, date_to_str},
+    ticker::Ticker,
+    utils::{
+        self,
+        datetime::{date_from_str, date_to_str},
+    },
 };
 
 pub type BacktestCvOptions = backtest::BacktestCvOptions;
@@ -205,6 +211,10 @@ pub async fn load_backtest_values(
     Ok(result)
 }
 
+pub async fn load_ticker_kline(ticker: &Ticker) -> VfResult<DailySeries> {
+    get_ticker_kline(ticker).await
+}
+
 pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
     let mut vfunds: Vec<(String, Vfund)> = vec![];
 
@@ -261,6 +271,10 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
     }
 
     Ok(vfunds)
+}
+
+pub fn parse_ticker(ticker_str: &str) -> VfResult<Ticker> {
+    Ticker::from_str(ticker_str)
 }
 
 pub async fn set_config(key: &str, value: &str) -> VfResult<Config> {
