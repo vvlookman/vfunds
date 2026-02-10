@@ -20,6 +20,7 @@ pub struct ResultViewer {
     result_dir: PathBuf,
     vfund_names: Vec<String>,
 
+    is_loading: bool,
     load_event_sender: mpsc::Sender<LoadEvent>,
     load_event_receiver: mpsc::Receiver<LoadEvent>,
     results: Vec<(String, BacktestOutputResult, BacktestDailyValues)>,
@@ -82,6 +83,7 @@ impl ResultViewer {
             result_dir: result_dir.to_path_buf(),
             vfund_names: vfund_names.to_vec(),
 
+            is_loading: false,
             load_event_sender,
             load_event_receiver,
             results: vec![],
@@ -118,6 +120,8 @@ impl ResultViewer {
     }
 
     fn load_results(&mut self) {
+        self.is_loading = true;
+
         self.warning_message = None;
 
         self.plot_values_points.clear();
@@ -207,6 +211,8 @@ impl ResultViewer {
             }
             LoadEvent::Error(err) => self.warning_message = Some(err.to_string()),
         }
+
+        self.is_loading = false;
     }
 }
 
@@ -252,15 +258,23 @@ impl eframe::App for ResultViewer {
                         ui.checkbox(&mut self.show_cost_line, "Show Cost Line");
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("↻ Refresh").clicked() {
-                                self.load_results();
+                            ui.add_enabled_ui(!self.is_loading, |ui| {
+                                let text = if self.is_loading {
+                                    " Loading... "
+                                } else {
+                                    " ↻ Refresh "
+                                };
 
-                                // Notify CLI
-                                let gui_event_sender = self.gui_event_sender.clone();
-                                tokio::spawn(async move {
-                                    let _ = gui_event_sender.send(GuiEvent::Refresh).await;
-                                });
-                            }
+                                if ui.button(text).clicked() {
+                                    self.load_results();
+
+                                    // Notify CLI
+                                    let gui_event_sender = self.gui_event_sender.clone();
+                                    tokio::spawn(async move {
+                                        let _ = gui_event_sender.send(GuiEvent::Refresh).await;
+                                    });
+                                }
+                            });
                         });
                     });
                 });

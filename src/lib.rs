@@ -109,7 +109,7 @@ macro_rules! mod_name {
 
 const CANDIDATE_TICKER_RATIO: usize = 2;
 const REQUIRED_DATA_COMPLETENESS: f64 = 0.9;
-const STALE_DAYS_SHORT: u32 = 30;
+const STALE_DAYS_SHORT: u32 = 15;
 const STALE_DAYS_LONG: u32 = 180;
 
 mod backtest;

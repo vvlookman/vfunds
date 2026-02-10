@@ -12,7 +12,10 @@ use crate::{
 
 pub struct KlineViewer {
     ticker: Ticker,
+    title: String,
+    ignore_cache: bool,
 
+    is_loading: bool,
     load_event_sender: mpsc::Sender<LoadEvent>,
     load_event_receiver: mpsc::Receiver<LoadEvent>,
 
@@ -26,7 +29,12 @@ pub struct KlineViewer {
 }
 
 impl KlineViewer {
-    pub fn new(cc: &eframe::CreationContext, ticker: &Ticker) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext,
+        ticker: &Ticker,
+        title: &str,
+        ignore_cache: bool,
+    ) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         {
             let font_name = "Noto Sans Mono";
@@ -60,7 +68,10 @@ impl KlineViewer {
 
         Self {
             ticker: ticker.clone(),
+            title: title.to_string(),
+            ignore_cache,
 
+            is_loading: false,
             load_event_sender,
             load_event_receiver,
 
@@ -75,15 +86,20 @@ impl KlineViewer {
     }
 
     fn load_kline(&mut self) {
+        self.is_loading = true;
+
         self.warning_message = None;
 
+        self.plot_y_max = 0.0;
+        self.plot_y_min = 0.0;
         self.plot_boxes.clear();
 
         let ticker = self.ticker.clone();
+        let ignore_cache = self.ignore_cache;
         let load_event_sender = self.load_event_sender.clone();
 
         tokio::spawn(async move {
-            match api::load_ticker_kline(&ticker).await {
+            match api::load_ticker_kline(&ticker, ignore_cache).await {
                 Ok(kline) => {
                     let _ = load_event_sender.send(LoadEvent::Finished(kline)).await;
                 }
@@ -172,6 +188,8 @@ impl KlineViewer {
             }
             LoadEvent::Error(err) => self.warning_message = Some(err.to_string()),
         }
+
+        self.is_loading = false;
     }
 }
 
@@ -199,12 +217,20 @@ impl eframe::App for KlineViewer {
                 .show_separator_line(false)
                 .show_inside(ui, |ui| {
                     ui.horizontal_centered(|ui| {
-                        ui.label(egui::RichText::new(self.ticker.to_string()));
+                        ui.label(egui::RichText::new(self.title.clone()));
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("↻ Refresh").clicked() {
-                                self.load_kline();
-                            }
+                            ui.add_enabled_ui(!self.is_loading, |ui| {
+                                let text = if self.is_loading {
+                                    " Loading... "
+                                } else {
+                                    " ↻ Refresh "
+                                };
+
+                                if ui.button(text).clicked() {
+                                    self.load_kline();
+                                }
+                            });
                         });
                     });
                 });

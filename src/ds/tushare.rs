@@ -13,10 +13,11 @@ pub async fn call_api(
     params: &serde_json::Value,
     fields: Option<&str>,
     expire_days: i64,
+    ignore_cache: bool,
 ) -> VfResult<serde_json::Value> {
     let cache_key = format!("[TUSHARE]{api_name}?{params}");
 
-    if let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
+    if !ignore_cache && let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
         let bytes: Vec<u8> = compress::decode(&data)?;
         let json: serde_json::Value = serde_json::from_slice(&bytes)?;
 

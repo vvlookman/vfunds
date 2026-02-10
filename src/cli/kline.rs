@@ -4,6 +4,9 @@ use vfunds::{VERSION, api, gui::kline_viewer::KlineViewer};
 
 #[derive(clap::Args)]
 pub struct KlineCommand {
+    #[arg(short = 'r', help = "Refresh data, ignore cache expire time")]
+    refresh: bool,
+
     ticker_str: String,
 }
 
@@ -19,12 +22,19 @@ impl KlineCommand {
             ..Default::default()
         };
 
-        match api::parse_ticker(&self.ticker_str) {
-            Ok(ticker) => {
+        match api::parse_ticker_title(&self.ticker_str).await {
+            Ok((ticker, title)) => {
                 let _ = eframe::run_native(
                     &format!("Vfunds Kline Viewer {VERSION}"),
                     options,
-                    Box::new(|cc| Ok(Box::new(KlineViewer::new(cc, &ticker)))),
+                    Box::new(|cc| {
+                        Ok(Box::new(KlineViewer::new(
+                            cc,
+                            &ticker,
+                            &title,
+                            self.refresh,
+                        )))
+                    }),
                 );
             }
             Err(err) => {

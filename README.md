@@ -19,6 +19,8 @@ vfunds list -w ~/vfunds/example # List all virtual funds
 vfunds backtest -w ~/vfunds/example -o ~/vfunds/output -s 2018-01-08 -s 2018-07-08 # Run backtests with multi start dates
 vfunds result -o ~/vfunds/output -g # Show backtest results with GUI chart
 CACHE_NO_EXPIRE=true vfunds backtest -s 2018-01-08 -s 2018-07-08 @permanent -S -p # Run cross-validation backtests, ignoring cache expiration
+
+vfunds kline -r 000001 # Show ticker's adjusted K-line, with refresh cache
 ```
 
 ## Develop

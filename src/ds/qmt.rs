@@ -17,11 +17,12 @@ pub async fn call_api(
     path: &str,
     params: &serde_json::Value,
     expire_days: i64,
+    ignore_cache: bool,
 ) -> VfResult<serde_json::Value> {
     let cache_key = format!("[QMT]{path}?{params}");
 
     let bytes: VfResult<Vec<u8>> =
-        if let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
+        if !ignore_cache && let Some(data) = cache::get(&cache_key, *CACHE_NO_EXPIRE).await? {
             Ok(compress::decode(&data)?)
         } else {
             let mut query = HashMap::new();

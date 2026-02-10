@@ -106,6 +106,7 @@ pub async fn fetch_delisted_stocks() -> VfResult<HashMap<Ticker, NaiveDate>> {
         }),
         Some("ts_code,delist_date"),
         0,
+        false,
     )
     .await?;
 
@@ -153,6 +154,7 @@ pub async fn fetch_st_stocks(date: &NaiveDate, lookback_days: u64) -> VfResult<V
         }),
         None,
         30,
+        false,
     )
     .await?;
 
@@ -191,6 +193,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
         &format!("/stock_detail/{}", ticker.to_qmt_code()),
         &json!({}),
         30,
+        false,
     )
     .await?;
 
@@ -227,6 +230,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailySeries> {
         &format!("/stock_dividend/{}", ticker.to_qmt_code()),
         &json!({}),
         0,
+        false,
     )
     .await?;
 
@@ -284,6 +288,7 @@ pub async fn fetch_stock_indicators(ticker: &Ticker) -> VfResult<DailySeries> {
             }),
             None,
             0,
+            false,
         )
         .await?;
 
@@ -349,9 +354,21 @@ pub async fn fetch_stock_kline(
 ) -> VfResult<DailySeries> {
     let today = Local::now().date_naive();
     if let Ok(true) = is_delisted(ticker, &today).await {
-        fetch_stock_kline_tushare(ticker, adjust).await
+        fetch_stock_kline_tushare(ticker, adjust, false).await
     } else {
-        fetch_stock_kline_qmt(ticker, adjust).await
+        fetch_stock_kline_qmt(ticker, adjust, false).await
+    }
+}
+
+pub async fn fetch_stock_kline_ignore_cache(
+    ticker: &Ticker,
+    adjust: StockDividendAdjust,
+) -> VfResult<DailySeries> {
+    let today = Local::now().date_naive();
+    if let Ok(true) = is_delisted(ticker, &today).await {
+        fetch_stock_kline_tushare(ticker, adjust, true).await
+    } else {
+        fetch_stock_kline_qmt(ticker, adjust, true).await
     }
 }
 
@@ -367,6 +384,7 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries
             "table": "Capital",
         }),
         0,
+        false,
     )
     .await?;
 
@@ -406,6 +424,7 @@ pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailySeries>
             "table": "Income",
         }),
         0,
+        false,
     )
     .await?;
 
@@ -445,6 +464,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySerie
             "table": "PershareIndex",
         }),
         0,
+        false,
     )
     .await?;
 
@@ -510,9 +530,10 @@ static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailySeries>> =
 async fn fetch_stock_kline_qmt(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
+    ignore_cache: bool,
 ) -> VfResult<DailySeries> {
     let cache_key = format!("qmt:{ticker}/{adjust}");
-    if let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
+    if !ignore_cache && let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
@@ -528,6 +549,7 @@ async fn fetch_stock_kline_qmt(
             "dividend_type": param_dividend_type,
         }),
         0,
+        ignore_cache,
     )
     .await?;
 
@@ -547,9 +569,10 @@ async fn fetch_stock_kline_qmt(
 async fn fetch_stock_kline_tushare(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
+    ignore_cache: bool,
 ) -> VfResult<DailySeries> {
     let cache_key = format!("tushare:{ticker}/{adjust}");
-    if let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
+    if !ignore_cache && let Some(result) = STOCK_KLINE_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
@@ -575,6 +598,7 @@ async fn fetch_stock_kline_tushare(
             }),
             None,
             0,
+            ignore_cache,
         )
         .await?;
 
@@ -609,6 +633,7 @@ async fn fetch_stock_kline_tushare(
             }),
             None,
             0,
+            ignore_cache,
         )
         .await?;
 
@@ -765,16 +790,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_stock_kline() {
-        let ticker = Ticker::from_str("000001").unwrap();
-        let dataset = fetch_stock_kline(&ticker, StockDividendAdjust::No)
+        let ticker = Ticker::from_str("002155").unwrap();
+        let dataset = fetch_stock_kline(&ticker, StockDividendAdjust::Forward)
             .await
             .unwrap();
 
         let (_, data) = dataset
             .get_latest_value::<f64>(
-                &Local::now().date_naive(),
+                &NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
                 STALE_DAYS_SHORT,
-                false,
+                true,
                 &KlineField::Close.to_string(),
             )
             .unwrap();
@@ -788,7 +813,7 @@ mod tests {
         let date = Local::now().date_naive() - Days::new(365);
 
         {
-            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward)
+            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
                 .await
                 .unwrap();
             let (_, data_qmt) = dataset_qmt
@@ -800,9 +825,10 @@ mod tests {
                 )
                 .unwrap();
 
-            let dataset_tushare = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward)
-                .await
-                .unwrap();
+            let dataset_tushare =
+                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
+                    .await
+                    .unwrap();
             let (_, data_tushare) = dataset_tushare
                 .get_latest_value::<f64>(
                     &date,
@@ -816,7 +842,7 @@ mod tests {
         }
 
         {
-            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward)
+            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
                 .await
                 .unwrap();
             let (_, data_qmt) = dataset_qmt
@@ -828,9 +854,10 @@ mod tests {
                 )
                 .unwrap();
 
-            let dataset_tushare = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward)
-                .await
-                .unwrap();
+            let dataset_tushare =
+                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
+                    .await
+                    .unwrap();
             let (_, data_tushare) = dataset_tushare
                 .get_latest_value::<f64>(
                     &date,

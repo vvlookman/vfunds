@@ -9,9 +9,12 @@ use crate::{
     financial::{
         bond::{
             ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail,
-            fetch_conv_bond_kline,
+            fetch_conv_bond_kline, fetch_conv_bond_kline_ignore_cache,
         },
-        stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
+        stock::{
+            StockDividendAdjust, fetch_stock_detail, fetch_stock_kline,
+            fetch_stock_kline_ignore_cache,
+        },
     },
     ticker::{Ticker, TickerType},
 };
@@ -51,7 +54,7 @@ impl Portfolio {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, strum::Display)]
 pub enum PriceType {
     Close,
     High,
@@ -59,10 +62,19 @@ pub enum PriceType {
     Mid, // (High + Low) / 2
 }
 
-pub async fn get_ticker_kline(ticker: &Ticker) -> VfResult<DailySeries> {
-    match ticker.r#type {
-        TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
-        TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Forward).await,
+pub async fn get_ticker_kline(ticker: &Ticker, ignore_cache: bool) -> VfResult<DailySeries> {
+    if ignore_cache {
+        match ticker.r#type {
+            TickerType::ConvBond => fetch_conv_bond_kline_ignore_cache(ticker).await,
+            TickerType::Stock => {
+                fetch_stock_kline_ignore_cache(ticker, StockDividendAdjust::Forward).await
+            }
+        }
+    } else {
+        match ticker.r#type {
+            TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
+            TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Forward).await,
+        }
     }
 }
 

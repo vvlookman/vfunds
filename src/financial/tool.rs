@@ -208,7 +208,8 @@ pub async fn calc_stock_ps_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Op
 pub async fn fetch_trade_dates() -> VfResult<HashSet<NaiveDate>> {
     let mut dates: HashSet<NaiveDate> = HashSet::new();
 
-    if let Ok(json) = tushare::call_api("trade_cal", &json!({"is_open": "1"}), None, 0).await {
+    if let Ok(json) = tushare::call_api("trade_cal", &json!({"is_open": "1"}), None, 0, false).await
+    {
         if let (Some(fields), Some(items)) = (
             json["data"]["fields"].as_array(),
             json["data"]["items"].as_array(),

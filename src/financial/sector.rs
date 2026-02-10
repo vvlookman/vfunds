@@ -15,6 +15,7 @@ pub async fn fetch_sector_tickers(sector_prefix: &str) -> VfResult<HashMap<Ticke
         "/stocks_sector",
         &json!({"sector_prefix": sector_prefix}),
         30,
+        false,
     )
     .await?;
 

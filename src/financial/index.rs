@@ -50,6 +50,7 @@ pub async fn fetch_index_indicators(index: &TickersIndex) -> VfResult<DailySerie
             }),
             None,
             0,
+            false,
         )
         .await?;
 
@@ -102,6 +103,7 @@ pub async fn fetch_index_tickers(index: &TickersIndex, date: &NaiveDate) -> VfRe
         }),
         None,
         30,
+        false,
     )
     .await?;
 

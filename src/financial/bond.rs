@@ -47,74 +47,7 @@ pub struct ConvBondIssue {
 }
 
 pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
-    if let Some(result) = CONV_BOND_DAILY_CACHE.get(&cache_key) {
-        return Ok(result.clone());
-    }
-
-    let mut json = tushare::call_api(
-        "cb_daily",
-        &json!({
-            "ts_code": ticker.to_tushare_code(),
-        }),
-        Some("trade_date,open,close,high,low,vol,bond_value,cb_value,bond_over_rate,cb_over_rate"),
-        0,
-    )
-    .await?;
-
-    let check_field_idxs = {
-        let mut idxs = vec![];
-        if let Some(fields) = json["data"]["fields"].as_array() {
-            for (i, name) in fields.iter().enumerate() {
-                if name == "open" || name == "close" || name == "high" || name == "low" {
-                    idxs.push(i);
-                }
-            }
-        }
-        idxs
-    };
-
-    if let Some(data) = json.get_mut("data") {
-        if let Some(items) = data.get_mut("items").and_then(Value::as_array_mut) {
-            for item in items.iter_mut() {
-                for field_idx in &check_field_idxs {
-                    if let Some(v) = item[field_idx].as_f64() {
-                        if v == 0.0 {
-                            item[field_idx] = Value::Null;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(ConvBondDailyField::Open.to_string(), "open".to_string());
-    fields.insert(ConvBondDailyField::Close.to_string(), "close".to_string());
-    fields.insert(ConvBondDailyField::High.to_string(), "high".to_string());
-    fields.insert(ConvBondDailyField::Low.to_string(), "low".to_string());
-    fields.insert(ConvBondDailyField::Volume.to_string(), "vol".to_string());
-    fields.insert(
-        ConvBondDailyField::StraightValue.to_string(),
-        "bond_value".to_string(),
-    );
-    fields.insert(
-        ConvBondDailyField::ConversionValue.to_string(),
-        "cb_value".to_string(),
-    );
-    fields.insert(
-        ConvBondDailyField::StraightPremium.to_string(),
-        "bond_over_rate".to_string(),
-    );
-    fields.insert(
-        ConvBondDailyField::ConversionPremium.to_string(),
-        "cb_over_rate".to_string(),
-    );
-
-    let result = DailySeries::from_tushare_json(&json, "trade_date", &fields)?;
-    CONV_BOND_DAILY_CACHE.insert(cache_key, result.clone());
-
-    Ok(result)
+    fetch_conv_bond_daily_with_ignore_cache(ticker, false).await
 }
 
 pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail> {
@@ -130,6 +63,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
         }),
         None,
         30,
+        false,
     )
     .await?;
 
@@ -194,6 +128,19 @@ pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailySeries> {
     daily.subset_by_columns(&fields)
 }
 
+pub async fn fetch_conv_bond_kline_ignore_cache(ticker: &Ticker) -> VfResult<DailySeries> {
+    let daily = fetch_conv_bond_daily_with_ignore_cache(ticker, true).await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(KlineField::Open.to_string(), "open".to_string());
+    fields.insert(KlineField::Close.to_string(), "close".to_string());
+    fields.insert(KlineField::High.to_string(), "high".to_string());
+    fields.insert(KlineField::Low.to_string(), "low".to_string());
+    fields.insert(KlineField::Volume.to_string(), "vol".to_string());
+
+    daily.subset_by_columns(&fields)
+}
+
 pub async fn fetch_conv_bonds(
     date: &NaiveDate,
     lookback_months: u32,
@@ -211,6 +158,7 @@ pub async fn fetch_conv_bonds(
         }),
         None,
         30,
+        false,
     )
     .await?;
 
@@ -261,6 +209,81 @@ static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
     LazyLock::new(DashMap::new);
 static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondIssue>>> =
     LazyLock::new(DashMap::new);
+
+async fn fetch_conv_bond_daily_with_ignore_cache(
+    ticker: &Ticker,
+    ignore_cache: bool,
+) -> VfResult<DailySeries> {
+    let cache_key = format!("{ticker}");
+    if !ignore_cache && let Some(result) = CONV_BOND_DAILY_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let mut json = tushare::call_api(
+        "cb_daily",
+        &json!({
+            "ts_code": ticker.to_tushare_code(),
+        }),
+        Some("trade_date,open,close,high,low,vol,bond_value,cb_value,bond_over_rate,cb_over_rate"),
+        0,
+        ignore_cache,
+    )
+    .await?;
+
+    let check_field_idxs = {
+        let mut idxs = vec![];
+        if let Some(fields) = json["data"]["fields"].as_array() {
+            for (i, name) in fields.iter().enumerate() {
+                if name == "open" || name == "close" || name == "high" || name == "low" {
+                    idxs.push(i);
+                }
+            }
+        }
+        idxs
+    };
+
+    if let Some(data) = json.get_mut("data") {
+        if let Some(items) = data.get_mut("items").and_then(Value::as_array_mut) {
+            for item in items.iter_mut() {
+                for field_idx in &check_field_idxs {
+                    if let Some(v) = item[field_idx].as_f64() {
+                        if v == 0.0 {
+                            item[field_idx] = Value::Null;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(ConvBondDailyField::Open.to_string(), "open".to_string());
+    fields.insert(ConvBondDailyField::Close.to_string(), "close".to_string());
+    fields.insert(ConvBondDailyField::High.to_string(), "high".to_string());
+    fields.insert(ConvBondDailyField::Low.to_string(), "low".to_string());
+    fields.insert(ConvBondDailyField::Volume.to_string(), "vol".to_string());
+    fields.insert(
+        ConvBondDailyField::StraightValue.to_string(),
+        "bond_value".to_string(),
+    );
+    fields.insert(
+        ConvBondDailyField::ConversionValue.to_string(),
+        "cb_value".to_string(),
+    );
+    fields.insert(
+        ConvBondDailyField::StraightPremium.to_string(),
+        "bond_over_rate".to_string(),
+    );
+    fields.insert(
+        ConvBondDailyField::ConversionPremium.to_string(),
+        "cb_over_rate".to_string(),
+    );
+
+    let result = DailySeries::from_tushare_json(&json, "trade_date", &fields)?;
+    CONV_BOND_DAILY_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
 
 #[cfg(test)]
 mod tests {
