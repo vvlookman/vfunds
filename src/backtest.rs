@@ -189,6 +189,7 @@ pub struct BacktestMetrics {
 impl BacktestMetrics {
     pub fn from_daily_value(
         trade_dates_value: &Vec<(NaiveDate, f64)>,
+        no_position_dates: &[NaiveDate],
         options: &BacktestOptions,
     ) -> Self {
         let mut calendar_year_returns: HashMap<i32, f64> = HashMap::new();
@@ -224,7 +225,12 @@ impl BacktestMetrics {
             final_value,
             trade_dates_value.len() as u64,
         );
-        let daily_values: Vec<f64> = trade_dates_value.iter().map(|(_, v)| *v).collect();
+
+        let daily_values: Vec<f64> = trade_dates_value
+            .iter()
+            .filter(|(d, _)| !no_position_dates.contains(d))
+            .map(|(_, v)| *v)
+            .collect();
         let max_drawdown = calc_max_drawdown(&daily_values);
         let annualized_volatility = calc_annualized_volatility(&daily_values);
         let win_rate = calc_win_rate(&daily_values);
@@ -324,6 +330,7 @@ pub struct BacktestResult {
     pub final_cash: f64,
     pub final_positions_value: HashMap<Ticker, f64>,
     pub metrics: BacktestMetrics,
+    pub no_position_dates: Vec<NaiveDate>,
     pub order_dates: Vec<NaiveDate>,
     pub trade_dates_value: Vec<(NaiveDate, f64)>,
 }

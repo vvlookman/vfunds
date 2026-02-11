@@ -25,6 +25,7 @@ pub struct FundBacktestContext<'a> {
     pub options: &'a BacktestOptions,
     pub fund_definition: &'a FundDefinition,
     pub portfolio: &'a mut Portfolio,
+    pub no_position_dates: &'a mut HashSet<NaiveDate>,
     pub order_dates: &'a mut HashSet<NaiveDate>,
 
     suspended_cash: Option<HashMap<Ticker, f64>>,
@@ -797,6 +798,7 @@ pub async fn backtest_fund(
                 fund_definition,
                 options,
                 portfolio: &mut Portfolio::new(options.init_cash),
+                no_position_dates: &mut HashSet::new(),
                 order_dates: &mut HashSet::new(),
 
                 suspended_cash: None,
@@ -858,6 +860,10 @@ pub async fn backtest_fund(
                         }
                     }
 
+                    if context.portfolio.positions.is_empty() {
+                        context.no_position_dates.insert(date);
+                    }
+
                     if let Ok(total_value) =
                         context.calc_total_value(&date, &PriceType::Close).await
                     {
@@ -880,6 +886,10 @@ pub async fn backtest_fund(
             )
             .await;
 
+            let mut no_position_dates: Vec<NaiveDate> =
+                context.no_position_dates.iter().copied().collect();
+            no_position_dates.sort_unstable();
+
             let mut order_dates: Vec<NaiveDate> = context.order_dates.iter().copied().collect();
             order_dates.sort_unstable();
 
@@ -888,7 +898,12 @@ pub async fn backtest_fund(
                 options: options.clone(),
                 final_cash,
                 final_positions_value,
-                metrics: BacktestMetrics::from_daily_value(&trade_dates_value, options),
+                metrics: BacktestMetrics::from_daily_value(
+                    &trade_dates_value,
+                    &no_position_dates,
+                    options,
+                ),
+                no_position_dates,
                 order_dates,
                 trade_dates_value,
             })

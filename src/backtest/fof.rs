@@ -52,6 +52,8 @@ pub async fn backtest_fof(
                 }
                 let funds_result = backtest_funds(&funds, options, &sender).await?;
 
+                let no_position_dates =
+                    calc_no_position_dates_value_from_funds_result(&funds_result);
                 let order_dates = calc_order_dates_value_from_funds_result(&funds_result);
 
                 let trade_dates_value = calc_trade_dates_value_from_funds_result(
@@ -68,7 +70,12 @@ pub async fn backtest_fof(
                     options: options.clone(),
                     final_cash: 0.0,
                     final_positions_value: HashMap::new(),
-                    metrics: BacktestMetrics::from_daily_value(&trade_dates_value, options),
+                    metrics: BacktestMetrics::from_daily_value(
+                        &trade_dates_value,
+                        &no_position_dates,
+                        options,
+                    ),
+                    no_position_dates,
                     order_dates,
                     trade_dates_value,
                 })
@@ -79,6 +86,7 @@ pub async fn backtest_fof(
                     final_cash: options.init_cash,
                     final_positions_value: HashMap::new(),
                     metrics: BacktestMetrics::default(),
+                    no_position_dates: vec![],
                     order_dates: vec![],
                     trade_dates_value: vec![],
                 })
@@ -191,6 +199,10 @@ pub async fn backtest_fof_cv(
                                 options.start_date = *cv_start_date;
 
                                 if let Some(funds_result) = funds_result_map.get(cv_start_date) {
+                                    let no_position_dates =
+                                        calc_no_position_dates_value_from_funds_result(
+                                            funds_result,
+                                        );
                                     let order_dates =
                                         calc_order_dates_value_from_funds_result(funds_result);
 
@@ -211,8 +223,10 @@ pub async fn backtest_fof_cv(
                                         final_positions_value: HashMap::new(),
                                         metrics: BacktestMetrics::from_daily_value(
                                             &trade_dates_value,
+                                            &no_position_dates,
                                             &options,
                                         ),
+                                        no_position_dates,
                                         order_dates,
                                         trade_dates_value,
                                     };
@@ -493,21 +507,43 @@ pub async fn backtest_fof_cv(
     Ok(BacktestStream { receiver })
 }
 
+fn calc_no_position_dates_value_from_funds_result(
+    funds_result: &Vec<(String, BacktestResult)>,
+) -> Vec<NaiveDate> {
+    if !funds_result.is_empty() {
+        let mut dates_map: HashMap<NaiveDate, usize> = HashMap::new();
+
+        for (_, fund_result) in funds_result {
+            for date in &fund_result.no_position_dates {
+                *dates_map.entry(*date).or_default() += 1;
+            }
+        }
+
+        dates_map
+            .into_iter()
+            .filter(|(_, count)| *count == funds_result.len())
+            .map(|(date, _)| date)
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
 fn calc_order_dates_value_from_funds_result(
     funds_result: &Vec<(String, BacktestResult)>,
 ) -> Vec<NaiveDate> {
-    let mut order_dates_set: HashSet<NaiveDate> = HashSet::new();
+    let mut dates_set: HashSet<NaiveDate> = HashSet::new();
 
     for (_, fund_result) in funds_result {
         for date in &fund_result.order_dates {
-            order_dates_set.insert(*date);
+            dates_set.insert(*date);
         }
     }
 
-    let mut order_dates: Vec<NaiveDate> = order_dates_set.into_iter().collect();
-    order_dates.sort_unstable();
+    let mut dates: Vec<NaiveDate> = dates_set.into_iter().collect();
+    dates.sort_unstable();
 
-    order_dates
+    dates
 }
 
 async fn calc_trade_dates_value_from_funds_result(
