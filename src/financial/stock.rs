@@ -16,6 +16,16 @@ use crate::{
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
+pub struct StockBasic {
+    pub ticker: Ticker,
+    pub name: String,
+    pub industry: String,
+    pub list_date: Option<NaiveDate>,
+    pub delist_date: Option<NaiveDate>,
+}
+
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct StockDetail {
     pub name: String,
     pub sector: Option<String>,
@@ -183,6 +193,72 @@ pub async fn fetch_st_stocks(date: &NaiveDate, lookback_days: u64) -> VfResult<V
     Ok(result)
 }
 
+pub async fn fetch_stock_basic(ticker: &Ticker) -> VfResult<StockBasic> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_BASIC_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = tushare::call_api(
+        "stock_basic",
+        &json!({
+            "ts_code": ticker.to_tushare_code(),
+        }),
+        Some("ts_code,name,industry,list_date,delist_date"),
+        30,
+        false,
+    )
+    .await?;
+
+    if let (Some(fields), Some(items)) = (
+        json["data"]["fields"].as_array(),
+        json["data"]["items"].as_array(),
+    ) {
+        if let Some(item) = items.first() {
+            if let Some(values) = item.as_array() {
+                let mut json_item: HashMap<String, Value> = HashMap::new();
+
+                for (i, field) in fields.iter().enumerate() {
+                    if let Some(field_name) = field.as_str() {
+                        if let Some(value) = values.get(i) {
+                            json_item.insert(field_name.to_string(), value.clone());
+                        }
+                    }
+                }
+
+                if let Some(ticker) = json_item["ts_code"]
+                    .as_str()
+                    .and_then(Ticker::from_tushare_str)
+                {
+                    let result = StockBasic {
+                        ticker,
+                        name: json_item["name"].as_str().unwrap_or_default().to_string(),
+                        industry: json_item["industry"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_string(),
+                        list_date: json_item["list_date"]
+                            .as_str()
+                            .and_then(|s| date_from_str(s).ok()),
+                        delist_date: json_item["delist_date"]
+                            .as_str()
+                            .and_then(|s| date_from_str(s).ok()),
+                    };
+
+                    STOCK_BASIC_CACHE.insert(cache_key, result.clone());
+
+                    return Ok(result);
+                }
+            }
+        }
+    }
+
+    Err(VfError::Invalid {
+        code: "INVALID_JSON",
+        message: "Invalid Tushare JSON".to_string(),
+    })
+}
+
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
     let cache_key = format!("{ticker}");
     if let Some(result) = STOCK_DETAIL_CACHE.get(&cache_key) {
@@ -204,7 +280,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
             .as_str()
             .unwrap_or_default()
             .to_string(),
-        sector: tickers_sector_map.get(ticker).map(|s| s.to_string()),
+        sector: tickers_sector_map.get(ticker).map(|s| s.replace("\"", "")),
         trading_date: json["TradingDay"]
             .as_str()
             .and_then(|s| date_from_str(s).ok()),
@@ -515,6 +591,7 @@ pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySerie
 static DELISTED_STOCKS_CACHE: LazyLock<DashMap<String, HashMap<Ticker, NaiveDate>>> =
     LazyLock::new(DashMap::new);
 static ST_STOCKS_CACHE: LazyLock<DashMap<String, Vec<Ticker>>> = LazyLock::new(DashMap::new);
+static STOCK_BASIC_CACHE: LazyLock<DashMap<String, StockBasic>> = LazyLock::new(DashMap::new);
 static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::new(DashMap::new);
 static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_INDICATORS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
@@ -732,10 +809,8 @@ async fn fetch_stock_kline_tushare(
 mod tests {
     use std::str::FromStr;
 
-    use chrono::Local;
-
     use super::*;
-    use crate::STALE_DAYS_SHORT;
+    use crate::{STALE_DAYS_LONG, STALE_DAYS_SHORT};
 
     #[tokio::test]
     async fn test_fetch_st_stocks() {
@@ -761,8 +836,8 @@ mod tests {
 
         let (_, data) = dataset
             .get_latest_value::<f64>(
-                &Local::now().date_naive(),
-                STALE_DAYS_SHORT,
+                &date_from_str("2018-01-01").unwrap(),
+                STALE_DAYS_LONG,
                 false,
                 &StockDividendField::PriceAdjustmentFactor.to_string(),
             )
@@ -778,7 +853,7 @@ mod tests {
 
         let (_, data) = dataset
             .get_latest_value::<f64>(
-                &Local::now().date_naive(),
+                &date_from_str("2018-01-01").unwrap(),
                 STALE_DAYS_SHORT,
                 false,
                 &StockIndicatorField::VolumeRatio.to_string(),
@@ -791,13 +866,13 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_stock_kline() {
         let ticker = Ticker::from_str("002155").unwrap();
-        let dataset = fetch_stock_kline(&ticker, StockDividendAdjust::Forward)
+        let dataset = fetch_stock_kline(&ticker, StockDividendAdjust::Backward)
             .await
             .unwrap();
 
         let (_, data) = dataset
             .get_latest_value::<f64>(
-                &NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
+                &date_from_str("2026-01-12").unwrap(),
                 STALE_DAYS_SHORT,
                 true,
                 &KlineField::Close.to_string(),
@@ -809,37 +884,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_fetch_stock_kline_from_qmt_and_tushare() {
-        let ticker = Ticker::from_str("000001").unwrap();
-        let date = Local::now().date_naive() - Days::new(365);
-
-        {
-            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
-                .await
-                .unwrap();
-            let (_, data_qmt) = dataset_qmt
-                .get_latest_value::<f64>(
-                    &date,
-                    STALE_DAYS_SHORT,
-                    false,
-                    &KlineField::Close.to_string(),
-                )
-                .unwrap();
-
-            let dataset_tushare =
-                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
-                    .await
-                    .unwrap();
-            let (_, data_tushare) = dataset_tushare
-                .get_latest_value::<f64>(
-                    &date,
-                    STALE_DAYS_SHORT,
-                    false,
-                    &KlineField::Close.to_string(),
-                )
-                .unwrap();
-
-            assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
-        }
+        let ticker = Ticker::from_str("600595").unwrap();
+        let date = date_from_str("2019-08-15").unwrap();
 
         {
             let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
@@ -856,6 +902,35 @@ mod tests {
 
             let dataset_tushare =
                 fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
+                    .await
+                    .unwrap();
+            let (_, data_tushare) = dataset_tushare
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
+                .unwrap();
+
+            assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
+        }
+
+        {
+            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
+                .await
+                .unwrap();
+            let (_, data_qmt) = dataset_qmt
+                .get_latest_value::<f64>(
+                    &date,
+                    STALE_DAYS_SHORT,
+                    false,
+                    &KlineField::Close.to_string(),
+                )
+                .unwrap();
+
+            let dataset_tushare =
+                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
                     .await
                     .unwrap();
             let (_, data_tushare) = dataset_tushare

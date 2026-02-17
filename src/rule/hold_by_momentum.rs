@@ -1,11 +1,11 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -14,10 +14,13 @@ use crate::{
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
+        select_by_indicators,
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_momentum, calc_efficiency_factor, calc_ema_bias_momentum},
+        financial::{
+            calc_annualized_momentum, calc_efficiency_factor, calc_ema_deviation_momentum,
+        },
         math::normalize_zscore,
     },
 };
@@ -45,9 +48,9 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let bias_weight = self
+        let deviation_weight = self
             .options
-            .get("bias_weight")
+            .get("deviation_weight")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let efficiency_weight = self
@@ -104,7 +107,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
                             date,
@@ -129,21 +132,24 @@ impl RuleExecutor for Executor {
                     }
 
                     let momentum = calc_annualized_momentum(&prices, regression_r2_adjust);
-                    let bias_momentum =
-                        calc_ema_bias_momentum(&prices, ma_period as usize, regression_r2_adjust);
+                    let deviation_momentum = calc_ema_deviation_momentum(
+                        &prices,
+                        ma_period as usize,
+                        regression_r2_adjust,
+                    );
                     let efficiency_factor = calc_efficiency_factor(&prices);
 
                     if let Some(fail_factor_name) =
-                        match (momentum, bias_momentum, efficiency_factor) {
+                        match (momentum, deviation_momentum, efficiency_factor) {
                             (None, _, _) => Some("momentum"),
-                            (_, None, _) => Some("bias_momentum"),
+                            (_, None, _) => Some("deviation_momentum"),
                             (_, _, None) => Some("efficiency_factor"),
-                            (Some(momentum), Some(bias_momentum), Some(efficiency_factor)) => {
+                            (Some(momentum), Some(deviation_momentum), Some(efficiency_factor)) => {
                                 tickers_factors.push((
                                     ticker.clone(),
                                     Factors {
                                         momentum,
-                                        bias_momentum,
+                                        deviation_momentum,
                                         efficiency_momentum: efficiency_factor * momentum,
                                     },
                                 ));
@@ -177,28 +183,16 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            rule_send_info(
-                rule_name,
-                &format!(
-                    "[Universe] {}({})",
-                    tickers_map.len(),
-                    tickers_factors.len()
-                ),
-                date,
-                event_sender,
-            )
-            .await;
-
             let normalized_factors_momentum = normalize_zscore(
                 &tickers_factors
                     .iter()
                     .map(|(_, f)| f.momentum)
                     .collect::<Vec<f64>>(),
             );
-            let normalized_factors_bias_momentum = normalize_zscore(
+            let normalized_factors_deviation_momentum = normalize_zscore(
                 &tickers_factors
                     .iter()
-                    .map(|(_, f)| f.bias_momentum)
+                    .map(|(_, f)| f.deviation_momentum)
                     .collect::<Vec<f64>>(),
             );
             let normalized_factors_efficiency_momentum = normalize_zscore(
@@ -211,33 +205,36 @@ impl RuleExecutor for Executor {
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (i, (ticker, _)) in tickers_factors.iter().enumerate() {
                 let momentum = normalized_factors_momentum[i];
-                let bias_momentum = normalized_factors_bias_momentum[i];
+                let deviation_momentum = normalized_factors_deviation_momentum[i];
                 let efficiency_momentum = normalized_factors_efficiency_momentum[i];
 
                 let indicator = momentum
-                    + bias_weight * bias_momentum
+                    + deviation_weight * deviation_momentum
                     + efficiency_weight * efficiency_momentum;
 
                 indicators.push((ticker.clone(), indicator));
             }
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+            indicators.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            let targets_indicator = indicators
-                .iter()
-                .take(limit as usize)
-                .map(|(t, v)| (t.clone(), *v))
-                .collect::<Vec<_>>();
+            rule_send_info(
+                rule_name,
+                &format!("[Universe] {}({})", tickers_map.len(), indicators.len()),
+                date,
+                event_sender,
+            )
+            .await;
+
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, false).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &indicators
+                &candidates_indicators
                     .iter()
-                    .skip(limit as usize)
-                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,
@@ -245,7 +242,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 
@@ -256,6 +253,6 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     momentum: f64,
-    bias_momentum: f64,
+    deviation_momentum: f64,
     efficiency_momentum: f64,
 }

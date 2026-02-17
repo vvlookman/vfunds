@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     collections::{HashMap, HashSet},
     time::Instant,
 };
@@ -74,7 +73,9 @@ impl FundBacktestContext<'_> {
                                     let _ = event_sender
                                         .send(BacktestEvent::Warning {
                                             title: "".to_string(),
-                                            message: format!("Price of '{ticker}' not exists"),
+                                            message: format!(
+                                                "{buy_price_type} price of '{ticker}' not exists"
+                                            ),
                                             date: Some(*date),
                                         })
                                         .await;
@@ -138,7 +139,9 @@ impl FundBacktestContext<'_> {
                             let _ = event_sender
                                 .send(BacktestEvent::Warning {
                                     title: "".to_string(),
-                                    message: format!("Price of '{ticker}' not exists"),
+                                    message: format!(
+                                        "{sell_price_type} price of '{ticker}' not exists"
+                                    ),
                                     date: Some(*date),
                                 })
                                 .await;
@@ -185,14 +188,15 @@ impl FundBacktestContext<'_> {
 
         // Only keep tickers with price data
         let mut tickers_weight_price: Vec<(Ticker, f64, f64)> = vec![];
+        let price_type = PriceType::Mid;
         for (ticker, weight) in targets_weight {
-            if let Some(price) = get_ticker_price(ticker, date, true, &PriceType::Mid).await? {
+            if let Some(price) = get_ticker_price(ticker, date, true, &price_type).await? {
                 tickers_weight_price.push((ticker.clone(), *weight, price));
             } else {
                 let _ = event_sender
                     .send(BacktestEvent::Warning {
                         title: "".to_string(),
-                        message: format!("Price of '{ticker}' not exists"),
+                        message: format!("{price_type} price of '{ticker}' not exists"),
                         date: Some(*date),
                     })
                     .await;
@@ -336,7 +340,7 @@ impl FundBacktestContext<'_> {
             let _ = event_sender
                 .send(BacktestEvent::Warning {
                     title: "".to_string(),
-                    message: format!("Price of '{ticker}' not exists"),
+                    message: format!("{sell_price_type} price of '{ticker}' not exists"),
                     date: Some(*date),
                 })
                 .await;
@@ -416,7 +420,7 @@ impl FundBacktestContext<'_> {
             let _ = event_sender
                 .send(BacktestEvent::Warning {
                     title: "".to_string(),
-                    message: format!("Price of '{ticker}' not exists"),
+                    message: format!("{buy_price_type} price of '{ticker}' not exists"),
                     date: Some(*date),
                 })
                 .await;
@@ -495,7 +499,7 @@ impl FundBacktestContext<'_> {
             let _ = event_sender
                 .send(BacktestEvent::Warning {
                     title: "".to_string(),
-                    message: format!("Price of '{ticker}' not exists"),
+                    message: format!("{buy_price_type} price of '{ticker}' not exists"),
                     date: Some(*date),
                 })
                 .await;
@@ -582,7 +586,7 @@ impl FundBacktestContext<'_> {
                 let _ = event_sender
                     .send(BacktestEvent::Warning {
                         title: "".to_string(),
-                        message: format!("Price of '{ticker}' not exists"),
+                        message: format!("{buy_price_type} price of '{ticker}' not exists"),
                         date: Some(*date),
                     })
                     .await;
@@ -620,7 +624,7 @@ impl FundBacktestContext<'_> {
                 let _ = event_sender
                     .send(BacktestEvent::Warning {
                         title: "".to_string(),
-                        message: format!("Price of '{ticker}' not exists"),
+                        message: format!("{sell_price_type} price of '{ticker}' not exists"),
                         date: Some(*date),
                     })
                     .await;
@@ -738,22 +742,16 @@ impl FundBacktestContext<'_> {
         let mut positions_value: HashMap<Ticker, f64> = HashMap::new();
 
         for (ticker, units) in &self.portfolio.positions {
-            match get_ticker_price(ticker, date, true, price_type).await {
-                Ok(Some(price)) => {
-                    positions_value.insert(ticker.clone(), *units as f64 * price);
-                }
-                Ok(None) => {
-                    return Err(VfError::NoData {
-                        code: "NO_PRICE_DATA",
-                        message: format!(
-                            "Price data of '{ticker}' @{} not exists",
-                            date_to_str(date)
-                        ),
-                    });
-                }
-                Err(e) => {
-                    return Err(e);
-                }
+            if let Some(price) = get_ticker_price(ticker, date, true, price_type).await? {
+                positions_value.insert(ticker.clone(), *units as f64 * price);
+            } else {
+                return Err(VfError::NoData {
+                    code: "NO_PRICE_DATA",
+                    message: format!(
+                        "{price_type} price of '{ticker}' @{} not exists",
+                        date_to_str(date)
+                    ),
+                });
             }
         }
 
@@ -962,15 +960,16 @@ pub async fn backtest_fund_cv(
                     }
                 }
 
-                let cv_count = search_frequencies
+                let count_i = search_frequencies
                     .iter()
                     .map(|v| v.frequencies.len())
-                    .product::<usize>()
-                    * search_options
-                        .iter()
-                        .map(|v| v.option_values.len())
-                        .product::<usize>()
-                    * cv_options.cv_start_dates.len();
+                    .product::<usize>();
+                let count_j = search_options
+                    .iter()
+                    .map(|v| v.option_values.len())
+                    .product::<usize>();
+                let count_k = cv_options.cv_start_dates.len();
+                let cv_count = count_i * count_j * count_k;
 
                 let cv_start = Instant::now();
 
@@ -1040,69 +1039,76 @@ pub async fn backtest_fund_cv(
                             let mut options = cv_options.base_options.clone();
                             options.start_date = *cv_start_date;
 
-                            let mut stream = backtest_fund(&fund_definition, &options).await?;
+                            let cv_num = i * count_j * count_k + j * count_k + k + 1;
 
-                            while let Some(event) = stream.next().await {
-                                match event {
-                                    BacktestEvent::Result(result) => {
-                                        let _ = sender
-                                            .send(BacktestEvent::Info {
-                                                title: format!(
-                                                    "[CV {}/{cv_count} {}] [{}~{}]",
-                                                    i * search_options.len()
-                                                        * cv_options.cv_start_dates.len()
-                                                        + j * cv_options.cv_start_dates.len()
-                                                        + k
-                                                        + 1,
-                                                    secs_to_human_str(cv_start.elapsed().as_secs()),
-                                                    date_to_str(&options.start_date),
-                                                    date_to_str(&options.end_date),
-                                                ),
-                                                message: format!(
-                                                    "[ARR={} Sharpe={}] {} {}",
-                                                    result
-                                                        .metrics
-                                                        .annualized_return_rate
-                                                        .map(|v| format!("{:.2}%", v * 100.0))
-                                                        .unwrap_or("-".to_string()),
-                                                    result
-                                                        .metrics
-                                                        .sharpe_ratio
-                                                        .map(|v| format!("{v:.3}"))
-                                                        .unwrap_or("-".to_string()),
-                                                    rule_frequencies
-                                                        .iter()
-                                                        .map(|v| {
-                                                            format!(
-                                                                "{}.frequency={}",
-                                                                v.rule_name,
-                                                                v.frequency.to_str(),
-                                                            )
-                                                        })
-                                                        .collect::<Vec<_>>()
-                                                        .join(" "),
-                                                    rule_options
-                                                        .iter()
-                                                        .map(|v| {
-                                                            format!(
-                                                                "{}.{}={}",
-                                                                v.rule_name,
-                                                                v.option_name,
-                                                                v.option_value
-                                                            )
-                                                        })
-                                                        .collect::<Vec<_>>()
-                                                        .join(" ")
-                                                ),
-                                                date: None,
-                                            })
-                                            .await;
+                            match backtest_fund(&fund_definition, &options).await {
+                                Ok(mut stream) => {
+                                    while let Some(event) = stream.next().await {
+                                        match event {
+                                            BacktestEvent::Result(result) => {
+                                                let _ = sender
+                                                    .send(BacktestEvent::Info {
+                                                        title: format!(
+                                                            "[CV {cv_num}/{cv_count} {}] [{}~{}]",
+                                                            secs_to_human_str(
+                                                                cv_start.elapsed().as_secs()
+                                                            ),
+                                                            date_to_str(&options.start_date),
+                                                            date_to_str(&options.end_date),
+                                                        ),
+                                                        message: format!(
+                                                            "[ARR={} Sharpe={}] {} {}",
+                                                            result
+                                                                .metrics
+                                                                .annualized_return_rate
+                                                                .map(|v| format!(
+                                                                    "{:.2}%",
+                                                                    v * 100.0
+                                                                ))
+                                                                .unwrap_or("-".to_string()),
+                                                            result
+                                                                .metrics
+                                                                .sharpe_ratio
+                                                                .map(|v| format!("{v:.3}"))
+                                                                .unwrap_or("-".to_string()),
+                                                            rule_frequencies
+                                                                .iter()
+                                                                .map(|v| {
+                                                                    format!(
+                                                                        "{}.frequency={}",
+                                                                        v.rule_name,
+                                                                        v.frequency.to_str(),
+                                                                    )
+                                                                })
+                                                                .collect::<Vec<_>>()
+                                                                .join(" "),
+                                                            rule_options
+                                                                .iter()
+                                                                .map(|v| {
+                                                                    format!(
+                                                                        "{}.{}={}",
+                                                                        v.rule_name,
+                                                                        v.option_name,
+                                                                        v.option_value
+                                                                    )
+                                                                })
+                                                                .collect::<Vec<_>>()
+                                                                .join(" ")
+                                                        ),
+                                                        date: None,
+                                                    })
+                                                    .await;
 
-                                        cv_results.insert(*cv_start_date, *result);
+                                                cv_results.insert(*cv_start_date, *result);
+                                            }
+                                            _ => {
+                                                let _ = sender.send(event).await;
+                                            }
+                                        }
                                     }
-                                    _ => {
-                                        let _ = sender.send(event).await;
-                                    }
+                                }
+                                Err(err) => {
+                                    let _ = sender.send(BacktestEvent::Error(err)).await;
                                 }
                             }
                         }
@@ -1216,44 +1222,50 @@ pub async fn backtest_fund_cv(
                     options.start_date = *window_start;
                     options.end_date = *window_end;
 
-                    let mut stream = backtest_fund(&fund_definition, &options).await?;
+                    match backtest_fund(&fund_definition, &options).await {
+                        Ok(mut stream) => {
+                            while let Some(event) = stream.next().await {
+                                match event {
+                                    BacktestEvent::Result(result) => {
+                                        let _ = sender
+                                            .send(BacktestEvent::Info {
+                                                title: format!(
+                                                    "[CV {}/{cv_count} {}] [{}~{}]",
+                                                    i + 1,
+                                                    secs_to_human_str(cv_start.elapsed().as_secs()),
+                                                    date_to_str(&options.start_date),
+                                                    date_to_str(&options.end_date),
+                                                ),
+                                                message: format!(
+                                                    "[ARR={} Sharpe={}] {}-{}",
+                                                    result
+                                                        .metrics
+                                                        .annualized_return_rate
+                                                        .map(|v| format!("{:.2}%", v * 100.0))
+                                                        .unwrap_or("-".to_string()),
+                                                    result
+                                                        .metrics
+                                                        .sharpe_ratio
+                                                        .map(|v| format!("{v:.3}"))
+                                                        .unwrap_or("-".to_string()),
+                                                    date_to_str(window_start),
+                                                    date_to_str(window_end),
+                                                ),
+                                                date: None,
+                                            })
+                                            .await;
 
-                    while let Some(event) = stream.next().await {
-                        match event {
-                            BacktestEvent::Result(result) => {
-                                let _ = sender
-                                    .send(BacktestEvent::Info {
-                                        title: format!(
-                                            "[CV {}/{cv_count} {}] [{}~{}]",
-                                            i + 1,
-                                            secs_to_human_str(cv_start.elapsed().as_secs()),
-                                            date_to_str(&options.start_date),
-                                            date_to_str(&options.end_date),
-                                        ),
-                                        message: format!(
-                                            "[ARR={} Sharpe={}] {}-{}",
-                                            result
-                                                .metrics
-                                                .annualized_return_rate
-                                                .map(|v| format!("{:.2}%", v * 100.0))
-                                                .unwrap_or("-".to_string()),
-                                            result
-                                                .metrics
-                                                .sharpe_ratio
-                                                .map(|v| format!("{v:.3}"))
-                                                .unwrap_or("-".to_string()),
-                                            date_to_str(window_start),
-                                            date_to_str(window_end),
-                                        ),
-                                        date: None,
-                                    })
-                                    .await;
-
-                                cv_window_results.push(((*window_start, *window_end), *result));
+                                        cv_window_results
+                                            .push(((*window_start, *window_end), *result));
+                                    }
+                                    _ => {
+                                        let _ = sender.send(event).await;
+                                    }
+                                }
                             }
-                            _ => {
-                                let _ = sender.send(event).await;
-                            }
+                        }
+                        Err(err) => {
+                            let _ = sender.send(BacktestEvent::Error(err)).await;
                         }
                     }
                 }
@@ -1298,9 +1310,7 @@ pub async fn backtest_fund_cv(
                             .collect();
                         if let (Some(arr_mean), Some(arr_min)) = (
                             mean(&arrs),
-                            arrs.iter()
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .copied(),
+                            arrs.iter().min_by(|a, b| a.total_cmp(b)).copied(),
                         ) {
                             let _ = sender
                                 .send(BacktestEvent::Info {
@@ -1323,10 +1333,7 @@ pub async fn backtest_fund_cv(
                             .collect();
                         if let (Some(sharpe_mean), Some(sharpe_min)) = (
                             mean(&sharpes),
-                            sharpes
-                                .iter()
-                                .min_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-                                .copied(),
+                            sharpes.iter().min_by(|a, b| a.total_cmp(b)).copied(),
                         ) {
                             let _ = sender
                                 .send(BacktestEvent::Info {

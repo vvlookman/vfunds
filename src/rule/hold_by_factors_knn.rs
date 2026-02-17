@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
@@ -13,7 +13,7 @@ use smartcore::{
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, TRADE_DAYS_FRACTION,
     error::VfResult,
     financial::{
         KlineField,
@@ -22,6 +22,7 @@ use crate::{
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
+        select_by_indicators,
     },
     ticker::Ticker,
     utils::{
@@ -89,8 +90,7 @@ impl RuleExecutor for Executor {
             }
         }
 
-        let predict_trade_days =
-            (self.frequency_days as f64 * TRADE_DAYS_PER_YEAR / DAYS_PER_YEAR).round() as u32;
+        let predict_trade_days = (self.frequency_days as f64 * TRADE_DAYS_FRACTION).round() as u32;
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
@@ -106,7 +106,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
 
                     let mut ticker_factor_invalid: bool = false;
                     let mut factors_and_score: Vec<(Vec<f64>, f64)> = vec![];
@@ -249,6 +249,7 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+            indicators.sort_by(|a, b| b.1.total_cmp(&a.1));
 
             rule_send_info(
                 rule_name,
@@ -258,30 +259,16 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
-
-            let top_indicators = indicators
-                .iter()
-                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
-                .collect::<Vec<_>>();
-
-            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
-            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &top_indicators {
-                if targets_indicator.len() < limit as usize {
-                    targets_indicator.push((ticker.clone(), *indicator));
-                } else {
-                    candidates_indicator.push((ticker.clone(), *indicator));
-                }
-            }
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, false).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &candidates_indicator
+                &candidates_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
@@ -290,7 +277,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 
@@ -301,7 +288,7 @@ impl RuleExecutor for Executor {
 async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(String, f64)>> {
     let mut factors: Vec<(String, f64)> = vec![];
 
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
 
     // Momentum
     {
@@ -333,7 +320,7 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
         }
     }
 
-    // Bias
+    // Deviation
     {
         for days in &[10, 20, 40, 60, 120, 240] {
             let prices_days: Vec<f64> = kline
@@ -342,8 +329,8 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
                 .map(|&(_, v)| v)
                 .collect();
             factors.push((
-                format!("EmaBias{days}T"),
-                calc_ema_bias(&prices_days).unwrap_or(f64::NAN),
+                format!("EmaDeviation{days}T"),
+                calc_ema_deviation(&prices_days).unwrap_or(f64::NAN),
             ));
         }
     }

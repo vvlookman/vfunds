@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use chrono::NaiveDate;
 use eframe::egui;
-use egui_plot::{BoxElem, BoxPlot, BoxSpread, Plot};
+use egui_plot::{BoxElem, BoxPlot, BoxSpread, Line, LineStyle, Plot, PlotPoint, PlotPoints};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct KlineViewer {
     plot_y_max: f64,
     plot_y_min: f64,
     plot_boxes: Vec<BoxElem>,
+    plot_zero_line_points: Vec<PlotPoint>,
 
     warning_message: Option<String>,
 }
@@ -80,6 +81,7 @@ impl KlineViewer {
             plot_y_max: 0.0,
             plot_y_min: 0.0,
             plot_boxes: vec![],
+            plot_zero_line_points: vec![],
 
             warning_message: None,
         }
@@ -93,6 +95,7 @@ impl KlineViewer {
         self.plot_y_max = 0.0;
         self.plot_y_min = 0.0;
         self.plot_boxes.clear();
+        self.plot_zero_line_points.clear();
 
         let ticker = self.ticker.clone();
         let ignore_cache = self.ignore_cache;
@@ -184,6 +187,11 @@ impl KlineViewer {
                     }
 
                     self.plot_boxes = boxes;
+
+                    self.plot_zero_line_points = vec![
+                        PlotPoint::new(0.0, 0.0),
+                        PlotPoint::new(self.plot_trade_dates.len() as f64 - 1.0, 0.0),
+                    ];
                 }
             }
             LoadEvent::Error(err) => self.warning_message = Some(err.to_string()),
@@ -302,6 +310,13 @@ impl eframe::App for KlineViewer {
                     };
 
                     plot.show(ui, |plot_ui| {
+                        plot_ui.line(
+                            Line::new("", PlotPoints::Borrowed(&self.plot_zero_line_points))
+                                .width(0.8)
+                                .style(LineStyle::dashed_dense())
+                                .color(egui::Color32::DARK_GRAY),
+                        );
+
                         plot_ui.box_plot(
                             BoxPlot::new(self.ticker.to_string(), self.plot_boxes.clone())
                                 .element_formatter(Box::new(formatter)),

@@ -1,28 +1,29 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{Datelike, Duration, NaiveDate};
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_SHORT,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG, STALE_DAYS_SHORT,
     error::VfResult,
-    filter::filter_st::is_st,
+    filter::{filter_invalid::has_invalid_price, filter_st::is_st},
     financial::{
         KlineField,
         stock::{
-            StockDetail, StockDividendAdjust, StockDividendField, fetch_stock_detail,
-            fetch_stock_dividends, fetch_stock_kline,
+            StockDividendAdjust, StockDividendField, StockReportPershareField,
+            fetch_stock_dividends, fetch_stock_kline, fetch_stock_report_pershare,
         },
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
+        select_by_indicators,
     },
     ticker::Ticker,
     utils::{
-        financial::{calc_annualized_return_rate, calc_annualized_volatility},
-        stats::quantile,
+        financial::{calc_annualized_momentum, calc_annualized_volatility},
+        stats::{self, quantile},
     },
 };
 
@@ -49,11 +50,6 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let arr_quantile_lower = self
-            .options
-            .get("arr_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let div_allot_weight = self
             .options
             .get("div_allot_weight")
@@ -89,9 +85,19 @@ impl RuleExecutor for Executor {
             .get("min_div_count_per_year")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let price_avg_count = self
+        let momentum_quantile_lower = self
             .options
-            .get("price_avg_count")
+            .get("momentum_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let roe_quantile_lower = self
+            .options
+            .get("roe_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let recent_avg_count = self
+            .options
+            .get("recent_avg_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
         let skip_same_sector = self
@@ -122,8 +128,8 @@ impl RuleExecutor for Executor {
                 panic!("lookback_trade_days must > 0");
             }
 
-            if price_avg_count == 0 {
-                panic!("price_avg_count must > 0");
+            if recent_avg_count == 0 {
+                panic!("recent_avg_count must > 0");
             }
 
             if min_div_count_per_year <= 0.0 {
@@ -149,23 +155,10 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
-                    let prices: Vec<f64> = kline
-                        .get_latest_values::<f64>(
-                            date,
-                            false,
-                            &KlineField::Close.to_string(),
-                            lookback_trade_days as u32,
-                        )
-                        .iter()
-                        .map(|&(_, v)| v)
-                        .collect();
-                    if prices.len()
-                        < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
-                    {
+                    if has_invalid_price(ticker, date).await? {
                         rule_send_warning(
                             rule_name,
-                            &format!("[No Enough Data] {ticker}"),
+                            &format!("[Invalid Price] {ticker}"),
                             date,
                             event_sender,
                         )
@@ -175,20 +168,17 @@ impl RuleExecutor for Executor {
 
                     let kline_no_adjust =
                         fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
-
-                    let price_no_adjust = {
-                        let prices: Vec<f64> = kline_no_adjust
-                            .get_latest_values::<f64>(
-                                date,
-                                false,
-                                &KlineField::Close.to_string(),
-                                price_avg_count as u32,
-                            )
-                            .iter()
-                            .map(|&(_, v)| v)
-                            .collect();
-                        prices.iter().sum::<f64>() / prices.len() as f64
-                    };
+                    let prices_no_adjust: Vec<f64> = kline_no_adjust
+                        .get_latest_values::<f64>(
+                            date,
+                            false,
+                            &KlineField::Close.to_string(),
+                            recent_avg_count as u32,
+                        )
+                        .iter()
+                        .map(|&(_, v)| v)
+                        .collect();
+                    let price_no_adjust = stats::mean(&prices_no_adjust).unwrap_or(0.0);
                     if price_no_adjust > 0.0 {
                         let mut dividends: Vec<f64> = vec![];
 
@@ -277,25 +267,63 @@ impl RuleExecutor for Executor {
                             / lookback_div_years as f64
                             / price_no_adjust;
                         if dv_ratio > 0.0 {
-                            let arr = calc_annualized_return_rate(&prices);
+                            let kline =
+                                fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
+                            let prices: Vec<f64> = kline
+                                .get_latest_values::<f64>(
+                                    date,
+                                    false,
+                                    &KlineField::Close.to_string(),
+                                    lookback_trade_days as u32,
+                                )
+                                .iter()
+                                .map(|&(_, v)| v)
+                                .collect();
+                            if prices.len()
+                                < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round()
+                                    as usize
+                            {
+                                rule_send_warning(
+                                    rule_name,
+                                    &format!("[No Enough Data] {ticker}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
+                                continue;
+                            }
+
+                            let momentum = calc_annualized_momentum(&prices, false);
                             let volatility = calc_annualized_volatility(&prices);
 
-                            if let Some(fail_factor_name) = match (arr, volatility) {
-                                (None, _) => Some("arr"),
-                                (_, None) => Some("volatility"),
-                                (Some(arr), Some(volatility)) => {
-                                    tickers_factors.push((
-                                        ticker.clone(),
-                                        Factors {
-                                            dv_ratio,
-                                            arr,
-                                            volatility,
-                                        },
-                                    ));
+                            let report_pershare = fetch_stock_report_pershare(ticker).await?;
+                            let roe_with_date = report_pershare.get_latest_value::<f64>(
+                                date,
+                                STALE_DAYS_LONG,
+                                false,
+                                &StockReportPershareField::Roe.to_string(),
+                            );
 
-                                    None
+                            if let Some(fail_factor_name) =
+                                match (momentum, roe_with_date, volatility) {
+                                    (None, _, _) => Some("momentum"),
+                                    (_, None, _) => Some("roe"),
+                                    (_, _, None) => Some("volatility"),
+                                    (Some(momentum), Some((_, roe)), Some(volatility)) => {
+                                        tickers_factors.push((
+                                            ticker.clone(),
+                                            Factors {
+                                                dv_ratio,
+                                                momentum,
+                                                roe,
+                                                volatility,
+                                            },
+                                        ));
+
+                                        None
+                                    }
                                 }
-                            } {
+                            {
                                 rule_send_warning(
                                     rule_name,
                                     &format!("[Σ '{fail_factor_name}' Failed] {ticker}"),
@@ -323,23 +351,17 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            rule_send_info(
-                rule_name,
-                &format!(
-                    "[Universe] {}({})",
-                    tickers_map.len(),
-                    tickers_factors.len()
-                ),
-                date,
-                event_sender,
-            )
-            .await;
-
-            let factors_arr = tickers_factors
+            let factors_momentum = tickers_factors
                 .iter()
-                .map(|(_, f)| f.arr)
+                .map(|(_, f)| f.momentum)
                 .collect::<Vec<f64>>();
-            let arr_lower = quantile(&factors_arr, arr_quantile_lower);
+            let momentum_lower = quantile(&factors_momentum, momentum_quantile_lower);
+
+            let factors_roe = tickers_factors
+                .iter()
+                .map(|(_, f)| f.roe)
+                .collect::<Vec<f64>>();
+            let roe_lower = quantile(&factors_roe, roe_quantile_lower);
 
             let factors_volatility = tickers_factors
                 .iter()
@@ -349,8 +371,14 @@ impl RuleExecutor for Executor {
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {
-                if let Some(arr_lower) = arr_lower {
-                    if factors.arr < arr_lower {
+                if let Some(momentum_lower) = momentum_lower {
+                    if factors.momentum < momentum_lower {
+                        continue;
+                    }
+                }
+
+                if let Some(roe_lower) = roe_lower {
+                    if factors.roe < roe_lower {
                         continue;
                     }
                 }
@@ -363,53 +391,26 @@ impl RuleExecutor for Executor {
 
                 indicators.push((ticker, factors.dv_ratio));
             }
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+            indicators.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            let top_indicators = indicators
-                .iter()
-                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
-                .collect::<Vec<_>>();
+            rule_send_info(
+                rule_name,
+                &format!("[Universe] {}({})", tickers_map.len(), indicators.len()),
+                date,
+                event_sender,
+            )
+            .await;
 
-            let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
-            if skip_same_sector {
-                for (ticker, _) in &top_indicators {
-                    let detail = fetch_stock_detail(ticker).await?;
-                    tickers_detail.insert(ticker.clone(), detail);
-                }
-            }
-
-            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
-            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &top_indicators {
-                if targets_indicator.len() < limit as usize {
-                    if skip_same_sector
-                        && targets_indicator.iter().any(|(a, _)| {
-                            if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
-                                tickers_detail.get(a).map(|v| &v.sector),
-                                tickers_detail.get(ticker).map(|v| &v.sector),
-                            ) {
-                                sector_a == sector_b
-                            } else {
-                                false
-                            }
-                        })
-                    {
-                        candidates_indicator.push((ticker.clone(), *indicator));
-                    } else {
-                        targets_indicator.push((ticker.clone(), *indicator));
-                    }
-                } else {
-                    candidates_indicator.push((ticker.clone(), *indicator));
-                }
-            }
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, skip_same_sector).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &candidates_indicator
+                &candidates_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
@@ -418,7 +419,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 
@@ -429,6 +430,7 @@ impl RuleExecutor for Executor {
 #[derive(Debug)]
 struct Factors {
     dv_ratio: f64,
-    arr: f64,
+    momentum: f64,
+    roe: f64,
     volatility: f64,
 }

@@ -347,6 +347,11 @@ impl BacktestCommand {
                                             backtest_logs.push(err.to_string());
                                         }
 
+                                        logger.println(format!(
+                                            "[{vfund_tranche}] [!] {}",
+                                            err.to_string().red()
+                                        ));
+
                                         errors.insert(vfund_tranche.to_string(), err);
                                     }
                                 }
@@ -388,9 +393,9 @@ impl BacktestCommand {
 
         for (title, err) in &errors {
             if title.is_empty() {
-                logger.println(format!("[!] {}", err.to_string().red()));
+                logger.println(format!("[↑] {}", err.to_string().red()));
             } else {
-                logger.println(format!("[{title}] [!] {}", err.to_string().red()));
+                logger.println(format!("[{title}] [↑] {}", err.to_string().red()));
             }
         }
 

@@ -27,7 +27,7 @@ xgboost_n_estimators = 100
 [rules.search.options]
 # limit = [1, 2, 3, 4, 5]
 metric_r2_threshold = [0.0, 0.5, 0.6, 0.7, 0.8, 0.9]
-# train_trade_days = [20, 40, 60, 120, 240]
+# train_trade_days = [21, 42, 63, 125, 188, 250]
 # weight_method = [
 #   "equal",
 #   "filter_max(0.9)",

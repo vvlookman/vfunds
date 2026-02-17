@@ -1,18 +1,18 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_SHORT,
+    PROGRESS_INTERVAL_SECS, STALE_DAYS_SHORT,
     error::VfResult,
     financial::bond::{
-        ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail, fetch_conv_bonds,
+        ConvBondDailyField, fetch_conv_bond_basic, fetch_conv_bond_daily, fetch_conv_bonds,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_info,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, select_by_indicators,
     },
     spec::Frequency,
     ticker::Ticker,
@@ -111,7 +111,7 @@ impl RuleExecutor for Executor {
                     calc_count += 1;
 
                     let ticker = &conv_bond_issue.ticker;
-                    let conv_bond = fetch_conv_bond_detail(ticker).await?;
+                    let conv_bond = fetch_conv_bond_basic(ticker).await?;
 
                     if let (Some(issue_size), Some(remain_size), Some(expire_date)) = (
                         conv_bond.issue_size,
@@ -189,18 +189,6 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            rule_send_info(
-                rule_name,
-                &format!(
-                    "[Universe] {}({})",
-                    conv_bond_issues.len(),
-                    tickers_factors.len()
-                ),
-                date,
-                event_sender,
-            )
-            .await;
-
             let factors_straight_premium = tickers_factors
                 .iter()
                 .map(|(_, f)| f.straight_premium)
@@ -218,24 +206,31 @@ impl RuleExecutor for Executor {
 
                 indicators.push((ticker, 100.0 + factors.conversion_premium));
             }
-            indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+            indicators.sort_by(|a, b| a.1.total_cmp(&b.1));
 
-            let targets_indicator = indicators
-                .iter()
-                .take(limit as usize)
-                .map(|(t, v)| (t.clone(), *v))
-                .collect::<Vec<_>>();
+            rule_send_info(
+                rule_name,
+                &format!(
+                    "[Universe] {}({})",
+                    conv_bond_issues.len(),
+                    indicators.len()
+                ),
+                date,
+                event_sender,
+            )
+            .await;
+
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, false).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &indicators
+                &candidates_indicators
                     .iter()
-                    .skip(limit as usize)
-                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,
@@ -243,7 +238,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 

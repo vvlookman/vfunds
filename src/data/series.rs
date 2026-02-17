@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::{
+    STALE_DAYS_SHORT, TRADE_DAYS_FRACTION,
     error::{VfError, VfResult},
     utils::datetime,
 };
@@ -223,8 +224,8 @@ impl DailySeries {
                     df.column(&self.date_field_name),
                     df.column(origin_field_name),
                 ) {
-                    // <Days> ~= 1.5 * <Trade days>
-                    let max_stale_days = (1.6 * count as f64).ceil() as i64;
+                    let max_stale_days = (count as f64 / TRADE_DAYS_FRACTION).ceil() as i64
+                        + STALE_DAYS_SHORT as i64;
 
                     let mut vals = vec![];
 
@@ -286,8 +287,8 @@ impl DailySeries {
                 .tail(count)
                 .collect()
             {
-                // <Days> ~= 1.5 * <Trade days>
-                let max_stale_days = (1.6 * count as f64).ceil() as i64;
+                let max_stale_days =
+                    (count as f64 / TRADE_DAYS_FRACTION).ceil() as i64 + STALE_DAYS_SHORT as i64;
 
                 let mut vals = vec![];
 

@@ -21,7 +21,7 @@ use crate::{
 };
 
 pub async fn calc_stock_market_cap(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
     let report_capital = fetch_stock_report_capital(ticker).await?;
 
     if let (Some((_, price)), Some((_, total_capital))) = (
@@ -45,8 +45,8 @@ pub async fn calc_stock_market_cap(ticker: &Ticker, date: &NaiveDate) -> VfResul
     Ok(None)
 }
 
-pub async fn calc_stock_pb(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+pub async fn _calc_stock_pb(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
     let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
     if let (Some((_, price)), Some((_, bps))) = (
@@ -71,7 +71,7 @@ pub async fn calc_stock_pb(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option
 }
 
 pub async fn calc_stock_pe_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
     let report_pershare = fetch_stock_report_pershare(ticker).await?;
 
     if let (Some((_, price)), eps_values) = (
@@ -135,7 +135,7 @@ pub async fn calc_stock_pe_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Op
 }
 
 pub async fn calc_stock_ps_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<Option<f64>> {
-    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
     let report_capital = fetch_stock_report_capital(ticker).await?;
     let report_income = fetch_stock_report_income(ticker).await?;
 

@@ -16,7 +16,7 @@ pub fn constraint_array(values: &[f64], min: f64, max: f64) -> Vec<f64> {
 
     let mut indexed_values: Vec<(usize, f64)> =
         values.iter().enumerate().map(|(i, &v)| (i, v)).collect();
-    indexed_values.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+    indexed_values.sort_by(|a, b| a.1.total_cmp(&b.1));
 
     let mut value_groups = Vec::new();
     let mut current_group = Vec::new();
@@ -158,8 +158,8 @@ mod tests {
 
         let mut sorted1 = result1.clone();
         let mut sorted2 = result2.clone();
-        sorted1.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        sorted2.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted1.sort_by(|a, b| a.total_cmp(b));
+        sorted2.sort_by(|a, b| a.total_cmp(b));
 
         for (a, b) in sorted1.iter().zip(sorted2.iter()) {
             assert!((a - b).abs() < 1e-10);

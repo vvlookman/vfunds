@@ -6,10 +6,10 @@ use ta::{
     },
 };
 
-use crate::utils::{math::linear_regression, stats};
-
-pub const TRADE_DAYS_PER_YEAR: f64 = 250.0;
-pub const DAYS_PER_YEAR: f64 = 365.2425;
+use crate::{
+    TRADE_DAYS_PER_YEAR,
+    utils::{math::linear_regression, stats},
+};
 
 pub fn calc_annualized_momentum(daily_values: &[f64], adjust_with_r2: bool) -> Option<f64> {
     let ln_values: Vec<f64> = daily_values.iter().map(|v| v.ln()).collect();
@@ -127,7 +127,7 @@ pub fn calc_ema(daily_values: &[f64], period: usize) -> Vec<f64> {
     results
 }
 
-pub fn calc_ema_bias(daily_values: &[f64]) -> Option<f64> {
+pub fn calc_ema_deviation(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
         let ema_values = calc_ema(daily_values, daily_values.len());
         if !ema_values.is_empty() {
@@ -138,17 +138,17 @@ pub fn calc_ema_bias(daily_values: &[f64]) -> Option<f64> {
     None
 }
 
-pub fn calc_ema_bias_momentum(
+pub fn calc_ema_deviation_momentum(
     daily_values: &[f64],
     ema_period: usize,
     adjust_with_r2: bool,
 ) -> Option<f64> {
     if daily_values.len() > ema_period && ema_period != 0 {
-        let bias_values = daily_values
+        let deviation_values = daily_values
             .windows(ema_period)
-            .filter_map(calc_ema_bias)
+            .filter_map(calc_ema_deviation)
             .collect::<Vec<f64>>();
-        if let Some((slope, r2)) = linear_regression(&bias_values) {
+        if let Some((slope, r2)) = linear_regression(&deviation_values) {
             if adjust_with_r2 {
                 return Some(slope * if r2 > 0.0 { r2.sqrt() } else { 0.0 });
             } else {

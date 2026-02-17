@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 pub fn mean(values: &[f64]) -> Option<f64> {
     let sum = values.iter().sum::<f64>();
     let count = values.len();
@@ -37,7 +35,7 @@ pub fn quantile(values: &[f64], quantile: f64) -> Option<f64> {
         return None;
     }
 
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+    sorted.sort_by(|a, b| a.total_cmp(b));
 
     let n = sorted.len();
     let pos = (n as f64 - 1.0) * quantile;
@@ -81,7 +79,7 @@ mod tests {
 
     #[test]
     fn test_quantile() {
-        let data = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let data = [3.0, 4.0, 5.0, 1.0, 2.0];
 
         assert_eq!(quantile(&data, 0.0), Some(1.0));
         assert_eq!(quantile(&data, 0.1), Some(1.4));

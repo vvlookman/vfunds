@@ -3,23 +3,21 @@ use std::collections::HashMap;
 use chrono::NaiveDate;
 
 use crate::{
-    STALE_DAYS_SHORT,
+    STALE_DAYS_LONG,
     data::series::DailySeries,
     error::VfResult,
     financial::{
         bond::{
-            ConvBondDailyField, fetch_conv_bond_daily, fetch_conv_bond_detail,
+            ConvBondDailyField, fetch_conv_bond_basic, fetch_conv_bond_daily,
             fetch_conv_bond_kline, fetch_conv_bond_kline_ignore_cache,
         },
         stock::{
-            StockDividendAdjust, fetch_stock_detail, fetch_stock_kline,
+            StockDividendAdjust, fetch_stock_basic, fetch_stock_kline,
             fetch_stock_kline_ignore_cache,
         },
     },
     ticker::{Ticker, TickerType},
 };
-
-pub const MIN_PRICE: f64 = 0.01;
 
 pub mod bond;
 pub mod index;
@@ -67,13 +65,13 @@ pub async fn get_ticker_kline(ticker: &Ticker, ignore_cache: bool) -> VfResult<D
         match ticker.r#type {
             TickerType::ConvBond => fetch_conv_bond_kline_ignore_cache(ticker).await,
             TickerType::Stock => {
-                fetch_stock_kline_ignore_cache(ticker, StockDividendAdjust::Forward).await
+                fetch_stock_kline_ignore_cache(ticker, StockDividendAdjust::Backward).await
             }
         }
     } else {
         match ticker.r#type {
             TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
-            TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Forward).await,
+            TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Backward).await,
         }
     }
 }
@@ -90,17 +88,17 @@ pub async fn get_ticker_price(
             if *price_type == PriceType::Mid {
                 if let Some((date_high, high)) = daily.get_latest_value::<f64>(
                     date,
-                    STALE_DAYS_SHORT,
+                    STALE_DAYS_LONG,
                     include_today,
                     &ConvBondDailyField::High.to_string(),
                 ) && let Some((date_low, low)) = daily.get_latest_value::<f64>(
                     date,
-                    STALE_DAYS_SHORT,
+                    STALE_DAYS_LONG,
                     include_today,
                     &ConvBondDailyField::Low.to_string(),
                 ) {
                     if date_high == date_low {
-                        Ok(Some(((high + low) / 2.0).max(MIN_PRICE)))
+                        Ok(Some((high + low) / 2.0))
                     } else {
                         Ok(None)
                     }
@@ -118,29 +116,29 @@ pub async fn get_ticker_price(
                 Ok(daily
                     .get_latest_value::<f64>(
                         date,
-                        STALE_DAYS_SHORT,
+                        STALE_DAYS_LONG,
                         include_today,
                         &price_field.to_string(),
                     )
-                    .map(|(_, price)| price.max(MIN_PRICE)))
+                    .map(|(_, price)| price))
             }
         }
         TickerType::Stock => {
-            let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+            let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
             if *price_type == PriceType::Mid {
                 if let Some((date_high, high)) = kline.get_latest_value::<f64>(
                     date,
-                    STALE_DAYS_SHORT,
+                    STALE_DAYS_LONG,
                     include_today,
                     &KlineField::High.to_string(),
                 ) && let Some((date_low, low)) = kline.get_latest_value::<f64>(
                     date,
-                    STALE_DAYS_SHORT,
+                    STALE_DAYS_LONG,
                     include_today,
                     &KlineField::Low.to_string(),
                 ) {
                     if date_high == date_low {
-                        Ok(Some(((high + low) / 2.0).max(MIN_PRICE)))
+                        Ok(Some((high + low) / 2.0))
                     } else {
                         Ok(None)
                     }
@@ -158,11 +156,11 @@ pub async fn get_ticker_price(
                 Ok(kline
                     .get_latest_value::<f64>(
                         date,
-                        STALE_DAYS_SHORT,
+                        STALE_DAYS_LONG,
                         include_today,
                         &price_field.to_string(),
                     )
-                    .map(|(_, price)| price.max(MIN_PRICE)))
+                    .map(|(_, price)| price))
             }
         }
     }
@@ -170,13 +168,15 @@ pub async fn get_ticker_price(
 
 pub async fn get_ticker_title(ticker: &Ticker) -> String {
     if let Ok(name) = match ticker.r#type {
-        TickerType::ConvBond => fetch_conv_bond_detail(ticker).await.map(|d| d.name),
-        TickerType::Stock => fetch_stock_detail(ticker).await.map(|d| d.name),
+        TickerType::ConvBond => fetch_conv_bond_basic(ticker).await.map(|d| d.name),
+        TickerType::Stock => fetch_stock_basic(ticker).await.map(|d| d.name),
     } {
-        format!("{ticker}({name})")
-    } else {
-        ticker.to_string()
+        if !name.is_empty() {
+            return format!("{ticker}({name})");
+        }
     }
+
+    ticker.to_string()
 }
 
 #[cfg(test)]
@@ -184,19 +184,31 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::utils::datetime;
+    use crate::utils::datetime::date_from_str;
 
     #[tokio::test]
     async fn test_get_ticker_price() {
         let ticker = Ticker::from_str("123029").unwrap();
         assert_eq!(ticker.r#type, TickerType::ConvBond);
 
-        let date = datetime::date_from_str("2021-09-16").unwrap();
-        let price = get_ticker_price(&ticker, &date, true, &PriceType::Mid)
-            .await
-            .unwrap()
-            .unwrap_or(0.0);
+        let price = get_ticker_price(
+            &ticker,
+            &date_from_str("2021-06-28").unwrap(),
+            true,
+            &PriceType::Mid,
+        )
+        .await
+        .unwrap()
+        .unwrap_or(0.0);
 
         assert!(price > 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_get_ticker_title() {
+        let ticker = Ticker::from_str("600397").unwrap();
+        let title = get_ticker_title(&ticker).await;
+
+        assert_eq!(title, "600397.XSHG(江钨装备)");
     }
 }

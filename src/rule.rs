@@ -1,13 +1,17 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::{collections::HashMap, str::FromStr};
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
+    CANDIDATE_TICKER_RATIO,
     backtest::{BacktestEvent, fund::FundBacktestContext},
     error::{VfError, VfResult},
-    financial::get_ticker_title,
+    financial::{
+        get_ticker_title,
+        stock::{StockDetail, fetch_stock_detail},
+    },
     spec::RuleDefinition,
     ticker::Ticker,
 };
@@ -25,6 +29,7 @@ impl Rule {
     pub fn from_definition(definition: &RuleDefinition) -> Self {
         let executor: Box<dyn RuleExecutor> = match definition.name.as_str() {
             "hold" => Box::new(hold::Executor::new(definition)),
+            "hold_by_cluster_pb" => Box::new(hold_by_cluster_pb::Executor::new(definition)),
             "hold_by_conv_bond_premium" => {
                 Box::new(hold_by_conv_bond_premium::Executor::new(definition))
             }
@@ -34,8 +39,10 @@ impl Rule {
             }
             "hold_by_factors_knn" => Box::new(hold_by_factors_knn::Executor::new(definition)),
             "hold_by_momentum" => Box::new(hold_by_momentum::Executor::new(definition)),
+            "hold_by_price_deviation" => {
+                Box::new(hold_by_price_deviation::Executor::new(definition))
+            }
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
-            "hold_by_roe_pb" => Box::new(hold_by_roe_pb::Executor::new(definition)),
             "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
             "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
@@ -77,13 +84,14 @@ pub trait RuleExecutor: Send {
 }
 
 mod hold;
+mod hold_by_cluster_pb;
 mod hold_by_conv_bond_premium;
 mod hold_by_dividend;
 mod hold_by_factors_boosting;
 mod hold_by_factors_knn;
 mod hold_by_momentum;
+mod hold_by_price_deviation;
 mod hold_by_risk_parity;
-mod hold_by_roe_pb;
 mod hold_by_small_cap;
 mod hold_by_stablity;
 mod hold_by_trend;
@@ -143,7 +151,7 @@ fn calc_weights(
             let max = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                .max_by(|a, b| a.total_cmp(b))
                 .unwrap_or(f64::MIN);
             let threshold = max * num;
 
@@ -157,7 +165,7 @@ fn calc_weights(
             let min = tickers_indicator
                 .iter()
                 .map(|(_, v)| *v)
-                .max_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal))
+                .max_by(|a, b| a.total_cmp(b))
                 .unwrap_or(f64::MAX);
             let threshold = min * num;
 
@@ -265,4 +273,50 @@ async fn rule_send_warning(
             date: Some(*date),
         })
         .await;
+}
+
+async fn select_by_indicators(
+    indicators: &[(Ticker, f64)],
+    limit: usize,
+    skip_same_sector: bool,
+) -> VfResult<(Vec<(Ticker, f64)>, Vec<(Ticker, f64)>)> {
+    let top_indicators = indicators
+        .iter()
+        .take((CANDIDATE_TICKER_RATIO + 1) * limit)
+        .collect::<Vec<_>>();
+
+    let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
+    if skip_same_sector {
+        for (ticker, _) in &top_indicators {
+            let detail = fetch_stock_detail(ticker).await?;
+            tickers_detail.insert(ticker.clone(), detail);
+        }
+    }
+
+    let mut targets_indicators: Vec<(Ticker, f64)> = vec![];
+    let mut candidates_indicators: Vec<(Ticker, f64)> = vec![];
+    for (ticker, indicator) in &top_indicators {
+        if targets_indicators.len() < limit {
+            if skip_same_sector
+                && targets_indicators.iter().any(|(a, _)| {
+                    if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
+                        tickers_detail.get(a).map(|v| &v.sector),
+                        tickers_detail.get(ticker).map(|v| &v.sector),
+                    ) {
+                        sector_a == sector_b
+                    } else {
+                        false
+                    }
+                })
+            {
+                candidates_indicators.push((ticker.clone(), *indicator));
+            } else {
+                targets_indicators.push((ticker.clone(), *indicator));
+            }
+        } else {
+            candidates_indicators.push((ticker.clone(), *indicator));
+        }
+    }
+
+    Ok((targets_indicators, candidates_indicators))
 }

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -6,19 +6,20 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
     error::VfResult,
     financial::{
         KlineField,
         stock::{
-            StockDetail, StockDividendAdjust, StockReportCapitalField, fetch_stock_detail,
-            fetch_stock_kline, fetch_stock_report_capital,
+            StockDividendAdjust, StockReportCapitalField, fetch_stock_kline,
+            fetch_stock_report_capital,
         },
         tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
+        select_by_indicators,
     },
     ticker::Ticker,
     utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::normalize_zscore},
@@ -259,54 +260,18 @@ impl RuleExecutor for Executor {
                     }
                 })
                 .collect();
+            indicators.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
-
-            let top_indicators = indicators
-                .iter()
-                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
-                .collect::<Vec<_>>();
-
-            let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
-            if skip_same_sector {
-                for (ticker, _) in &top_indicators {
-                    let detail = fetch_stock_detail(ticker).await?;
-                    tickers_detail.insert(ticker.clone(), detail);
-                }
-            }
-
-            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
-            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &top_indicators {
-                if targets_indicator.len() < limit as usize {
-                    if skip_same_sector
-                        && targets_indicator.iter().any(|(a, _)| {
-                            if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
-                                tickers_detail.get(a).map(|v| &v.sector),
-                                tickers_detail.get(ticker).map(|v| &v.sector),
-                            ) {
-                                sector_a == sector_b
-                            } else {
-                                false
-                            }
-                        })
-                    {
-                        candidates_indicator.push((ticker.clone(), *indicator));
-                    } else {
-                        targets_indicator.push((ticker.clone(), *indicator));
-                    }
-                } else {
-                    candidates_indicator.push((ticker.clone(), *indicator));
-                }
-            }
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, skip_same_sector).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &candidates_indicator
+                &candidates_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
@@ -315,7 +280,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 

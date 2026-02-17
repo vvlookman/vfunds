@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{Datelike, NaiveDate};
@@ -11,7 +11,7 @@ use smartcore::{
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS,
     error::VfResult,
     financial::{
         KlineField,
@@ -19,7 +19,7 @@ use crate::{
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning, select_by_indicators,
     },
     ticker::Ticker,
     utils::{
@@ -133,7 +133,7 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Forward).await?;
+                    let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
                     let prices_with_date = kline.get_latest_values::<f64>(
                         date,
                         false,
@@ -225,27 +225,19 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
+            indicators.sort_by(|a, b| b.1.total_cmp(&a.1));
 
-            indicators.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
-
-            let targets_indicator = indicators
-                .iter()
-                .filter(|(_, v)| *v > 0.0)
-                .take(limit as usize)
-                .map(|(t, v)| (t.clone(), *v))
-                .collect::<Vec<_>>();
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, false).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &indicators
+                &candidates_indicators
                     .iter()
-                    .filter(|&(_, v)| *v > 0.0)
-                    .skip(limit as usize)
-                    .take(CANDIDATE_TICKER_RATIO * limit as usize)
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
                 date,
@@ -253,7 +245,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 

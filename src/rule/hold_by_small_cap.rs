@@ -1,22 +1,24 @@
-use std::{cmp::Ordering, collections::HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, STALE_DAYS_SHORT,
+    PROGRESS_INTERVAL_SECS, STALE_DAYS_LONG, STALE_DAYS_SHORT,
     error::VfResult,
-    filter::{filter_market_cap::is_circulating_ratio_low, filter_st::is_st},
-    financial::stock::{
-        StockDetail, StockIndicatorField, fetch_stock_detail, fetch_stock_indicators,
+    filter::{
+        filter_invalid::has_invalid_price, filter_market_cap::is_circulating_ratio_low,
+        filter_st::is_st,
     },
+    financial::stock::{StockIndicatorField, fetch_stock_indicators},
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
+        select_by_indicators,
     },
     ticker::Ticker,
-    utils::{financial::TRADE_DAYS_PER_YEAR, stats::quantile},
+    utils::stats::quantile,
 };
 
 pub struct Executor {
@@ -52,11 +54,6 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_trade_days = self
-            .options
-            .get("lookback_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(126);
         let pb_quantile_upper = self
             .options
             .get("pb_quantile_upper")
@@ -76,10 +73,6 @@ impl RuleExecutor for Executor {
             if limit == 0 {
                 panic!("limit must > 0");
             }
-
-            if lookback_trade_days == 0 {
-                panic!("lookback_trade_days must > 0");
-            }
         }
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
@@ -96,8 +89,18 @@ impl RuleExecutor for Executor {
                         continue;
                     }
 
-                    let lookback_days = lookback_trade_days as f64 * 365.0 / TRADE_DAYS_PER_YEAR;
-                    if is_st(ticker, date, lookback_days as u64).await? {
+                    if is_st(ticker, date, STALE_DAYS_LONG as u64).await? {
+                        continue;
+                    }
+
+                    if has_invalid_price(ticker, date).await? {
+                        rule_send_warning(
+                            rule_name,
+                            &format!("[Invalid Price] {ticker}"),
+                            date,
+                            event_sender,
+                        )
+                        .await;
                         continue;
                     }
 
@@ -153,18 +156,6 @@ impl RuleExecutor for Executor {
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
 
-            rule_send_info(
-                rule_name,
-                &format!(
-                    "[Universe] {}({})",
-                    tickers_map.len(),
-                    tickers_factors.len()
-                ),
-                date,
-                event_sender,
-            )
-            .await;
-
             let factors_pb = tickers_factors
                 .iter()
                 .map(|(_, f)| f.pb)
@@ -183,53 +174,26 @@ impl RuleExecutor for Executor {
                     indicators.push((ticker, factors.market_cap / 1e4));
                 }
             }
-            indicators.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+            indicators.sort_by(|a, b| a.1.total_cmp(&b.1));
 
-            let top_indicators = indicators
-                .iter()
-                .take((CANDIDATE_TICKER_RATIO + 1) * limit as usize)
-                .collect::<Vec<_>>();
+            rule_send_info(
+                rule_name,
+                &format!("[Universe] {}({})", tickers_map.len(), indicators.len()),
+                date,
+                event_sender,
+            )
+            .await;
 
-            let mut tickers_detail: HashMap<Ticker, StockDetail> = HashMap::new();
-            if skip_same_sector {
-                for (ticker, _) in &top_indicators {
-                    let detail = fetch_stock_detail(ticker).await?;
-                    tickers_detail.insert(ticker.clone(), detail);
-                }
-            }
-
-            let mut targets_indicator: Vec<(Ticker, f64)> = vec![];
-            let mut candidates_indicator: Vec<(Ticker, f64)> = vec![];
-            for (ticker, indicator) in &top_indicators {
-                if targets_indicator.len() < limit as usize {
-                    if skip_same_sector
-                        && targets_indicator.iter().any(|(a, _)| {
-                            if let (Some(Some(sector_a)), Some(Some(sector_b))) = (
-                                tickers_detail.get(a).map(|v| &v.sector),
-                                tickers_detail.get(ticker).map(|v| &v.sector),
-                            ) {
-                                sector_a == sector_b
-                            } else {
-                                false
-                            }
-                        })
-                    {
-                        candidates_indicator.push((ticker.clone(), *indicator));
-                    } else {
-                        targets_indicator.push((ticker.clone(), *indicator));
-                    }
-                } else {
-                    candidates_indicator.push((ticker.clone(), *indicator));
-                }
-            }
+            let (targets_indicators, candidates_indicators) =
+                select_by_indicators(&indicators, limit as usize, skip_same_sector).await?;
 
             rule_notify_indicators(
                 rule_name,
-                &targets_indicator
+                &targets_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
-                &candidates_indicator
+                &candidates_indicators
                     .iter()
                     .map(|&(ref t, v)| (t.clone(), format!("{v:.4}")))
                     .collect::<Vec<_>>(),
@@ -238,7 +202,7 @@ impl RuleExecutor for Executor {
             )
             .await;
 
-            let weights = calc_weights(&targets_indicator, weight_method)?;
+            let weights = calc_weights(&targets_indicators, weight_method)?;
             context.rebalance(&weights, date, event_sender).await?;
         }
 

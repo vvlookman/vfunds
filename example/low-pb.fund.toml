@@ -1,0 +1,59 @@
+title = "低PB"
+description = "持有周期行业中PB偏低的股票"
+
+[[ticker_sources]]
+source = "399998.CSI"  # 中证煤炭指数
+source_type = "index"
+
+[[ticker_sources]]
+source = "000813.CSI"  # 中证细分化工指数
+source_type = "index"
+
+# [[ticker_sources]]
+# source = "930708.CSI"  # 中证有色金属指数
+# source_type = "index"
+
+# [[ticker_sources]]
+# source = "399440.CNI"  # 国证钢铁指数
+# source_type = "index"
+
+# [[ticker_sources]]
+# source = "931009.CSI"  # 中证全指建材指数
+# source_type = "index"
+
+# [[ticker_sources]]
+# source = "399986.CSI"  # 中证银行指数
+# source_type = "index"
+
+[[rules]]
+name = "hold_by_cluster_pb"
+frequency = "3m"
+
+[rules.options]
+limit = 2
+lookback_mean_years = 5
+lookback_trade_days = 21
+pb_quantile_lower = 0.3
+pb_quantile_upper = 0.8
+roe_quantile_lower = 0.6
+weight_method = "filter_max(0.8)"
+
+[rules.search]
+# frequency = ["1m", "2m", "3m", "6m"]
+
+[rules.search.options]
+# limit = [1, 2, 3, 4, 5]
+# lookback_mean_years = [3, 4, 5, 6, 8]
+# lookback_trade_days = [5, 10, 21, 42, 63]
+pb_quantile_lower = [0.2, 0.3, 0.4, 0.5]
+pb_quantile_upper = [0.6, 0.7, 0.8, 0.9]
+# roe_quantile_lower = [0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+# weight_method = [
+#   "equal",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+#   "filter_max(0.4)",
+# ]

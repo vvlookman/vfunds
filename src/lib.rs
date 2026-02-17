@@ -108,9 +108,12 @@ macro_rules! mod_name {
 }
 
 const CANDIDATE_TICKER_RATIO: usize = 2;
+const DAYS_PER_YEAR: f64 = 365.2422;
 const REQUIRED_DATA_COMPLETENESS: f64 = 0.9;
 const STALE_DAYS_SHORT: u32 = 15;
 const STALE_DAYS_LONG: u32 = 180;
+const TRADE_DAYS_PER_YEAR: f64 = 250.0;
+const TRADE_DAYS_FRACTION: f64 = TRADE_DAYS_PER_YEAR / DAYS_PER_YEAR;
 
 mod backtest;
 mod cache;

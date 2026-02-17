@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     collections::HashMap,
     fmt::{Display, Formatter},
 };
@@ -513,7 +512,7 @@ fn sort_cv_results_list(
             }
         }
     }
-    cv_scores.sort_by(|(_, a), (_, b)| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+    cv_scores.sort_by(|(_, a), (_, b)| b.score.total_cmp(&a.score));
 
     cv_scores
 }

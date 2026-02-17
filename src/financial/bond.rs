@@ -13,6 +13,17 @@ use crate::{
     utils::datetime::{date_from_str, date_to_str},
 };
 
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub struct ConvBondBasic {
+    pub ticker: Ticker,
+    pub name: String,
+    pub issue_size: Option<f64>,
+    pub remain_size: Option<f64>,
+    pub par_value: Option<f64>,
+    pub expire_date: Option<NaiveDate>,
+}
+
 #[derive(strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum ConvBondDailyField {
@@ -29,30 +40,15 @@ pub enum ConvBondDailyField {
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
-pub struct ConvBondDetail {
-    pub ticker: Ticker,
-    pub name: String,
-    pub issue_size: Option<f64>,
-    pub remain_size: Option<f64>,
-    pub par_value: Option<f64>,
-    pub expire_date: Option<NaiveDate>,
-}
-
-#[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub struct ConvBondIssue {
     pub ticker: Ticker,
     pub name: String,
     pub issue_size: Option<f64>,
 }
 
-pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
-    fetch_conv_bond_daily_with_ignore_cache(ticker, false).await
-}
-
-pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail> {
+pub async fn fetch_conv_bond_basic(ticker: &Ticker) -> VfResult<ConvBondBasic> {
     let cache_key = format!("{ticker}");
-    if let Some(result) = CONV_BOND_DETAIL_CACHE.get(&cache_key) {
+    if let Some(result) = CONV_BOND_BASIC_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
 
@@ -87,7 +83,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
                     .as_str()
                     .and_then(Ticker::from_tushare_str)
                 {
-                    let result = ConvBondDetail {
+                    let result = ConvBondBasic {
                         ticker,
                         name: json_item["bond_short_name"]
                             .as_str()
@@ -101,7 +97,7 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
                             .and_then(|s| date_from_str(s).ok()),
                     };
 
-                    CONV_BOND_DETAIL_CACHE.insert(cache_key, result.clone());
+                    CONV_BOND_BASIC_CACHE.insert(cache_key, result.clone());
 
                     return Ok(result);
                 }
@@ -113,6 +109,10 @@ pub async fn fetch_conv_bond_detail(ticker: &Ticker) -> VfResult<ConvBondDetail>
         code: "INVALID_JSON",
         message: "Invalid Tushare JSON".to_string(),
     })
+}
+
+pub async fn fetch_conv_bond_daily(ticker: &Ticker) -> VfResult<DailySeries> {
+    fetch_conv_bond_daily_with_ignore_cache(ticker, false).await
 }
 
 pub async fn fetch_conv_bond_kline(ticker: &Ticker) -> VfResult<DailySeries> {
@@ -204,9 +204,9 @@ pub async fn fetch_conv_bonds(
     Ok(result)
 }
 
-static CONV_BOND_DAILY_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
-static CONV_BOND_DETAIL_CACHE: LazyLock<DashMap<String, ConvBondDetail>> =
+static CONV_BOND_BASIC_CACHE: LazyLock<DashMap<String, ConvBondBasic>> =
     LazyLock::new(DashMap::new);
+static CONV_BOND_DAILY_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static CONV_BONDS_CACHE: LazyLock<DashMap<String, Vec<ConvBondIssue>>> =
     LazyLock::new(DashMap::new);
 
@@ -310,9 +310,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetch_conv_bond_detail() {
+    async fn test_fetch_conv_bond_basic() {
         let ticker = Ticker::from_str("110098").unwrap();
-        let detail = fetch_conv_bond_detail(&ticker).await.unwrap();
+        let detail = fetch_conv_bond_basic(&ticker).await.unwrap();
 
         assert_eq!(detail.ticker.symbol, "110098");
         assert_eq!(detail.name, "南药转债");
