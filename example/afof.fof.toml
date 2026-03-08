@@ -3,18 +3,18 @@ description = "按权重组合虚拟基金"
 frequency = "3m"
 
 [funds]
-high-dividend = 2
 high-momentum = 5
-high-roe-low-pb = 1
+# high-real-cash = 2
+low-pb = 2
 permanent = 1
-strong-small-cap = 5
+small-cap = 5
 
 [search]
 # frequency = ["3m", "6m", "1y"]
 
 [search.funds]
-high-dividend = [1, 2, 3, 5]
 high-momentum = [1, 2, 3, 5]
-# high-roe-low-pb = [1, 2, 3, 5] 目前看波动太大，小仓位尝试
+# high-real-cash = [1, 2, 3, 5]
+low-pb = [1, 2, 3, 5]
 permanent = [1, 2, 3, 5]
-strong-small-cap = [1, 2, 3, 5]
+small-cap = [1, 2, 3, 5]

@@ -1,5 +1,5 @@
-title = "小盘股优选"
-description = "优选中小板指的低市值股票"
+title = "小市值"
+description = "持有中小板指中市值最小的股票"
 options.suspend_months = []  # 大概率过拟合，暂时先不开启 options.suspend_months = [1]
 
 [[ticker_sources]]
@@ -12,18 +12,22 @@ frequency = "1m"
 
 [rules.options]
 circulating_ratio_lower = 0.3
-limit = 5
-pb_quantile_upper = 0.8
-skip_same_sector = false
+limit = 2
+pb_quantile_upper = 1
+pre_select_ratio = 30
+ps_quantile_upper = 0.8
+skip_same_sector = true
 weight_method = "equal"
 
 [rules.search]
-# frequency = ["15d", "1m", "2m", "3m"]
+# frequency = ["2w", "1m", "2m", "3m"]
 
 [rules.search.options]
-# limit = [2, 3, 4, 5, 7, 10]
-# circulating_ratio_lower = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+# limit = [2, 3, 4, 5, 10]
+# circulating_ratio_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
 # pb_quantile_upper = [0.7, 0.8, 0.9, 1]
+# pre_select_ratio = [10, 20, 30, 40, 50]
+# ps_quantile_upper = [0.7, 0.8, 0.9, 1]
 # skip_same_sector = [true, false]
 
 # 注意在交易日观察，如果某个标的尖峰上涨超过阈值，则清仓并在后续重新建仓
@@ -33,10 +37,10 @@ frequency = "1d"
 
 [rules.options]
 spike_days = 3
-spike_fall_threshold = 0.35
-spike_rise_threshold = 0.3
+spike_fall_threshold = 0.4
+spike_rise_threshold = 0.1
 
 [rules.search.options]
-# spike_days = [1, 2, 3, 4, 5]
-# spike_fall_threshold = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
-# spike_rise_threshold = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
+# spike_days = [1, 2, 3]
+# spike_fall_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
+# spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]

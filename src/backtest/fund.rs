@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, mpsc::Sender};
 use crate::{
     CHANNEL_BUFFER_DEFAULT,
     backtest::*,
-    financial::{tool::fetch_trade_dates, *},
+    financial::{market::fetch_trade_dates, *},
     rule::Rule,
     spec::*,
     ticker::Ticker,
@@ -88,6 +88,13 @@ impl FundBacktestContext<'_> {
         }
 
         Ok(())
+    }
+
+    pub fn cash_free_reserved(&mut self) {
+        for (cash, _) in self.portfolio.reserved_cash.values() {
+            self.portfolio.free_cash += cash;
+        }
+        self.portfolio.reserved_cash.clear();
     }
 
     #[allow(dead_code)]
@@ -1057,7 +1064,7 @@ pub async fn backtest_fund_cv(
                                                             date_to_str(&options.end_date),
                                                         ),
                                                         message: format!(
-                                                            "[ARR={} Sharpe={}] {} {}",
+                                                            "[ARR={} Sortino={}] {} {}",
                                                             result
                                                                 .metrics
                                                                 .annualized_return_rate
@@ -1068,7 +1075,7 @@ pub async fn backtest_fund_cv(
                                                                 .unwrap_or("-".to_string()),
                                                             result
                                                                 .metrics
-                                                                .sharpe_ratio
+                                                                .sortino_ratio
                                                                 .map(|v| format!("{v:.3}"))
                                                                 .unwrap_or("-".to_string()),
                                                             rule_frequencies
@@ -1153,9 +1160,9 @@ pub async fn backtest_fund_cv(
                                 .send(BacktestEvent::Info {
                                     title: format!("[CV {top_str}]"),
                                     message: format!(
-                                        "[ARR={:.2}% Sharpe={:.3}] {} {}",
+                                        "[ARR={:.2}% Sortino={:.3}] {} {}",
                                         cv_score.arr * 100.0,
-                                        cv_score.sharpe,
+                                        cv_score.sortino,
                                         search
                                             .rule_frequencies
                                             .iter()
@@ -1237,7 +1244,7 @@ pub async fn backtest_fund_cv(
                                                     date_to_str(&options.end_date),
                                                 ),
                                                 message: format!(
-                                                    "[ARR={} Sharpe={}] {}-{}",
+                                                    "[ARR={} Sortino={}] {}-{}",
                                                     result
                                                         .metrics
                                                         .annualized_return_rate
@@ -1245,7 +1252,7 @@ pub async fn backtest_fund_cv(
                                                         .unwrap_or("-".to_string()),
                                                     result
                                                         .metrics
-                                                        .sharpe_ratio
+                                                        .sortino_ratio
                                                         .map(|v| format!("{v:.3}"))
                                                         .unwrap_or("-".to_string()),
                                                     date_to_str(window_start),
@@ -1280,7 +1287,7 @@ pub async fn backtest_fund_cv(
                                     date_to_str(window_end),
                                 ),
                                 message: format!(
-                                    "[ARR={} Sharpe={} MDD={}] {}d",
+                                    "[ARR={} Sortino={} MDD={}] {}d",
                                     result
                                         .metrics
                                         .annualized_return_rate
@@ -1288,7 +1295,7 @@ pub async fn backtest_fund_cv(
                                         .unwrap_or("-".to_string()),
                                     result
                                         .metrics
-                                        .sharpe_ratio
+                                        .sortino_ratio
                                         .map(|v| format!("{v:.3}"))
                                         .unwrap_or("-".to_string()),
                                     result
@@ -1327,19 +1334,19 @@ pub async fn backtest_fund_cv(
                     }
 
                     {
-                        let sharpes: Vec<f64> = cv_window_results
+                        let sortinos: Vec<f64> = cv_window_results
                             .iter()
-                            .filter_map(|(_, result)| result.metrics.sharpe_ratio)
+                            .filter_map(|(_, result)| result.metrics.sortino_ratio)
                             .collect();
-                        if let (Some(sharpe_mean), Some(sharpe_min)) = (
-                            mean(&sharpes),
-                            sharpes.iter().min_by(|a, b| a.total_cmp(b)).copied(),
+                        if let (Some(sortino_mean), Some(sortino_min)) = (
+                            mean(&sortinos),
+                            sortinos.iter().min_by(|a, b| a.total_cmp(b)).copied(),
                         ) {
                             let _ = sender
                                 .send(BacktestEvent::Info {
                                     title: "[CV]".to_string(),
                                     message: format!(
-                                        "[Sharpe Mean={sharpe_mean:.3} Min={sharpe_min:.3}]"
+                                        "[Sortino Mean={sortino_mean:.3} Min={sortino_min:.3}]"
                                     ),
                                     date: None,
                                 })

@@ -60,13 +60,15 @@ pub enum StockDividendField {
 pub enum StockIndicatorField {
     DividendRatio,
     DividendRatioTtm,
+    MarketValueCirculating,
+    MarketValueTotal,
     Pb,
     Pe,
     PeTtm,
     Ps,
     PsTtm,
-    MarketValueCirculating,
-    MarketValueTotal,
+    SharesCirculating,
+    SharesTotal,
     TurnoverRate,
     VolumeRatio,
 }
@@ -78,6 +80,14 @@ pub enum StockReportCapitalField {
     Total,
     Circulating,
     FreeFloat,
+}
+
+#[derive(strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockReportCashFlowField {
+    ReportDate,
+    NetCashByOperatingActivities,
+    CapitalExpenditures,
 }
 
 #[derive(strum::Display, strum::EnumString)]
@@ -254,8 +264,8 @@ pub async fn fetch_stock_basic(ticker: &Ticker) -> VfResult<StockBasic> {
     }
 
     Err(VfError::Invalid {
-        code: "INVALID_JSON",
-        message: "Invalid Tushare JSON".to_string(),
+        code: "NO_DATA",
+        message: format!("No data from Tushare stock_basic of {ticker}"),
     })
 }
 
@@ -395,11 +405,6 @@ pub async fn fetch_stock_indicators(ticker: &Ticker) -> VfResult<DailySeries> {
         StockIndicatorField::DividendRatioTtm.to_string(),
         "dv_ttm".to_string(),
     );
-    fields.insert(StockIndicatorField::Pb.to_string(), "pb".to_string());
-    fields.insert(StockIndicatorField::Pe.to_string(), "pe".to_string());
-    fields.insert(StockIndicatorField::PeTtm.to_string(), "pe_ttm".to_string());
-    fields.insert(StockIndicatorField::Ps.to_string(), "ps".to_string());
-    fields.insert(StockIndicatorField::PsTtm.to_string(), "ps_ttm".to_string());
     fields.insert(
         StockIndicatorField::MarketValueCirculating.to_string(),
         "circ_mv".to_string(),
@@ -408,7 +413,19 @@ pub async fn fetch_stock_indicators(ticker: &Ticker) -> VfResult<DailySeries> {
         StockIndicatorField::MarketValueTotal.to_string(),
         "total_mv".to_string(),
     );
-
+    fields.insert(StockIndicatorField::Pb.to_string(), "pb".to_string());
+    fields.insert(StockIndicatorField::Pe.to_string(), "pe".to_string());
+    fields.insert(StockIndicatorField::PeTtm.to_string(), "pe_ttm".to_string());
+    fields.insert(StockIndicatorField::Ps.to_string(), "ps".to_string());
+    fields.insert(StockIndicatorField::PsTtm.to_string(), "ps_ttm".to_string());
+    fields.insert(
+        StockIndicatorField::SharesCirculating.to_string(),
+        "float_share".to_string(),
+    );
+    fields.insert(
+        StockIndicatorField::SharesTotal.to_string(),
+        "total_share".to_string(),
+    );
     fields.insert(
         StockIndicatorField::TurnoverRate.to_string(),
         "turnover_rate".to_string(),
@@ -429,7 +446,7 @@ pub async fn fetch_stock_kline(
     adjust: StockDividendAdjust,
 ) -> VfResult<DailySeries> {
     let today = Local::now().date_naive();
-    if let Ok(true) = is_delisted(ticker, &today).await {
+    if is_delisted(ticker, &today).await? {
         fetch_stock_kline_tushare(ticker, adjust, false).await
     } else {
         fetch_stock_kline_qmt(ticker, adjust, false).await
@@ -441,7 +458,7 @@ pub async fn fetch_stock_kline_ignore_cache(
     adjust: StockDividendAdjust,
 ) -> VfResult<DailySeries> {
     let today = Local::now().date_naive();
-    if let Ok(true) = is_delisted(ticker, &today).await {
+    if is_delisted(ticker, &today).await? {
         fetch_stock_kline_tushare(ticker, adjust, true).await
     } else {
         fetch_stock_kline_qmt(ticker, adjust, true).await
@@ -484,6 +501,42 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries
 
     let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
     STOCK_REPORT_CAPITAL_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+pub async fn fetch_stock_report_cash_flow(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("{ticker}");
+    if let Some(result) = STOCK_REPORT_CASH_FLOW_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "CashFlow",
+        }),
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportCashFlowField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::NetCashByOperatingActivities.to_string(),
+        "net_cash_flows_oper_act".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::CapitalExpenditures.to_string(),
+        "cash_pay_acq_const_fiolta".to_string(),
+    );
+
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
+    STOCK_REPORT_CASH_FLOW_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
@@ -597,6 +650,8 @@ static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock:
 static STOCK_INDICATORS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_REPORT_CAPITAL_CACHE: LazyLock<DashMap<String, DailySeries>> =
+    LazyLock::new(DashMap::new);
+static STOCK_REPORT_CASH_FLOW_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
 static STOCK_REPORT_INCOME_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
@@ -818,6 +873,15 @@ mod tests {
         let st_stocks = fetch_st_stocks(&date, 7).await.unwrap();
 
         assert!(!st_stocks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_fetch_stock_basic() {
+        let ticker = Ticker::from_str("000046").unwrap();
+        let basic = fetch_stock_basic(&ticker).await.unwrap();
+
+        assert_eq!(basic.name, "平安银行");
+        assert_eq!(basic.industry, "银行");
     }
 
     #[tokio::test]

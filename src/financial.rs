@@ -12,7 +12,7 @@ use crate::{
             fetch_conv_bond_kline, fetch_conv_bond_kline_ignore_cache,
         },
         stock::{
-            StockDividendAdjust, fetch_stock_basic, fetch_stock_kline,
+            StockDividendAdjust, fetch_stock_basic, fetch_stock_detail, fetch_stock_kline,
             fetch_stock_kline_ignore_cache,
         },
     },
@@ -20,10 +20,11 @@ use crate::{
 };
 
 pub mod bond;
+pub mod helper;
 pub mod index;
+pub mod market;
 pub mod sector;
 pub mod stock;
-pub mod tool;
 
 #[derive(strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
@@ -170,6 +171,15 @@ pub async fn get_ticker_title(ticker: &Ticker) -> String {
     if let Ok(name) = match ticker.r#type {
         TickerType::ConvBond => fetch_conv_bond_basic(ticker).await.map(|d| d.name),
         TickerType::Stock => fetch_stock_basic(ticker).await.map(|d| d.name),
+    } {
+        if !name.is_empty() {
+            return format!("{ticker}({name})");
+        }
+    }
+
+    if let Ok(name) = match ticker.r#type {
+        TickerType::Stock => fetch_stock_detail(ticker).await.map(|d| d.name),
+        _ => Ok("".to_string()),
     } {
         if !name.is_empty() {
             return format!("{ticker}({name})");

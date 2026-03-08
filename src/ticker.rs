@@ -149,11 +149,11 @@ impl Display for TickersIndex {
 impl TickersIndex {
     pub fn to_tushare_code(&self) -> String {
         match self.provider.as_str() {
-            "CNI" | "CNINDEX" | "CSI" | "CSINDEX" => {
+            "CNI" | "CSI" => {
                 if self.symbol.len() == 6 {
-                    if self.symbol.starts_with("000") {
+                    if self.symbol.starts_with("00") {
                         return format!("{}.SH", self.symbol);
-                    } else if self.symbol.starts_with("399") {
+                    } else if self.symbol.starts_with("39") {
                         return format!("{}.SZ", self.symbol);
                     }
                 }
@@ -211,4 +211,37 @@ fn detect_ticker_type(symbol: &str) -> TickerType {
     }
 
     TickerType::Stock
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_tickers_index_to_tushare_code() {
+        assert_eq!(
+            TickersIndex::from_str("000015.CSI")
+                .unwrap()
+                .to_tushare_code(),
+            "000015.SH"
+        );
+        assert_eq!(
+            TickersIndex::from_str("399324.CNI")
+                .unwrap()
+                .to_tushare_code(),
+            "399324.SZ"
+        );
+        assert_eq!(
+            TickersIndex::from_str("931468.CSI")
+                .unwrap()
+                .to_tushare_code(),
+            "931468.CSI"
+        );
+        assert_eq!(
+            TickersIndex::from_str("980092.CNI")
+                .unwrap()
+                .to_tushare_code(),
+            "980092.CNI"
+        );
+    }
 }

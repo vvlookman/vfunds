@@ -36,6 +36,7 @@ pub struct ResultViewer {
 
     show_orders: bool,
     show_cost_line: bool,
+    show_log_values: bool,
     warning_message: Option<String>,
 }
 
@@ -99,6 +100,7 @@ impl ResultViewer {
 
             show_orders: true,
             show_cost_line: true,
+            show_log_values: false,
             warning_message: None,
         };
 
@@ -112,6 +114,12 @@ impl ResultViewer {
             if let Some(show_cost_line_str) = storage.get_string("show_cost_line") {
                 if let Ok(v) = show_cost_line_str.parse() {
                     app.show_cost_line = v;
+                }
+            }
+
+            if let Some(show_log_values_str) = storage.get_string("show_log_values") {
+                if let Ok(v) = show_log_values_str.parse() {
+                    app.show_log_values = v;
                 }
             }
         }
@@ -186,7 +194,14 @@ impl ResultViewer {
                         for (date, value) in daily_values {
                             if let Some(date_index) = self.plot_trade_dates_index.get(date) {
                                 let x = *date_index as f64;
-                                let y = *value / output_result.options.init_cash * 100.0;
+
+                                let value_pct = *value / output_result.options.init_cash * 100.0;
+                                let y = if self.show_log_values {
+                                    value_pct.ln()
+                                } else {
+                                    value_pct
+                                };
+
                                 values_points.push(PlotPoint::new(x, y));
 
                                 if output_result.order_dates.contains(date) {
@@ -201,9 +216,15 @@ impl ResultViewer {
                             .insert(vfund_name.to_string(), orders_points);
                     }
 
+                    let cost_line_value = if self.show_log_values {
+                        100_f64.ln()
+                    } else {
+                        100.0
+                    };
+
                     self.plot_cost_line_points = vec![
-                        PlotPoint::new(0.0, 100.0),
-                        PlotPoint::new(self.plot_trade_dates.len() as f64 - 1.0, 100.0),
+                        PlotPoint::new(0.0, cost_line_value),
+                        PlotPoint::new(self.plot_trade_dates.len() as f64 - 1.0, cost_line_value),
                     ];
                 }
 
@@ -256,6 +277,12 @@ impl eframe::App for ResultViewer {
                     ui.horizontal_centered(|ui| {
                         ui.checkbox(&mut self.show_orders, "Show Orders");
                         ui.checkbox(&mut self.show_cost_line, "Show Cost Line");
+                        if ui
+                            .checkbox(&mut self.show_log_values, "Show Log Values")
+                            .changed()
+                        {
+                            self.load_results();
+                        };
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_enabled_ui(!self.is_loading, |ui| {
@@ -311,13 +338,19 @@ impl eframe::App for ResultViewer {
                     let plot = Plot::new(plot_id)
                         .allow_scroll(false)
                         .label_formatter(|name, point| {
+                            let value_pct = if self.show_log_values {
+                                point.y.exp()
+                            } else {
+                                point.y
+                            };
+
                             if name.is_empty() {
-                                format!("{:.2}%", point.y)
+                                format!("{:.2}%", value_pct)
                             } else {
                                 if let Some(date) = self.plot_trade_dates.get(point.x as usize) {
-                                    format!("[{}] {} {:.2}%", date_to_str(date), name, point.y)
+                                    format!("[{}] {} {:.2}%", date_to_str(date), name, value_pct)
                                 } else {
-                                    format!("{} {:.2}%", name, point.y)
+                                    format!("{} {:.2}%", name, value_pct)
                                 }
                             }
                         })
@@ -329,7 +362,16 @@ impl eframe::App for ResultViewer {
                             date_to_str(last_trade_date)
                         ))
                         .x_axis_formatter(|_, _| "".to_string())
-                        .y_axis_formatter(|y, _| format!("{:.0}%", y.value));
+                        .y_axis_formatter(|y, _| {
+                            format!(
+                                "{:.0}%",
+                                if self.show_log_values {
+                                    y.value.exp()
+                                } else {
+                                    y.value
+                                }
+                            )
+                        });
 
                     let plot_response = plot.show(ui, |plot_ui| {
                         if self.show_cost_line {
@@ -392,6 +434,7 @@ impl eframe::App for ResultViewer {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         storage.set_string("show_orders", self.show_orders.to_string());
         storage.set_string("show_cost_line", self.show_cost_line.to_string());
+        storage.set_string("show_log_values", self.show_log_values.to_string());
         storage.flush();
     }
 }

@@ -7,7 +7,7 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
-    TRADE_DAYS_PER_YEAR,
+    TRADE_DAYS_FRACTION, TRADE_DAYS_PER_YEAR,
     error::VfResult,
     filter::{filter_invalid::has_invalid_price, filter_st::is_st},
     financial::stock::{
@@ -54,9 +54,9 @@ impl RuleExecutor for Executor {
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_mean_years = self
+        let lookback_lt_years = self
             .options
-            .get("lookback_mean_years")
+            .get("lookback_lt_years")
             .and_then(|v| v.as_u64())
             .unwrap_or(5);
         let lookback_trade_days = self
@@ -89,8 +89,8 @@ impl RuleExecutor for Executor {
                 panic!("limit must > 0");
             }
 
-            if lookback_mean_years == 0 {
-                panic!("lookback_mean_years must > 0");
+            if lookback_lt_years == 0 {
+                panic!("lookback_lt_years must > 0");
             }
 
             if lookback_trade_days == 0 {
@@ -114,7 +114,8 @@ impl RuleExecutor for Executor {
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
 
-            let lookback_trade_days_longterm = lookback_mean_years as f64 * TRADE_DAYS_PER_YEAR;
+            let lookback_trade_days_lt = lookback_lt_years as f64 * TRADE_DAYS_PER_YEAR;
+            let lookback_days_lt = lookback_trade_days_lt / TRADE_DAYS_FRACTION;
 
             let mut clusters_targets: HashMap<String, Vec<(Ticker, f64)>> = HashMap::new();
             let mut clusters_candidates: HashMap<String, Vec<(Ticker, f64)>> = HashMap::new();
@@ -127,31 +128,38 @@ impl RuleExecutor for Executor {
                 for ticker in cluster_tickers {
                     calc_count += 1;
 
-                    if is_st(ticker, date, lookback_trade_days_longterm as u64).await? {
+                    if let Ok(st) = is_st(ticker, date, lookback_days_lt as u64).await {
+                        if st {
+                            continue;
+                        }
+                    } else {
                         continue;
                     }
 
-                    if has_invalid_price(ticker, date).await? {
-                        rule_send_warning(
-                            rule_name,
-                            &format!("[Invalid Price] {ticker}"),
-                            date,
-                            event_sender,
-                        )
-                        .await;
+                    if let Ok(invalid_price) = has_invalid_price(ticker, date).await {
+                        if invalid_price {
+                            rule_send_warning(
+                                rule_name,
+                                &format!("[Invalid Price] {ticker}"),
+                                date,
+                                event_sender,
+                            )
+                            .await;
+                            continue;
+                        }
+                    } else {
                         continue;
                     }
 
                     let stock_indicators = fetch_stock_indicators(ticker).await?;
-                    let pbs_with_date_longterm = stock_indicators.get_latest_values::<f64>(
+                    let pbs_with_date_lt = stock_indicators.get_latest_values::<f64>(
                         date,
                         false,
                         &StockIndicatorField::Pb.to_string(),
-                        lookback_trade_days_longterm as u32,
+                        lookback_trade_days_lt as u32,
                     );
-                    if pbs_with_date_longterm.len()
-                        < (lookback_trade_days_longterm * REQUIRED_DATA_COMPLETENESS).round()
-                            as usize
+                    if pbs_with_date_lt.len()
+                        < (lookback_trade_days_lt * REQUIRED_DATA_COMPLETENESS).round() as usize
                     {
                         rule_send_warning(
                             rule_name,
@@ -167,12 +175,12 @@ impl RuleExecutor for Executor {
                         date,
                         false,
                         &StockIndicatorField::MarketValueCirculating.to_string(),
-                        lookback_trade_days_longterm as u32,
+                        lookback_trade_days_lt as u32,
                     );
                     let market_cap_map: HashMap<NaiveDate, f64> =
                         market_caps_with_date.into_iter().collect();
 
-                    for (date, pb) in &pbs_with_date_longterm {
+                    for (date, pb) in &pbs_with_date_lt {
                         if let Some(market_cap) = market_cap_map.get(date) {
                             cluster_factors_map
                                 .entry(*date)
@@ -181,9 +189,8 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    let pbs_longterm: Vec<f64> =
-                        pbs_with_date_longterm.iter().map(|(_, v)| *v).collect();
-                    let recent_pbs = pbs_longterm
+                    let pbs_lt: Vec<f64> = pbs_with_date_lt.iter().map(|(_, v)| *v).collect();
+                    let recent_pbs = pbs_lt
                         .iter()
                         .tail(lookback_trade_days as usize)
                         .copied()
@@ -219,7 +226,7 @@ impl RuleExecutor for Executor {
                     }
                 }
 
-                let tickers_roe_lower = stats::quantile(
+                let tickers_roe_lower = stats::quantile_value(
                     &tickers_roe_map.values().copied().collect::<Vec<f64>>(),
                     roe_quantile_lower,
                 )
@@ -255,7 +262,7 @@ impl RuleExecutor for Executor {
                         clusters_targets.insert(cluster_name.to_string(), holding.clone());
 
                         if let Some(cluster_pb_upper) =
-                            stats::quantile(&cluster_pbs, pb_quantile_upper)
+                            stats::quantile_value(&cluster_pbs, pb_quantile_upper)
                         {
                             if cluster_pb > cluster_pb_upper {
                                 clusters_targets.remove(cluster_name);
@@ -264,7 +271,7 @@ impl RuleExecutor for Executor {
                     } else {
                         // Check undervalued
                         if let Some(cluster_pb_lower) =
-                            stats::quantile(&cluster_pbs, pb_quantile_lower)
+                            stats::quantile_value(&cluster_pbs, pb_quantile_lower)
                             && let Some(cluster_pb_std) = stats::std(&cluster_pbs)
                         {
                             if cluster_pb < cluster_pb_lower {

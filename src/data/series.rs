@@ -7,7 +7,6 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::{
-    STALE_DAYS_SHORT, TRADE_DAYS_FRACTION,
     error::{VfError, VfResult},
     utils::datetime,
 };
@@ -224,9 +223,6 @@ impl DailySeries {
                     df.column(&self.date_field_name),
                     df.column(origin_field_name),
                 ) {
-                    let max_stale_days = (count as f64 / TRADE_DAYS_FRACTION).ceil() as i64
-                        + STALE_DAYS_SHORT as i64;
-
                     let mut vals = vec![];
 
                     for i in 0..col_date.len() {
@@ -237,9 +233,7 @@ impl DailySeries {
                                 if let Some(val_date) =
                                     NaiveDate::from_epoch_days(date_days_after_epoch)
                                 {
-                                    if *date - val_date <= Duration::days(max_stale_days) {
-                                        vals.push((val_date, val));
-                                    }
+                                    vals.push((val_date, val));
                                 }
                             }
                         }
@@ -287,9 +281,6 @@ impl DailySeries {
                 .tail(count)
                 .collect()
             {
-                let max_stale_days =
-                    (count as f64 / TRADE_DAYS_FRACTION).ceil() as i64 + STALE_DAYS_SHORT as i64;
-
                 let mut vals = vec![];
 
                 if let (Ok(col_date), Ok(col_val), Ok(col_label)) = (
@@ -309,9 +300,7 @@ impl DailySeries {
                                 if let Some(val_date) =
                                     NaiveDate::from_epoch_days(date_days_after_epoch)
                                 {
-                                    if *date - val_date <= Duration::days(max_stale_days) {
-                                        vals.push((val_date, val, label.map(|s| s.to_string())));
-                                    }
+                                    vals.push((val_date, val, label.map(|s| s.to_string())));
                                 }
                             }
                         }

@@ -18,7 +18,7 @@ use crate::{
     },
     spec::TickerSourceType,
     ticker::{Ticker, TickersIndex},
-    utils::{datetime::date_to_str, stats::quantile},
+    utils::{datetime::date_to_str, stats::quantile_value},
 };
 
 pub struct Executor {
@@ -200,11 +200,11 @@ impl RuleExecutor for Executor {
                             Some(pe_sell),
                         ) = (
                             pb_values.last(),
-                            quantile(&pb_values, (pb_quantile_upper - 0.1).max(0.0)),
-                            quantile(&pb_values, pb_quantile_upper),
+                            quantile_value(&pb_values, (pb_quantile_upper - 0.1).max(0.0)),
+                            quantile_value(&pb_values, pb_quantile_upper),
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_upper - 0.1).max(0.0)),
-                            quantile(&pe_values, pe_quantile_upper),
+                            quantile_value(&pe_values, (pe_quantile_upper - 0.1).max(0.0)),
+                            quantile_value(&pe_values, pe_quantile_upper),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pb={pb:.2}  pb_overvalued={pb_overvalued:.2} pb_sell={pb_sell:.2} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2}"
@@ -249,11 +249,11 @@ impl RuleExecutor for Executor {
                             Some(pe_buy),
                         ) = (
                             pb_values.last(),
-                            quantile(&pb_values, (pb_quantile_lower + 0.1).min(1.0)),
-                            quantile(&pb_values, pb_quantile_lower),
+                            quantile_value(&pb_values, (pb_quantile_lower + 0.1).min(1.0)),
+                            quantile_value(&pb_values, pb_quantile_lower),
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_lower + 0.1).min(1.0)),
-                            quantile(&pe_values, pe_quantile_lower),
+                            quantile_value(&pe_values, (pe_quantile_lower + 0.1).min(1.0)),
+                            quantile_value(&pe_values, pe_quantile_lower),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pb={pb:.2} pb_undervalued={pb_undervalued:.2} pb_buy={pb_buy:.2} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2}"

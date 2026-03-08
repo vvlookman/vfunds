@@ -1,0 +1,49 @@
+title = "均值回归"
+description = "持有题材指数中偏离均值的股票"
+
+[[ticker_sources]]
+source = "399986.CSI"  # 中证银行指数
+source_type = "index"
+
+[[ticker_sources]]
+source = "399975.CSI"  # 中证证券公司指数
+source_type = "index"
+
+[[ticker_sources]]
+source = "930708.CSI"  # 中证有色金属指数
+source_type = "index"
+
+[[ticker_sources]]
+source = "399998.CSI"  # 中证煤炭指数
+source_type = "index"
+
+[[ticker_sources]]
+source = "399440.CNI"  # 国证钢铁指数
+source_type = "index"
+
+[[rules]]
+name = "hold_by_mean_deviation"
+frequency = "1w"
+
+[rules.options]
+deviation_quantile_upper = 1
+limit = 2
+lookback_trade_days = 42
+weight_method = "equal"
+
+[rules.search]
+frequency = ["1m", "2m", "3m", "6m", "1y"]
+
+[rules.search.options]
+# deviation_quantile_upper = [0.5, 0.6, 0.7, 0.8, 0.9, 1]
+limit = [2, 3, 4, 5, 10]
+lookback_trade_days = [21, 42, 63, 125, 250]
+# weight_method = [
+#   "equal",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+#   "filter_max(0.4)",
+# ]

@@ -151,7 +151,7 @@ pub struct BacktestCommand {
         short = 'A',
         long = "cv-score-arr-weight",
         default_value_t = 0.6,
-        help = "score = arr_weight · arr_score + (1 - arr_weight) · sharpe_score, the default value is 0.6"
+        help = "score = arr_weight · arr_score + (1 - arr_weight) · sortino_score, the default value is 0.6"
     )]
     cv_score_arr_weight: f64,
 }
@@ -410,7 +410,7 @@ impl BacktestCommand {
             table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
             table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
             table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
-            table.modify(Columns::new(11..12).not(Rows::first()), Color::FG_CYAN);
+            table.modify(Columns::new(13..14).not(Rows::first()), Color::FG_CYAN);
             table.modify(Columns::new(1..), Alignment::right());
             table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
             logger.println(format!("\n{table}"));

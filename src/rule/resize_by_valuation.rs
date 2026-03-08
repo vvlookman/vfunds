@@ -10,12 +10,12 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField, get_ticker_title,
+        helper::{calc_stock_pe_ttm, calc_stock_ps_ttm},
         index::fetch_index_tickers,
         stock::{
             StockDividendAdjust, StockReportCapitalField, fetch_stock_kline,
             fetch_stock_report_capital,
         },
-        tool::{calc_stock_pe_ttm, calc_stock_ps_ttm},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
@@ -23,7 +23,7 @@ use crate::{
     },
     spec::TickerSourceType,
     ticker::{Ticker, TickersIndex},
-    utils::{datetime::date_to_str, stats::quantile},
+    utils::{datetime::date_to_str, stats::quantile_value},
 };
 
 pub struct Executor {
@@ -216,11 +216,11 @@ impl RuleExecutor for Executor {
                             Some(ps_sell),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_upper - 0.1).max(0.0)),
-                            quantile(&pe_values, pe_quantile_upper),
+                            quantile_value(&pe_values, (pe_quantile_upper - 0.1).max(0.0)),
+                            quantile_value(&pe_values, pe_quantile_upper),
                             ps_values.last(),
-                            quantile(&ps_values, (ps_quantile_upper - 0.1).max(0.0)),
-                            quantile(&ps_values, ps_quantile_upper),
+                            quantile_value(&ps_values, (ps_quantile_upper - 0.1).max(0.0)),
+                            quantile_value(&ps_values, ps_quantile_upper),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_overvalued={pe_overvalued:.2} pe_sell={pe_sell:.2} ps={ps:.2}  ps_overvalued={ps_overvalued:.2} ps_sell={ps_sell:.2}"
@@ -265,11 +265,11 @@ impl RuleExecutor for Executor {
                             Some(ps_buy),
                         ) = (
                             pe_values.last(),
-                            quantile(&pe_values, (pe_quantile_lower + 0.1).min(1.0)),
-                            quantile(&pe_values, pe_quantile_lower),
+                            quantile_value(&pe_values, (pe_quantile_lower + 0.1).min(1.0)),
+                            quantile_value(&pe_values, pe_quantile_lower),
                             ps_values.last(),
-                            quantile(&ps_values, (ps_quantile_lower + 0.1).min(1.0)),
-                            quantile(&ps_values, ps_quantile_lower),
+                            quantile_value(&ps_values, (ps_quantile_lower + 0.1).min(1.0)),
+                            quantile_value(&ps_values, ps_quantile_lower),
                         ) {
                             debug!(
                                 "[{date_str}] {ticker} pe={pe:.2} pe_undervalued={pe_undervalued:.2} pe_buy={pe_buy:.2} ps={ps:.2} ps_undervalued={ps_undervalued:.2} ps_buy={ps_buy:.2}"
@@ -379,9 +379,9 @@ impl Executor {
                         &StockReportCapitalField::Total.to_string(),
                     ),
                 ) {
-                    if let (Some(pe_ttm), Some(ps_ttm)) = (
-                        calc_stock_pe_ttm(ticker, &watch_date).await?,
-                        calc_stock_ps_ttm(ticker, &watch_date).await?,
+                    if let (Ok(pe_ttm), Ok(ps_ttm)) = (
+                        calc_stock_pe_ttm(ticker, &watch_date).await,
+                        calc_stock_ps_ttm(ticker, &watch_date).await,
                     ) {
                         let market_cap = price * total_captical;
 

@@ -31,7 +31,7 @@ frequency = "3m"
 
 [rules.options]
 limit = 2
-lookback_mean_years = 5
+lookback_lt_years = 5
 lookback_trade_days = 21
 pb_quantile_lower = 0.3
 pb_quantile_upper = 0.8
@@ -43,7 +43,7 @@ weight_method = "filter_max(0.8)"
 
 [rules.search.options]
 # limit = [1, 2, 3, 4, 5]
-# lookback_mean_years = [3, 4, 5, 6, 8]
+# lookback_lt_years = [3, 4, 5, 6, 8]
 # lookback_trade_days = [5, 10, 21, 42, 63]
 pb_quantile_lower = [0.2, 0.3, 0.4, 0.5]
 pb_quantile_upper = [0.6, 0.7, 0.8, 0.9]

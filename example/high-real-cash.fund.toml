@@ -1,0 +1,74 @@
+title = "高真现金"
+description = "持有股息率和自由现金流高的股票"
+
+[[ticker_sources]]
+source = "000015.CSI"  # 上证红利
+source_type = "index"
+
+[[ticker_sources]]
+source = "000922.CSI"  # 中证红利100
+source_type = "index"
+
+[[ticker_sources]]
+source = "399324.CNI"  # 深证红利
+source_type = "index"
+
+[[ticker_sources]]
+source = "399411.CNI"  # 国证红利100
+source_type = "index"
+
+[[ticker_sources]]
+source = "932365.CSI"  # 中证全指自由现金流
+source_type = "index"
+
+[[ticker_sources]]
+source = "980092.CNI"  # 国证自由现金流
+source_type = "index"
+
+# [[ticker_sources]]
+# source = "000906.CSI"  # 中证800
+# source_type = "index"
+
+[[rules]]
+name = "hold_by_real_cash"
+frequency = "3m"
+
+[rules.options]
+dividend_ratio_lt_lower = 0
+free_cash_ratio_lt_lower = 0
+exclude_sectors = ["银行", "非银金融", "房地产"]
+free_cash_weight = 0.5
+limit = 4
+lookback_lt_years = 3
+lookback_trade_days = 250
+momentum_weight = 0
+roe_weight = 0
+skip_same_sector = false
+volatility_weight = 0
+weight_method = "equal"
+
+[rules.search]
+# frequency = ["1m", "2m", "3m", "6m"]
+
+[rules.search.options]
+# dividend_ratio_lt_lower = [0, 0.01, 0.02, 0.03, 0.04]
+# free_cash_ratio_lt_lower = [0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08]
+free_cash_weight = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
+limit = [2, 3, 4, 5, 10]
+# lookback_lt_years = [1, 2, 3, 4, 5]
+# lookback_trade_days = [21, 63, 125, 250, 500, 750, 1000]
+# momentum_weight = [0, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2]
+# roe_weight = [0, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2]
+# skip_same_sector = [true, false]
+# volatility_weight = [0, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2]
+# weight_method = [
+#   "equal",
+#   "grad(1.2)",
+#   "grad(1.5)",
+#   "grad(2)",
+#   "filter_max(0.9)",
+#   "filter_max(0.8)",
+#   "filter_max(0.7)",
+#   "filter_max(0.6)",
+#   "filter_max(0.5)",
+# ]

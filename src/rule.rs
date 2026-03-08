@@ -33,7 +33,6 @@ impl Rule {
             "hold_by_conv_bond_premium" => {
                 Box::new(hold_by_conv_bond_premium::Executor::new(definition))
             }
-            "hold_by_dividend" => Box::new(hold_by_dividend::Executor::new(definition)),
             "hold_by_factors_boosting" => {
                 Box::new(hold_by_factors_boosting::Executor::new(definition))
             }
@@ -42,6 +41,7 @@ impl Rule {
             "hold_by_price_deviation" => {
                 Box::new(hold_by_price_deviation::Executor::new(definition))
             }
+            "hold_by_real_cash" => Box::new(hold_by_real_cash::Executor::new(definition)),
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
             "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
@@ -69,6 +69,10 @@ impl Rule {
         date: &NaiveDate,
         event_sender: &Sender<BacktestEvent>,
     ) -> VfResult<()> {
+        if self.definition.name.starts_with("hold") {
+            context.cash_free_reserved();
+        }
+
         self.executor.exec(context, date, event_sender).await
     }
 }
@@ -86,11 +90,11 @@ pub trait RuleExecutor: Send {
 mod hold;
 mod hold_by_cluster_pb;
 mod hold_by_conv_bond_premium;
-mod hold_by_dividend;
 mod hold_by_factors_boosting;
 mod hold_by_factors_knn;
 mod hold_by_momentum;
 mod hold_by_price_deviation;
+mod hold_by_real_cash;
 mod hold_by_risk_parity;
 mod hold_by_small_cap;
 mod hold_by_stablity;

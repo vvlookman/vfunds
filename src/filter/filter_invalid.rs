@@ -13,25 +13,33 @@ pub async fn has_invalid_price(ticker: &Ticker, date: &NaiveDate) -> VfResult<bo
     if let Some((_, val)) =
         kline.get_latest_value::<f64>(date, STALE_DAYS_SHORT, true, &KlineField::Open.to_string())
     {
-        return Ok(val <= 0.0);
+        if val <= 0.0 {
+            return Ok(true);
+        }
     }
 
     if let Some((_, val)) =
         kline.get_latest_value::<f64>(date, STALE_DAYS_SHORT, true, &KlineField::Close.to_string())
     {
-        return Ok(val <= 0.0);
+        if val <= 0.0 {
+            return Ok(true);
+        }
     }
 
     if let Some((_, val)) =
         kline.get_latest_value::<f64>(date, STALE_DAYS_SHORT, true, &KlineField::High.to_string())
     {
-        return Ok(val <= 0.0);
+        if val <= 0.0 {
+            return Ok(true);
+        }
     }
 
     if let Some((_, val)) =
         kline.get_latest_value::<f64>(date, STALE_DAYS_SHORT, true, &KlineField::Low.to_string())
     {
-        return Ok(val <= 0.0);
+        if val <= 0.0 {
+            return Ok(true);
+        }
     }
 
     Ok(false)

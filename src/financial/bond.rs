@@ -106,8 +106,8 @@ pub async fn fetch_conv_bond_basic(ticker: &Ticker) -> VfResult<ConvBondBasic> {
     }
 
     Err(VfError::Invalid {
-        code: "INVALID_JSON",
-        message: "Invalid Tushare JSON".to_string(),
+        code: "NO_DATA",
+        message: format!("No data from Tushare cb_basic of {ticker}"),
     })
 }
 

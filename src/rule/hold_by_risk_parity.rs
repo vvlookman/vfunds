@@ -14,7 +14,7 @@ use crate::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_notify_indicators,
     },
     ticker::Ticker,
-    utils::{financial::calc_annualized_volatility, math::constraint_array},
+    utils::{financial::calc_annualized_volatility_std, math::constraint_array},
 };
 
 pub struct Executor {
@@ -74,10 +74,6 @@ impl RuleExecutor for Executor {
             let mut tickers_weight_and_inverse_vols: HashMap<Ticker, (f64, f64)> = HashMap::new();
 
             for (ticker, (weight, _)) in &tickers_map {
-                if context.portfolio.reserved_cash.contains_key(ticker) {
-                    continue;
-                }
-
                 let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
                 let prices: Vec<f64> = kline
                     .get_latest_values::<f64>(
@@ -89,7 +85,7 @@ impl RuleExecutor for Executor {
                     .iter()
                     .map(|&(_, v)| v)
                     .collect();
-                if let Some(vol) = calc_annualized_volatility(&prices) {
+                if let Some(vol) = calc_annualized_volatility_std(&prices) {
                     tickers_weight_and_inverse_vols.insert(
                         ticker.clone(),
                         (*weight, if vol > 0.0 { 1.0 / vol } else { 0.0 }),

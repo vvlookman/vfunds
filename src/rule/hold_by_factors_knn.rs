@@ -102,10 +102,6 @@ impl RuleExecutor for Executor {
                 for ticker in tickers_map.keys() {
                     calc_count += 1;
 
-                    if context.portfolio.reserved_cash.contains_key(ticker) {
-                        continue;
-                    }
-
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
 
                     let mut ticker_factor_invalid: bool = false;
@@ -315,7 +311,7 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
                 .collect();
             factors.push((
                 format!("Volatility{days}T"),
-                calc_annualized_volatility(&prices_days).unwrap_or(f64::NAN),
+                calc_annualized_volatility_std(&prices_days).unwrap_or(f64::NAN),
             ));
         }
     }

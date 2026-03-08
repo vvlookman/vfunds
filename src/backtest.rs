@@ -14,7 +14,7 @@ use crate::{
     utils::{
         datetime::date_to_str,
         financial::{
-            calc_annualized_return_rate_by_start_end, calc_annualized_volatility,
+            calc_annualized_return_rate_by_start_end, calc_annualized_volatility_std,
             calc_max_drawdown, calc_profit_factor, calc_sharpe_ratio, calc_sortino_ratio,
             calc_win_rate,
         },
@@ -231,7 +231,7 @@ impl BacktestMetrics {
             .map(|(_, v)| *v)
             .collect();
         let max_drawdown = calc_max_drawdown(&daily_values);
-        let annualized_volatility = calc_annualized_volatility(&daily_values);
+        let annualized_volatility = calc_annualized_volatility_std(&daily_values);
         let win_rate = calc_win_rate(&daily_values);
         let profit_factor = calc_profit_factor(&daily_values);
         let sharpe_ratio = calc_sharpe_ratio(&daily_values, options.risk_free_rate);
@@ -436,7 +436,7 @@ async fn notify_portfolio(
 struct CvScore {
     score: f64,
     arr: f64,
-    sharpe: f64,
+    sortino: f64,
 }
 
 fn serialize_date<S>(date: &NaiveDate, ser: S) -> Result<S::Ok, S::Error>
@@ -478,26 +478,26 @@ fn sort_cv_results_list(
         .collect();
     let normalized_arr_values = normalize_zscore(&arr_values);
 
-    let sharpe_values: Vec<f64> = flat_results
+    let sortino_values: Vec<f64> = flat_results
         .iter()
-        .map(|(_, _, r)| r.metrics.sharpe_ratio.unwrap_or(f64::NEG_INFINITY))
+        .map(|(_, _, r)| r.metrics.sortino_ratio.unwrap_or(f64::NEG_INFINITY))
         .collect();
-    let normalized_sharpe_values = normalize_zscore(&sharpe_values);
+    let normalized_sortino_values = normalize_zscore(&sortino_values);
 
     let mut scores_by_idx: HashMap<usize, Vec<(f64, f64, f64)>> = HashMap::new();
     for (i, (idx, _, _)) in flat_results.iter().enumerate() {
         let normalized_arr = normalized_arr_values[i];
-        let normalized_sharpe = normalized_sharpe_values[i];
+        let normalized_sortino = normalized_sortino_values[i];
         let score = normalized_arr * cv_options.cv_score_arr_weight
-            + normalized_sharpe * (1.0 - cv_options.cv_score_arr_weight);
+            + normalized_sortino * (1.0 - cv_options.cv_score_arr_weight);
 
         let arr = arr_values[i];
-        let sharpe = sharpe_values[i];
+        let sortino = sortino_values[i];
 
         scores_by_idx
             .entry(*idx)
             .or_default()
-            .push((score, arr, sharpe));
+            .push((score, arr, sortino));
     }
 
     let mut cv_scores: Vec<(usize, CvScore)> = vec![];
@@ -506,9 +506,16 @@ fn sort_cv_results_list(
             if !scores.is_empty() {
                 let score = scores.iter().map(|(v, _, _)| *v).sum::<f64>() / scores.len() as f64;
                 let arr = scores.iter().map(|(_, v, _)| *v).sum::<f64>() / scores.len() as f64;
-                let sharpe = scores.iter().map(|(_, _, v)| *v).sum::<f64>() / scores.len() as f64;
+                let sortino = scores.iter().map(|(_, _, v)| *v).sum::<f64>() / scores.len() as f64;
 
-                cv_scores.push((idx, CvScore { score, arr, sharpe }));
+                cv_scores.push((
+                    idx,
+                    CvScore {
+                        score,
+                        arr,
+                        sortino,
+                    },
+                ));
             }
         }
     }

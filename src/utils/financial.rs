@@ -55,7 +55,21 @@ pub fn calc_annualized_return_rate_by_start_end(
     None
 }
 
-pub fn calc_annualized_volatility(daily_values: &[f64]) -> Option<f64> {
+pub fn calc_annualized_volatility_mad(daily_values: &[f64]) -> Option<f64> {
+    if daily_values.len() > 1 {
+        let daily_changes = stats::pct_change(daily_values);
+
+        if let Some(return_mad) = stats::mad(&daily_changes) {
+            if return_mad.is_finite() {
+                return Some(return_mad * (TRADE_DAYS_PER_YEAR).sqrt());
+            }
+        }
+    }
+
+    None
+}
+
+pub fn calc_annualized_volatility_std(daily_values: &[f64]) -> Option<f64> {
     if daily_values.len() > 1 {
         let daily_changes = stats::pct_change(daily_values);
 

@@ -198,7 +198,7 @@ async fn load_backtest_results_as_table(
     table.modify(Rows::first(), Color::FG_BRIGHT_BLACK);
     table.modify(Columns::first().not(Rows::first()), Color::FG_CYAN);
     table.modify(Columns::new(4..5).not(Rows::first()), Color::FG_CYAN);
-    table.modify(Columns::new(11..12).not(Rows::first()), Color::FG_CYAN);
+    table.modify(Columns::new(13..14).not(Rows::first()), Color::FG_CYAN);
     table.modify(Columns::new(1..), Alignment::right());
     table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
 

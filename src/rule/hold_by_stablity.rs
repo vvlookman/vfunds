@@ -6,15 +6,13 @@ use log::debug;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_SHORT,
     error::VfResult,
     financial::{
         KlineField,
         stock::{
-            StockDividendAdjust, StockReportCapitalField, fetch_stock_kline,
-            fetch_stock_report_capital,
+            StockDividendAdjust, StockIndicatorField, fetch_stock_indicators, fetch_stock_kline,
         },
-        tool::calc_stock_market_cap,
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
@@ -22,7 +20,9 @@ use crate::{
         select_by_indicators,
     },
     ticker::Ticker,
-    utils::{datetime::date_to_str, financial::calc_annualized_volatility, math::normalize_zscore},
+    utils::{
+        datetime::date_to_str, financial::calc_annualized_volatility_std, math::normalize_zscore,
+    },
 };
 
 pub struct Executor {
@@ -105,10 +105,6 @@ impl RuleExecutor for Executor {
                 for ticker in tickers_map.keys() {
                     calc_count += 1;
 
-                    if context.portfolio.reserved_cash.contains_key(ticker) {
-                        continue;
-                    }
-
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::No).await?;
                     let volumes: Vec<f64> = kline
                         .get_latest_values::<f64>(
@@ -144,24 +140,29 @@ impl RuleExecutor for Executor {
                         .map(|&(_, v)| v)
                         .collect();
 
-                    let report_capital = fetch_stock_report_capital(ticker).await?;
-
-                    let market_cap = calc_stock_market_cap(ticker, date).await?;
-                    let circulating_capital_with_date = report_capital.get_latest_value::<f64>(
+                    let stock_indicators = fetch_stock_indicators(ticker).await?;
+                    let market_cap = stock_indicators.get_latest_value::<f64>(
                         date,
-                        STALE_DAYS_LONG,
+                        STALE_DAYS_SHORT,
                         false,
-                        &StockReportCapitalField::Circulating.to_string(),
+                        &StockIndicatorField::MarketValueTotal.to_string(),
                     );
-                    let volatility = calc_annualized_volatility(&prices);
+                    let circulating_capital = stock_indicators.get_latest_value::<f64>(
+                        date,
+                        STALE_DAYS_SHORT,
+                        false,
+                        &StockIndicatorField::MarketValueCirculating.to_string(),
+                    );
+
+                    let volatility = calc_annualized_volatility_std(&prices);
 
                     if let Some(fail_factor_name) =
-                        match (market_cap, circulating_capital_with_date, volatility) {
+                        match (market_cap, circulating_capital, volatility) {
                             (None, _, _) => Some("market_cap"),
                             (_, None, _) => Some("circulating_capital"),
                             (_, _, None) => Some("volatility"),
                             (
-                                Some(market_cap),
+                                Some((_, market_cap)),
                                 Some((_, circulating_capital)),
                                 Some(volatility),
                             ) => {

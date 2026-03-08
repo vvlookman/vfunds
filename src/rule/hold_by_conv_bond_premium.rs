@@ -16,7 +16,7 @@ use crate::{
     },
     spec::Frequency,
     ticker::Ticker,
-    utils::stats::quantile,
+    utils::stats::quantile_value,
 };
 
 pub struct Executor {
@@ -100,7 +100,7 @@ impl RuleExecutor for Executor {
                 .iter()
                 .filter_map(|b| b.issue_size)
                 .collect::<Vec<_>>();
-            let min_issue_size = quantile(&conv_bonds_issue_size, issue_size_quantile_lower);
+            let min_issue_size = quantile_value(&conv_bonds_issue_size, issue_size_quantile_lower);
 
             let mut tickers_factors: Vec<(Ticker, Factors)> = vec![];
             {
@@ -194,7 +194,7 @@ impl RuleExecutor for Executor {
                 .map(|(_, f)| f.straight_premium)
                 .collect::<Vec<f64>>();
             let straight_premium_upper =
-                quantile(&factors_straight_premium, straight_premium_quantile_upper);
+                quantile_value(&factors_straight_premium, straight_premium_quantile_upper);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
             for (ticker, factors) in tickers_factors {

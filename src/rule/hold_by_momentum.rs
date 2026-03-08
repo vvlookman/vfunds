@@ -103,10 +103,6 @@ impl RuleExecutor for Executor {
                 for ticker in tickers_map.keys() {
                     calc_count += 1;
 
-                    if context.portfolio.reserved_cash.contains_key(ticker) {
-                        continue;
-                    }
-
                     let kline = fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
                     let prices: Vec<f64> = kline
                         .get_latest_values::<f64>(
