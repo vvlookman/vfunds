@@ -1,0 +1,35 @@
+title = "HALO"
+description = "面向AI的重资产低淘汰投资 Heavy Assets Low Obsolescence"
+
+[tickers]
+"516650" = 10  # 有色金属ETF
+"516780" = 10  # 稀土ETF
+"159667" = 10  # 工业母机ETF
+"561380" = 10  # 电网ETF
+"561560" = 10  # 电力ETF
+"159625" = 10  # 绿色电力ETF
+"560710" = 10  # 船舶ETF
+"561320" = 10  # 交运ETF
+"561360" = 10  # 石油ETF
+"515220" = 10  # 煤炭ETF
+
+[[rules]]
+name = "hold"
+frequency = "6m"
+
+[rules.search]
+# frequency = ["3m", "6m", "1y", "2y"]
+
+[[rules]]
+name = "resize_by_spike"
+frequency = "1d"
+
+[rules.options]
+spike_days = 3
+spike_fall_threshold = 0.05
+spike_rise_threshold = 0.15
+
+[rules.search.options]
+# spike_days = [1, 2, 3, 5]
+# spike_fall_threshold = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
+# spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]

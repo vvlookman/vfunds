@@ -7,7 +7,7 @@ use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
     CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
-    TRADE_DAYS_FRACTION, TRADE_DAYS_PER_YEAR,
+    TRADE_DAYS_FRACTION,
     error::VfResult,
     filter::{filter_invalid::has_invalid_price, filter_st::is_st},
     financial::stock::{
@@ -49,21 +49,25 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let clusters_lookback_trade_days = self
+            .options
+            .get("clusters_lookback_trade_days")
+            .and_then(|v| v.as_object());
+        let default_lookback_trade_days = self
+            .options
+            .get("default_lookback_trade_days")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(1000);
         let limit = self
             .options
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_lt_years = self
+        let pb_mean_count = self
             .options
-            .get("lookback_lt_years")
+            .get("pb_mean_count")
             .and_then(|v| v.as_u64())
-            .unwrap_or(5);
-        let lookback_trade_days = self
-            .options
-            .get("lookback_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(125);
+            .unwrap_or(21);
         let pb_quantile_lower = self
             .options
             .get("pb_quantile_lower")
@@ -85,16 +89,25 @@ impl RuleExecutor for Executor {
             .and_then(|v| v.as_str())
             .unwrap_or("equal");
         {
+            if default_lookback_trade_days == 0 {
+                panic!("default_lookback_trade_days must > 0");
+            }
+
             if limit == 0 {
                 panic!("limit must > 0");
             }
 
-            if lookback_lt_years == 0 {
-                panic!("lookback_lt_years must > 0");
+            if pb_mean_count == 0 {
+                panic!("pb_mean_count must > 0");
             }
+        }
 
-            if lookback_trade_days == 0 {
-                panic!("lookback_trade_days must > 0");
+        let mut clusters_lookback_trade_days_map: HashMap<String, u64> = HashMap::new();
+        if let Some(clusters_lookback_trade_days) = clusters_lookback_trade_days {
+            for (k, v) in clusters_lookback_trade_days {
+                if let Some(v_u64) = v.as_u64() {
+                    clusters_lookback_trade_days_map.insert(k.to_string(), v_u64);
+                }
             }
         }
 
@@ -114,9 +127,6 @@ impl RuleExecutor for Executor {
             let mut last_time = Instant::now();
             let mut calc_count: usize = 0;
 
-            let lookback_trade_days_lt = lookback_lt_years as f64 * TRADE_DAYS_PER_YEAR;
-            let lookback_days_lt = lookback_trade_days_lt / TRADE_DAYS_FRACTION;
-
             let mut clusters_targets: HashMap<String, Vec<(Ticker, f64)>> = HashMap::new();
             let mut clusters_candidates: HashMap<String, Vec<(Ticker, f64)>> = HashMap::new();
 
@@ -125,10 +135,21 @@ impl RuleExecutor for Executor {
                 let mut tickers_pb_map: HashMap<Ticker, f64> = HashMap::new();
                 let mut tickers_roe_map: HashMap<Ticker, f64> = HashMap::new();
 
+                let cluster_lookback_trade_days = clusters_lookback_trade_days_map
+                    .get(cluster_name)
+                    .copied()
+                    .unwrap_or(default_lookback_trade_days);
+
                 for ticker in cluster_tickers {
                     calc_count += 1;
 
-                    if let Ok(st) = is_st(ticker, date, lookback_days_lt as u64).await {
+                    if let Ok(st) = is_st(
+                        ticker,
+                        date,
+                        (cluster_lookback_trade_days as f64 / TRADE_DAYS_FRACTION) as u64,
+                    )
+                    .await
+                    {
                         if st {
                             continue;
                         }
@@ -156,10 +177,11 @@ impl RuleExecutor for Executor {
                         date,
                         false,
                         &StockIndicatorField::Pb.to_string(),
-                        lookback_trade_days_lt as u32,
+                        cluster_lookback_trade_days as u32,
                     );
                     if pbs_with_date_lt.len()
-                        < (lookback_trade_days_lt * REQUIRED_DATA_COMPLETENESS).round() as usize
+                        < (cluster_lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round()
+                            as usize
                     {
                         rule_send_warning(
                             rule_name,
@@ -174,8 +196,8 @@ impl RuleExecutor for Executor {
                     let market_caps_with_date = stock_indicators.get_latest_values::<f64>(
                         date,
                         false,
-                        &StockIndicatorField::MarketValueCirculating.to_string(),
-                        lookback_trade_days_lt as u32,
+                        &StockIndicatorField::MarketValueTotal.to_string(),
+                        cluster_lookback_trade_days as u32,
                     );
                     let market_cap_map: HashMap<NaiveDate, f64> =
                         market_caps_with_date.into_iter().collect();
@@ -192,7 +214,7 @@ impl RuleExecutor for Executor {
                     let pbs_lt: Vec<f64> = pbs_with_date_lt.iter().map(|(_, v)| *v).collect();
                     let recent_pbs = pbs_lt
                         .iter()
-                        .tail(lookback_trade_days as usize)
+                        .tail(pb_mean_count as usize)
                         .copied()
                         .collect::<Vec<_>>();
                     if let Some(pb) = stats::mean(&recent_pbs) {
@@ -253,7 +275,7 @@ impl RuleExecutor for Executor {
                     cluster_pbs_with_date.iter().map(|(_, pb)| *pb).collect();
                 let recent_cluster_pbs: Vec<f64> = cluster_pbs
                     .iter()
-                    .tail(lookback_trade_days as usize)
+                    .tail(pb_mean_count as usize)
                     .copied()
                     .collect();
                 if let Some(cluster_pb) = stats::mean(&recent_cluster_pbs) {

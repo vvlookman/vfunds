@@ -10,6 +10,7 @@ use tokio::sync::{mpsc, mpsc::Sender};
 use crate::{
     CHANNEL_BUFFER_DEFAULT,
     backtest::*,
+    filter::filter_delisted::is_delisted,
     financial::{market::fetch_trade_dates, *},
     rule::Rule,
     spec::*,
@@ -752,13 +753,16 @@ impl FundBacktestContext<'_> {
             if let Some(price) = get_ticker_price(ticker, date, true, price_type).await? {
                 positions_value.insert(ticker.clone(), *units as f64 * price);
             } else {
-                return Err(VfError::NoData {
-                    code: "NO_PRICE_DATA",
-                    message: format!(
-                        "{price_type} price of '{ticker}' @{} not exists",
-                        date_to_str(date)
-                    ),
-                });
+                let delisted = is_delisted(ticker, date).await?;
+                if !delisted {
+                    return Err(VfError::NoData {
+                        code: "NO_PRICE_DATA",
+                        message: format!(
+                            "{price_type} price of '{ticker}' @{} not exists",
+                            date_to_str(date)
+                        ),
+                    });
+                }
             }
         }
 

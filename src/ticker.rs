@@ -177,6 +177,7 @@ fn detect_ticker_exchange(symbol: &str) -> Option<String> {
             || symbol.starts_with("13")
             || symbol.starts_with("50")
             || symbol.starts_with("51")
+            || symbol.starts_with("56")
             || symbol.starts_with("58")
             || symbol.starts_with("60")
             || symbol.starts_with("68")

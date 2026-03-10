@@ -204,8 +204,7 @@ impl RuleExecutor for Executor {
                 let deviation_momentum = normalized_factors_deviation_momentum[i];
                 let efficiency_momentum = normalized_factors_efficiency_momentum[i];
 
-                let indicator = momentum
-                    + deviation_weight * deviation_momentum
+                let indicator = momentum - deviation_weight * deviation_momentum
                     + efficiency_weight * efficiency_momentum;
 
                 indicators.push((ticker.clone(), indicator));

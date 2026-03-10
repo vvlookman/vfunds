@@ -9,31 +9,24 @@ source_type = "index"
 source = "000813.CSI"  # 中证细分化工指数
 source_type = "index"
 
-# [[ticker_sources]]
-# source = "930708.CSI"  # 中证有色金属指数
-# source_type = "index"
+[[ticker_sources]]
+source = "930708.CSI"  # 中证有色金属指数
+source_type = "index"
 
-# [[ticker_sources]]
-# source = "399440.CNI"  # 国证钢铁指数
-# source_type = "index"
-
-# [[ticker_sources]]
-# source = "931009.CSI"  # 中证全指建材指数
-# source_type = "index"
-
-# [[ticker_sources]]
-# source = "399986.CSI"  # 中证银行指数
-# source_type = "index"
+[[ticker_sources]]
+source = "399440.CNI"  # 国证钢铁指数
+source_type = "index"
 
 [[rules]]
 name = "hold_by_cluster_pb"
 frequency = "3m"
 
 [rules.options]
-limit = 2
-lookback_lt_years = 5
-lookback_trade_days = 21
-pb_quantile_lower = 0.3
+clusters_lookback_trade_days = { "930708.CSI" = 1250, "399440.CNI" = 750 }
+default_lookback_trade_days = 1000
+limit = 4
+pb_mean_count = 21
+pb_quantile_lower = 0.2
 pb_quantile_upper = 0.8
 roe_quantile_lower = 0.6
 weight_method = "filter_max(0.8)"
@@ -42,14 +35,28 @@ weight_method = "filter_max(0.8)"
 # frequency = ["1m", "2m", "3m", "6m"]
 
 [rules.search.options]
+# clusters_lookback_trade_days = [
+#   { "930708.CSI" = 750, "399440.CNI" = 750 },
+#   { "930708.CSI" = 1000, "399440.CNI" = 750 },
+#   { "930708.CSI" = 1250, "399440.CNI" = 750 },
+#   { "930708.CSI" = 750, "399440.CNI" = 1000 },
+#   { "930708.CSI" = 1000, "399440.CNI" = 1000 },
+#   { "930708.CSI" = 1250, "399440.CNI" = 1000 },
+#   { "930708.CSI" = 750, "399440.CNI" = 1250 },
+#   { "930708.CSI" = 1000, "399440.CNI" = 1250 },
+#   { "930708.CSI" = 1250, "399440.CNI" = 1250 },
+# ]
+# default_lookback_trade_days = [750, 1000, 1250, 1500]
 # limit = [1, 2, 3, 4, 5]
-# lookback_lt_years = [3, 4, 5, 6, 8]
-# lookback_trade_days = [5, 10, 21, 42, 63]
-pb_quantile_lower = [0.2, 0.3, 0.4, 0.5]
-pb_quantile_upper = [0.6, 0.7, 0.8, 0.9]
-# roe_quantile_lower = [0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+# pb_mean_count = [5, 10, 21, 42, 63]
+# pb_quantile_lower = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+# pb_quantile_upper = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+# roe_quantile_lower = [0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 # weight_method = [
 #   "equal",
+#   "grad(1.2)",
+#   "grad(1.5)",
+#   "grad(2)",
 #   "filter_max(0.9)",
 #   "filter_max(0.8)",
 #   "filter_max(0.7)",
@@ -57,3 +64,17 @@ pb_quantile_upper = [0.6, 0.7, 0.8, 0.9]
 #   "filter_max(0.5)",
 #   "filter_max(0.4)",
 # ]
+
+[[rules]]
+name = "resize_by_spike"
+frequency = "1d"
+
+[rules.options]
+spike_days = 2
+spike_fall_threshold = 0.12
+spike_rise_threshold = 0.12
+
+[rules.search.options]
+# spike_days = [1, 2, 3, 5]
+# spike_fall_threshold = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
+# spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]

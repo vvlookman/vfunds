@@ -29,7 +29,7 @@ name = "hold_by_momentum"
 frequency = "1m"
 
 [rules.options]
-deviation_weight = -0.6
+deviation_weight = 0.6
 efficiency_weight = 0.4
 limit = 2
 lookback_trade_days = 250
@@ -41,7 +41,7 @@ weight_method = "filter_max(0.9)"
 # frequency = ["2w", "3w", "1m", "2m", "3m", "4m"]
 
 [rules.search.options]
-# deviation_weight = [-1, -0.8, -0.6, -0.4, -0.2, 0]
+# deviation_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
 # efficiency_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
 # limit = [1, 2, 3, 4, 5]
 # lookback_trade_days = [21, 63, 125, 250, 375, 500]
@@ -59,17 +59,16 @@ weight_method = "filter_max(0.9)"
 #   "filter_max(0.5)",
 # ]
 
-# 注意在交易日观察，如果某个标的尖峰上涨超过阈值，则清仓并在后续重新建仓
 [[rules]]
 name = "resize_by_spike"
 frequency = "1d"
 
 [rules.options]
-spike_days = 2
-spike_fall_threshold = 0.08
+spike_days = 3
+spike_fall_threshold = 0.04
 spike_rise_threshold = 0.08
 
 [rules.search.options]
-# spike_days = [1, 2, 3]
-spike_fall_threshold = [0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12]
-spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12]
+# spike_days = [1, 2, 3, 5]
+# spike_fall_threshold = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
+# spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]

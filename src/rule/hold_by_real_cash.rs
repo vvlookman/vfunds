@@ -54,16 +54,41 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let adjust_momentum_weight = self
+            .options
+            .get("adjust_momentum_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let adjust_roe_weight = self
+            .options
+            .get("adjust_roe_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let adjust_volatility_weight = self
+            .options
+            .get("adjust_volatility_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
+        let dividend_rank_lower = self
+            .options
+            .get("dividend_rank_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let dividend_ratio_lt_lower = self
             .options
             .get("dividend_ratio_lt_lower")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.03);
+            .unwrap_or(0.0);
+        let free_cash_rank_lower = self
+            .options
+            .get("free_cash_rank_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
         let free_cash_ratio_lt_lower = self
             .options
             .get("free_cash_ratio_lt_lower")
             .and_then(|v| v.as_f64())
-            .unwrap_or(0.04);
+            .unwrap_or(0.0);
         let exclude_sectors: Vec<String> = self
             .options
             .get("exclude_sectors")
@@ -95,26 +120,11 @@ impl RuleExecutor for Executor {
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(250);
-        let momentum_weight = self
-            .options
-            .get("momentum_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let roe_weight = self
-            .options
-            .get("roe_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let volatility_weight = self
-            .options
-            .get("volatility_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
         let weight_method = self
             .options
             .get("weight_method")
@@ -341,15 +351,19 @@ impl RuleExecutor for Executor {
                         && let Some(volatility_rank) =
                             quantile_rank(&factors_volatility, volatility)
                     {
-                        let adjust: f64 = momentum_weight * (momentum_rank - 0.5)
-                            + roe_weight * (roe_rank - 0.5)
-                            + volatility_weight * (0.5 - volatility_rank);
+                        if dividend_rank > dividend_rank_lower
+                            && free_cash_rank > free_cash_rank_lower
+                        {
+                            let adjust: f64 = adjust_momentum_weight * (momentum_rank - 0.5)
+                                + adjust_roe_weight * (roe_rank - 0.5)
+                                + adjust_volatility_weight * (0.5 - volatility_rank);
 
-                        let indicator = ((1.0 - free_cash_weight) * dividend_rank
-                            + free_cash_weight * free_cash_rank)
-                            * (1.0 + adjust);
+                            let indicator = ((1.0 - free_cash_weight) * dividend_rank
+                                + free_cash_weight * free_cash_rank)
+                                * (1.0 + adjust);
 
-                        indicators.push((ticker, indicator));
+                            indicators.push((ticker, indicator));
+                        }
                     }
                 }
             }

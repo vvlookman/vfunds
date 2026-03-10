@@ -4,8 +4,8 @@ frequency = "3m"
 
 [funds]
 high-momentum = 5
-# high-real-cash = 2
-low-pb = 2
+high-real-cash = 1
+low-pb = 3
 permanent = 1
 small-cap = 5
 
@@ -14,7 +14,7 @@ small-cap = 5
 
 [search.funds]
 high-momentum = [1, 2, 3, 5]
-# high-real-cash = [1, 2, 3, 5]
+high-real-cash = [1, 2, 3, 5]
 low-pb = [1, 2, 3, 5]
 permanent = [1, 2, 3, 5]
 small-cap = [1, 2, 3, 5]

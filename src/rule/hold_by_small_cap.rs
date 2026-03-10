@@ -156,8 +156,7 @@ impl RuleExecutor for Executor {
             }
             tickers_factors.sort_by(|(_, f1), (_, f2)| f1.market_cap.total_cmp(&f2.market_cap));
 
-            let pre_select_count =
-                ((pre_select_ratio * limit) as usize).max(tickers_factors.len() / 10);
+            let pre_select_count = (pre_select_ratio * limit) as usize;
             let pre_select_tickers_factors = tickers_factors
                 .into_iter()
                 .take(pre_select_count)

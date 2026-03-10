@@ -14,7 +14,7 @@ frequency = "1m"
 circulating_ratio_lower = 0.3
 limit = 2
 pb_quantile_upper = 1
-pre_select_ratio = 30
+pre_select_ratio = 40
 ps_quantile_upper = 0.8
 skip_same_sector = true
 weight_method = "equal"
@@ -23,24 +23,23 @@ weight_method = "equal"
 # frequency = ["2w", "1m", "2m", "3m"]
 
 [rules.search.options]
-# limit = [2, 3, 4, 5, 10]
 # circulating_ratio_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
+# limit = [2, 3, 4, 5, 10]
 # pb_quantile_upper = [0.7, 0.8, 0.9, 1]
-# pre_select_ratio = [10, 20, 30, 40, 50]
+# pre_select_ratio = [10, 20, 30, 40, 50, 100, 200, 500]
 # ps_quantile_upper = [0.7, 0.8, 0.9, 1]
 # skip_same_sector = [true, false]
 
-# 注意在交易日观察，如果某个标的尖峰上涨超过阈值，则清仓并在后续重新建仓
 [[rules]]
 name = "resize_by_spike"
 frequency = "1d"
 
 [rules.options]
-spike_days = 3
-spike_fall_threshold = 0.4
-spike_rise_threshold = 0.1
+spike_days = 2
+spike_fall_threshold = 0.1
+spike_rise_threshold = 0.2
 
 [rules.search.options]
-# spike_days = [1, 2, 3]
+# spike_days = [1, 2, 3, 5]
 # spike_fall_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
 # spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
