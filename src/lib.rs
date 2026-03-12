@@ -22,6 +22,7 @@ pub struct Config {
     pub qmt_api: String,
     pub tushare_api: String,
     pub tushare_token: String,
+    pub wecom_webhook: String,
 }
 
 impl Default for Config {
@@ -30,6 +31,7 @@ impl Default for Config {
             qmt_api: "http://127.0.0.1:9000".to_string(),
             tushare_api: "http://api.tushare.pro".to_string(),
             tushare_token: "".to_string(),
+            wecom_webhook: "".to_string(),
         }
     }
 }
@@ -122,6 +124,7 @@ mod ds;
 mod filter;
 mod financial;
 mod market;
+mod notifier;
 mod rule;
 mod ticker;
 

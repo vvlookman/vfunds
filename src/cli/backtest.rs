@@ -12,7 +12,10 @@ use tabled::settings::{
 use tokio::time::Duration;
 use vfunds::{
     api,
-    api::{BacktestCvOptions, BacktestEvent, BacktestOptions, BacktestResult, BacktestStream},
+    api::{
+        BacktestCvOptions, BacktestEvent, BacktestOptions, BacktestResult, BacktestStream,
+        Notification, NotificationType,
+    },
     error::{VfError, VfResult},
     utils::datetime::{date_from_str, date_to_str},
 };
@@ -123,6 +126,9 @@ pub struct BacktestCommand {
     )]
     output_logs: bool,
 
+    #[arg(short = 'N', long = "notify", help = "Notify external systems")]
+    notify: bool,
+
     #[arg(
         short = 'S',
         long = "cv-search",
@@ -169,6 +175,7 @@ impl BacktestCommand {
         spinner.enable_steady_tick(Duration::from_millis(100));
 
         let mut errors: HashMap<String, VfError> = HashMap::new();
+        let mut today_updates: HashMap<String, Vec<String>> = HashMap::new();
         let mut table_data: Vec<Vec<String>> = vec![vec![
             "".to_string(),
             "Final T".to_string(),
@@ -214,6 +221,8 @@ impl BacktestCommand {
                             } else {
                                 vfund_name
                             };
+
+                            let today_str = date_to_str(&Local::now().date_naive());
 
                             let mut backtest_logs: Vec<String> = vec![];
 
@@ -267,6 +276,19 @@ impl BacktestCommand {
                                             .await
                                             {
                                                 errors.insert(vfund_tranche.to_string(), err);
+                                            }
+
+                                            if self.notify {
+                                                let mut today_logs: Vec<String> = vec![];
+
+                                                for log in &backtest_logs {
+                                                    if log.contains(&today_str) {
+                                                        today_logs.push(log.clone());
+                                                    }
+                                                }
+
+                                                today_updates
+                                                    .insert(vfund_tranche.to_string(), today_logs);
                                             }
                                         }
 
@@ -414,6 +436,45 @@ impl BacktestCommand {
             table.modify(Columns::new(1..), Alignment::right());
             table.with(Width::wrap(Percent(100)).priority(Priority::max(true)));
             logger.println(format!("\n{table}"));
+        }
+
+        if self.notify {
+            let funds_title = self.funds.join("|");
+
+            if !errors.is_empty() {
+                let mut content = String::new();
+                for (vfund_tranche, err) in errors {
+                    content.push_str(&format!("[{vfund_tranche}]\n{err}\n\n\n"));
+                }
+
+                if let Err(err) = api::notify(&Notification {
+                    r#type: NotificationType::BacktestErrors,
+                    title: format!("[vfunds errors] {funds_title}"),
+                    content,
+                })
+                .await
+                {
+                    logger.println(format!("[!] {}", err.to_string().red()));
+                }
+            }
+
+            if !today_updates.is_empty() {
+                let mut content = String::new();
+                for (vfund_tranche, logs) in today_updates {
+                    let logs_str = logs.join("\n");
+                    content.push_str(&format!("[{vfund_tranche}]\n{logs_str}\n\n\n"));
+                }
+
+                if let Err(err) = api::notify(&Notification {
+                    r#type: NotificationType::BacktestTodayUpdates,
+                    title: format!("[vfunds today's updates] {funds_title}"),
+                    content,
+                })
+                .await
+                {
+                    logger.println(format!("[!] {}", err.to_string().red()));
+                }
+            }
         }
     }
 }

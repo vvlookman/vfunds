@@ -37,23 +37,38 @@ pub async fn http_get(
         }
     }
 
-    let response = request_builder.send().await?;
+    let request = format!(
+        "{}?{}",
+        request_url,
+        query
+            .unwrap_or_default()
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join("&")
+    );
+
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|err| VfError::HttpRequestError {
+            error: err.to_string(),
+            request: request.to_string(),
+        })?;
 
     if response.status().is_success() {
-        Ok(response.bytes().await?.to_vec())
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| VfError::HttpRequestError {
+                error: err.to_string(),
+                request,
+            })?;
+        Ok(bytes.to_vec())
     } else {
         Err(VfError::HttpStatusError {
             status: response.status().to_string(),
-            request: format!(
-                "{}?{}",
-                request_url,
-                query
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join("&")
-            ),
+            request,
         })
     }
 }
@@ -85,14 +100,29 @@ pub async fn http_post(
         }
     }
 
-    let response = request_builder.send().await?;
+    let request = format!("{request_url}?{body}");
+
+    let response = request_builder
+        .send()
+        .await
+        .map_err(|err| VfError::HttpRequestError {
+            error: err.to_string(),
+            request: request.to_string(),
+        })?;
 
     if response.status().is_success() {
-        Ok(response.bytes().await?.to_vec())
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| VfError::HttpRequestError {
+                error: err.to_string(),
+                request,
+            })?;
+        Ok(bytes.to_vec())
     } else {
         Err(VfError::HttpStatusError {
             status: response.status().to_string(),
-            request: format!("{request_url}?{body}"),
+            request,
         })
     }
 }

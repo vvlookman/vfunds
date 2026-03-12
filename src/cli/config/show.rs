@@ -16,6 +16,10 @@ impl ConfigShowCommand {
                         "tushare_token".to_string(),
                         config.tushare_token.to_string(),
                     ],
+                    vec![
+                        "wecom_webhook".to_string(),
+                        config.wecom_webhook.to_string(),
+                    ],
                 ];
 
                 let mut table = tabled::builder::Builder::from_iter(&table_data).build();

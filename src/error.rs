@@ -13,11 +13,8 @@ pub enum VfError {
     #[error("[Dataframe Error] {0}")]
     DataframeError(#[from] ::polars::error::PolarsError),
 
-    #[error("[HTTP Request Error] {0}")]
-    HttpRequestError(#[from] ::reqwest::Error),
-
-    #[error("[HTTP Middleware Error] {0}")]
-    HttpMiddlewareError(#[from] ::reqwest_middleware::Error),
+    #[error("[HTTP Request Error] [{request}] {error}")]
+    HttpRequestError { error: String, request: String },
 
     #[error("[HTTP Status Error] [{request}] {status}")]
     HttpStatusError { status: String, request: String },

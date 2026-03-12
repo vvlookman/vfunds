@@ -16,6 +16,7 @@ use crate::{
     ds::*,
     error::*,
     financial::{get_ticker_kline, get_ticker_title},
+    notifier,
     spec::{FofDefinition, FundDefinition},
     ticker::Ticker,
     utils::{
@@ -30,6 +31,8 @@ pub type BacktestMetrics = backtest::BacktestMetrics;
 pub type BacktestOptions = backtest::BacktestOptions;
 pub type BacktestResult = backtest::BacktestResult;
 pub type BacktestStream = backtest::BacktestStream;
+pub type Notification = notifier::Notification;
+pub type NotificationType = notifier::NotificationType;
 
 #[derive(Serialize, Deserialize)]
 pub struct BacktestOutputResult {
@@ -273,6 +276,10 @@ pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {
     Ok(vfunds)
 }
 
+pub async fn notify(notification: &Notification) -> VfResult<()> {
+    notifier::notify(notification).await
+}
+
 pub async fn parse_ticker_title(ticker_str: &str) -> VfResult<(Ticker, String)> {
     let ticker = Ticker::from_str(ticker_str)?;
     let title = get_ticker_title(&ticker).await;
@@ -292,6 +299,9 @@ pub async fn set_config(key: &str, value: &str) -> VfResult<Config> {
         }
         "tushare_token" => {
             config.tushare_token = value.to_string();
+        }
+        "wecom_webhook" => {
+            config.wecom_webhook = value.to_string();
         }
         _ => {
             return Err(VfError::Invalid {

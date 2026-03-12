@@ -1,16 +1,16 @@
 title = "A FOF"
 description = "按权重组合虚拟基金"
-frequency = "3m"
+frequency = "6m"
 
 [funds]
 high-momentum = 5
 high-real-cash = 1
-low-pb = 3
+low-pb = 2
 permanent = 1
 small-cap = 5
 
 [search]
-# frequency = ["3m", "6m", "1y"]
+frequency = ["3m", "6m", "1y"]
 
 [search.funds]
 high-momentum = [1, 2, 3, 5]
