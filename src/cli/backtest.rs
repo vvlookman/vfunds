@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::BTreeMap, fs, path::PathBuf};
 
 use chrono::{Local, NaiveDate};
 use colored::Colorize;
@@ -174,8 +174,8 @@ impl BacktestCommand {
             .set_style(ProgressStyle::with_template("{msg}[{elapsed}] {spinner:.cyan}").unwrap());
         spinner.enable_steady_tick(Duration::from_millis(100));
 
-        let mut errors: HashMap<String, VfError> = HashMap::new();
-        let mut today_updates: HashMap<String, Vec<String>> = HashMap::new();
+        let mut errors: BTreeMap<String, VfError> = BTreeMap::new();
+        let mut today_updates: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut table_data: Vec<Vec<String>> = vec![vec![
             "".to_string(),
             "Final T".to_string(),
