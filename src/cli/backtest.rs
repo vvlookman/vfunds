@@ -449,7 +449,7 @@ impl BacktestCommand {
 
                 if let Err(err) = api::notify(&Notification {
                     r#type: NotificationType::BacktestErrors,
-                    title: format!("[vfunds errors] {funds_title}"),
+                    title: format!("[Vfunds Errors] {funds_title}"),
                     content,
                 })
                 .await
@@ -467,7 +467,7 @@ impl BacktestCommand {
 
                 if let Err(err) = api::notify(&Notification {
                     r#type: NotificationType::BacktestTodayUpdates,
-                    title: format!("[vfunds today's updates] {funds_title}"),
+                    title: format!("[Vfunds Today's Updates] {funds_title}"),
                     content,
                 })
                 .await
