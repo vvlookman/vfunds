@@ -1,6 +1,6 @@
-# vfunds
+# Vfunds
 
-Virtual Funds Backtesting and Comparison
+Virtual Funds Design & Backtesting
 
 ## Dependent Services
 
