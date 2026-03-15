@@ -15,7 +15,7 @@ use crate::{
     data::series::DailySeries,
     ds::*,
     error::*,
-    financial::{get_ticker_kline, get_ticker_title},
+    financial::{get_ticker_kline, get_ticker_kline_with_ds, get_ticker_title},
     notifier,
     spec::{FofDefinition, FundDefinition},
     ticker::Ticker,
@@ -216,6 +216,14 @@ pub async fn load_backtest_values(
 
 pub async fn load_ticker_kline(ticker: &Ticker, ignore_cache: bool) -> VfResult<DailySeries> {
     get_ticker_kline(ticker, ignore_cache).await
+}
+
+pub async fn load_ticker_kline_with_ds(
+    ticker: &Ticker,
+    ignore_cache: bool,
+    ds_name: &str,
+) -> VfResult<DailySeries> {
+    get_ticker_kline_with_ds(ticker, ignore_cache, ds_name).await
 }
 
 pub async fn load_vfunds() -> VfResult<Vec<(String, Vfund)>> {

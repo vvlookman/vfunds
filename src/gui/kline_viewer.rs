@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use chrono::NaiveDate;
 use eframe::egui;
@@ -26,6 +26,7 @@ pub struct KlineViewer {
     plot_boxes: Vec<BoxElem>,
     plot_zero_line_points: Vec<PlotPoint>,
 
+    data_source: DataSource,
     warning_message: Option<String>,
 }
 
@@ -67,7 +68,7 @@ impl KlineViewer {
         let (load_event_sender, load_event_receiver) =
             mpsc::channel::<LoadEvent>(CHANNEL_BUFFER_DEFAULT);
 
-        Self {
+        let mut app = Self {
             ticker: ticker.clone(),
             title: title.to_string(),
             ignore_cache,
@@ -83,8 +84,19 @@ impl KlineViewer {
             plot_boxes: vec![],
             plot_zero_line_points: vec![],
 
+            data_source: DataSource::Auto,
             warning_message: None,
+        };
+
+        if let Some(storage) = cc.storage {
+            if let Some(s) = storage.get_string("data_source") {
+                if let Ok(data_source) = DataSource::from_str(&s) {
+                    app.data_source = data_source;
+                }
+            }
         }
+
+        app
     }
 
     fn load_kline(&mut self) {
@@ -99,10 +111,23 @@ impl KlineViewer {
 
         let ticker = self.ticker.clone();
         let ignore_cache = self.ignore_cache;
+        let data_source = self.data_source.clone();
         let load_event_sender = self.load_event_sender.clone();
 
         tokio::spawn(async move {
-            match api::load_ticker_kline(&ticker, ignore_cache).await {
+            let load_result = match data_source {
+                DataSource::Qmt => {
+                    api::load_ticker_kline_with_ds(&ticker, ignore_cache, &data_source.to_string())
+                        .await
+                }
+                DataSource::TuShare => {
+                    api::load_ticker_kline_with_ds(&ticker, ignore_cache, &data_source.to_string())
+                        .await
+                }
+                _ => api::load_ticker_kline(&ticker, ignore_cache).await,
+            };
+
+            match load_result {
                 Ok(kline) => {
                     let _ = load_event_sender.send(LoadEvent::Finished(kline)).await;
                 }
@@ -226,6 +251,27 @@ impl eframe::App for KlineViewer {
                 .show_inside(ui, |ui| {
                     ui.horizontal_centered(|ui| {
                         ui.label(egui::RichText::new(self.title.clone()));
+                        ui.add_space(20.0);
+
+                        let old_data_source = self.data_source.clone();
+                        egui::ComboBox::from_id_salt("data_source_selector")
+                            .selected_text(self.data_source.to_string())
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.data_source,
+                                    DataSource::Auto,
+                                    "Auto",
+                                );
+                                ui.selectable_value(&mut self.data_source, DataSource::Qmt, "QMT");
+                                ui.selectable_value(
+                                    &mut self.data_source,
+                                    DataSource::TuShare,
+                                    "TuShare",
+                                );
+                            });
+                        if old_data_source != self.data_source {
+                            self.load_kline();
+                        }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.add_enabled_ui(!self.is_loading, |ui| {
@@ -326,6 +372,20 @@ impl eframe::App for KlineViewer {
             });
         });
     }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        storage.set_string("data_source", self.data_source.to_string());
+        storage.flush();
+    }
+}
+
+#[derive(Clone, PartialEq, strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+enum DataSource {
+    Auto,
+    #[strum(serialize = "QMT")]
+    Qmt,
+    TuShare,
 }
 
 enum LoadEvent {

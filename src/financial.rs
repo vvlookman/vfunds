@@ -13,7 +13,8 @@ use crate::{
         },
         stock::{
             StockDividendAdjust, fetch_stock_basic, fetch_stock_detail, fetch_stock_kline,
-            fetch_stock_kline_ignore_cache,
+            fetch_stock_kline_ignore_cache, fetch_stock_kline_ignore_cache_with_ds,
+            fetch_stock_kline_with_ds,
         },
     },
     ticker::{Ticker, TickerType},
@@ -73,6 +74,33 @@ pub async fn get_ticker_kline(ticker: &Ticker, ignore_cache: bool) -> VfResult<D
         match ticker.r#type {
             TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
             TickerType::Stock => fetch_stock_kline(ticker, StockDividendAdjust::Backward).await,
+        }
+    }
+}
+
+pub async fn get_ticker_kline_with_ds(
+    ticker: &Ticker,
+    ignore_cache: bool,
+    ds_name: &str,
+) -> VfResult<DailySeries> {
+    if ignore_cache {
+        match ticker.r#type {
+            TickerType::ConvBond => fetch_conv_bond_kline_ignore_cache(ticker).await,
+            TickerType::Stock => {
+                fetch_stock_kline_ignore_cache_with_ds(
+                    ticker,
+                    StockDividendAdjust::Backward,
+                    ds_name,
+                )
+                .await
+            }
+        }
+    } else {
+        match ticker.r#type {
+            TickerType::ConvBond => fetch_conv_bond_kline(ticker).await,
+            TickerType::Stock => {
+                fetch_stock_kline_with_ds(ticker, StockDividendAdjust::Backward, ds_name).await
+            }
         }
     }
 }
