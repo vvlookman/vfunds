@@ -1,6 +1,6 @@
 [package]
 name = "vfunds"
-version = "2.9.0"
+version = "2.10.0"
 edition = "2024"
 
 [dependencies]
@@ -29,10 +29,10 @@ pinyin = "0.11.0"
 polars = { version = "0.52.0", features = ["lazy", "timezones"] }
 rand = "0.10.0"
 rayon = "1.11.0"
+regex = "1.12.3"
 reqwest = { version = "0.12.25", features = ["json", "stream"] }
 reqwest-middleware = "0.4.2"
 reqwest-retry = "0.8.0"
-regex = "1.12.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 smartcore = "0.4.9"
