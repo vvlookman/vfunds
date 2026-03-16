@@ -6,13 +6,13 @@ use itertools::Itertools;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS, STALE_DAYS_LONG,
+    CANDIDATE_TICKER_RATIO, PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     TRADE_DAYS_FRACTION,
     error::VfResult,
     filter::{filter_invalid::has_invalid_price, filter_st::is_st},
-    financial::stock::{
-        StockIndicatorField, StockReportPershareField, fetch_stock_indicators,
-        fetch_stock_report_pershare,
+    financial::{
+        helper::{calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_roe_lt},
+        stock::{StockIndicatorField, fetch_stock_indicators},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
@@ -49,10 +49,20 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let cash_ratio_quantile_lower = self
+            .options
+            .get("cash_ratio_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.1);
         let clusters_lookback_trade_days = self
             .options
             .get("clusters_lookback_trade_days")
             .and_then(|v| v.as_object());
+        let current_ratio_quantile_lower = self
+            .options
+            .get("current_ratio_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let default_lookback_trade_days = self
             .options
             .get("default_lookback_trade_days")
@@ -133,7 +143,7 @@ impl RuleExecutor for Executor {
             for (cluster_name, cluster_tickers) in clusters_tickers.iter() {
                 let mut cluster_factors_map: HashMap<NaiveDate, Vec<(f64, f64)>> = HashMap::new();
                 let mut tickers_pb_map: HashMap<Ticker, f64> = HashMap::new();
-                let mut tickers_roe_map: HashMap<Ticker, f64> = HashMap::new();
+                let mut tickers_factors_map: HashMap<Ticker, Factors> = HashMap::new();
 
                 let cluster_lookback_trade_days = clusters_lookback_trade_days_map
                     .get(cluster_name)
@@ -185,7 +195,10 @@ impl RuleExecutor for Executor {
                     {
                         rule_send_warning(
                             rule_name,
-                            &format!("[No Enough Data] {ticker}"),
+                            &format!(
+                                "[No Enough Data] {ticker} {cluster_lookback_trade_days}({})",
+                                pbs_with_date_lt.len()
+                            ),
                             date,
                             event_sender,
                         )
@@ -223,16 +236,18 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    let report_pershare = fetch_stock_report_pershare(ticker).await?;
-                    let roe_with_date = report_pershare.get_latest_value::<f64>(
-                        date,
-                        STALE_DAYS_LONG,
-                        false,
-                        &StockReportPershareField::Roe.to_string(),
-                    );
-
-                    if let Some((_, roe)) = roe_with_date {
-                        tickers_roe_map.insert(ticker.clone(), roe);
+                    if let Ok(cash_ratio) = calc_stock_cash_ratio(ticker, date).await
+                        && let Ok(current_ratio) = calc_stock_current_ratio(ticker, date).await
+                        && let Ok(Some(roe)) = calc_stock_roe_lt(ticker, date, 1).await
+                    {
+                        tickers_factors_map.insert(
+                            ticker.clone(),
+                            Factors {
+                                cash_ratio,
+                                current_ratio,
+                                roe,
+                            },
+                        );
                     }
 
                     if last_time.elapsed().as_secs() > PROGRESS_INTERVAL_SECS {
@@ -248,8 +263,29 @@ impl RuleExecutor for Executor {
                     }
                 }
 
+                let tickers_cash_ratio_lower = stats::quantile_value(
+                    &tickers_factors_map
+                        .values()
+                        .map(|f| f.cash_ratio)
+                        .collect::<Vec<f64>>(),
+                    cash_ratio_quantile_lower,
+                )
+                .unwrap_or(0.0);
+
+                let tickers_current_ratio_lower = stats::quantile_value(
+                    &tickers_factors_map
+                        .values()
+                        .map(|f| f.current_ratio)
+                        .collect::<Vec<f64>>(),
+                    current_ratio_quantile_lower,
+                )
+                .unwrap_or(0.0);
+
                 let tickers_roe_lower = stats::quantile_value(
-                    &tickers_roe_map.values().copied().collect::<Vec<f64>>(),
+                    &tickers_factors_map
+                        .values()
+                        .map(|f| f.roe)
+                        .collect::<Vec<f64>>(),
                     roe_quantile_lower,
                 )
                 .unwrap_or(0.0);
@@ -300,8 +336,10 @@ impl RuleExecutor for Executor {
                                 let mut tickers_indicator: Vec<(Ticker, f64)> = tickers_pb_map
                                     .iter()
                                     .filter(|(ticker, _)| {
-                                        if let Some(roe) = tickers_roe_map.get(ticker) {
-                                            *roe > tickers_roe_lower
+                                        if let Some(f) = tickers_factors_map.get(ticker) {
+                                            f.cash_ratio > tickers_cash_ratio_lower
+                                                && f.current_ratio > tickers_current_ratio_lower
+                                                && f.roe > tickers_roe_lower
                                         } else {
                                             false
                                         }
@@ -366,4 +404,11 @@ impl RuleExecutor for Executor {
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+struct Factors {
+    cash_ratio: f64,
+    current_ratio: f64,
+    roe: f64,
 }

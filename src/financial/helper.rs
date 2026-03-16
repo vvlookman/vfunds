@@ -8,11 +8,11 @@ use crate::{
     financial::{
         KlineField,
         stock::{
-            StockDividendAdjust, StockDividendField, StockIndicatorField, StockReportCapitalField,
-            StockReportCashFlowField, StockReportIncomeField, StockReportPershareField,
-            fetch_stock_dividends, fetch_stock_indicators, fetch_stock_kline,
-            fetch_stock_report_capital, fetch_stock_report_cash_flow, fetch_stock_report_income,
-            fetch_stock_report_pershare,
+            StockDividendAdjust, StockDividendField, StockIndicatorField, StockReportBalanceField,
+            StockReportCapitalField, StockReportCashFlowField, StockReportIncomeField,
+            StockReportPershareField, fetch_stock_dividends, fetch_stock_indicators,
+            fetch_stock_kline, fetch_stock_report_balance, fetch_stock_report_capital,
+            fetch_stock_report_cash_flow, fetch_stock_report_income, fetch_stock_report_pershare,
         },
     },
     ticker::Ticker,
@@ -21,6 +21,52 @@ use crate::{
         stats::mean,
     },
 };
+
+pub async fn calc_stock_cash_ratio(ticker: &Ticker, date: &NaiveDate) -> VfResult<f64> {
+    let report_balance = fetch_stock_report_balance(ticker).await?;
+
+    if let Some((_, cash)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::CashEquivalents.to_string(),
+    ) && let Some((_, current_liability)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::TotalCurrentLiability.to_string(),
+    ) {
+        return Ok(cash / current_liability);
+    }
+
+    Err(VfError::NoData {
+        code: "NO_CASH_RATIO_DATA",
+        message: format!("Cash ratio of '{ticker}' @{} not exists", date_to_str(date)),
+    })
+}
+
+pub async fn calc_stock_current_ratio(ticker: &Ticker, date: &NaiveDate) -> VfResult<f64> {
+    let report_balance = fetch_stock_report_balance(ticker).await?;
+
+    if let Some((_, current_assets)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::TotalCurrentAssets.to_string(),
+    ) && let Some((_, current_liability)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::TotalCurrentLiability.to_string(),
+    ) {
+        return Ok(current_assets / current_liability);
+    }
+
+    Err(VfError::NoData {
+        code: "NO_CASH_RATIO_DATA",
+        message: format!("Cash ratio of '{ticker}' @{} not exists", date_to_str(date)),
+    })
+}
 
 pub async fn calc_stock_dividend_ratio_lt(
     ticker: &Ticker,
@@ -409,7 +455,7 @@ pub async fn calc_stock_roe_lt(
         report_pershare.slice_by_date_range(&lookback_start_date, &lookback_end_date)?;
 
     let roe_list_with_date =
-        lookback_report.get_values::<f64>(&StockReportPershareField::Roe.to_string());
+        lookback_report.get_values::<f64>(&StockReportPershareField::EquityRoe.to_string());
 
     let roe_list = roe_list_with_date
         .into_iter()

@@ -121,7 +121,10 @@ impl RuleExecutor for Executor {
                     {
                         rule_send_warning(
                             rule_name,
-                            &format!("[No Enough Data] {ticker}"),
+                            &format!(
+                                "[No Enough Data] {ticker} {lookback_trade_days}({})",
+                                volumes.len()
+                            ),
                             date,
                             event_sender,
                         )

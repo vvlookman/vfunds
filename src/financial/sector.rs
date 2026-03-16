@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::{ds::qmt, error::VfResult, ticker::Ticker};
 
 pub async fn fetch_sector_tickers(sector_prefix: &str) -> VfResult<HashMap<Ticker, String>> {
-    let cache_key = sector_prefix.to_string();
+    let cache_key = format!("qmt:{sector_prefix}");
     if let Some(result) = TICKERS_SECTOR_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }

@@ -11,7 +11,7 @@ use smartcore::{
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
-    PROGRESS_INTERVAL_SECS,
+    PROGRESS_INTERVAL_SECS, REQUIRED_DATA_COMPLETENESS,
     error::VfResult,
     financial::{
         KlineField,
@@ -136,10 +136,15 @@ impl RuleExecutor for Executor {
                         &KlineField::Close.to_string(),
                         lookback_trade_days as u32,
                     );
-                    if prices_with_date.len() < lookback_trade_days as usize {
+                    if prices_with_date.len()
+                        < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round() as usize
+                    {
                         rule_send_warning(
                             rule_name,
-                            &format!("[No Enough Data] {ticker}"),
+                            &format!(
+                                "[No Enough Data] {ticker} {lookback_trade_days}({})",
+                                prices_with_date.len()
+                            ),
                             date,
                             event_sender,
                         )

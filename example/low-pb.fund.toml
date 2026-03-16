@@ -22,19 +22,22 @@ name = "hold_by_cluster_pb"
 frequency = "3m"
 
 [rules.options]
+cash_ratio_quantile_lower = 0
 clusters_lookback_trade_days = { "930708.CSI" = 1250, "399440.CNI" = 750 }
+current_ratio_quantile_lower = 0.2
 default_lookback_trade_days = 1000
-limit = 4
+limit = 2
 pb_mean_count = 21
-pb_quantile_lower = 0.2
+pb_quantile_lower = 0.1
 pb_quantile_upper = 0.8
-roe_quantile_lower = 0.6
-weight_method = "filter_max(0.8)"
+roe_quantile_lower = 0.2
+weight_method = "filter_max(0.7)"
 
 [rules.search]
 # frequency = ["1m", "2m", "3m", "6m"]
 
 [rules.search.options]
+# cash_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
 # clusters_lookback_trade_days = [
 #   { "930708.CSI" = 750, "399440.CNI" = 750 },
 #   { "930708.CSI" = 1000, "399440.CNI" = 750 },
@@ -46,12 +49,13 @@ weight_method = "filter_max(0.8)"
 #   { "930708.CSI" = 1000, "399440.CNI" = 1250 },
 #   { "930708.CSI" = 1250, "399440.CNI" = 1250 },
 # ]
+# current_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
 # default_lookback_trade_days = [750, 1000, 1250, 1500]
-# limit = [1, 2, 3, 4, 5]
+# limit = [2, 3, 4, 5, 10]
 # pb_mean_count = [5, 10, 21, 42, 63]
-# pb_quantile_lower = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-# pb_quantile_upper = [0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-# roe_quantile_lower = [0, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+# pb_quantile_lower = [0.1, 0.2, 0.3, 0.4]
+# pb_quantile_upper = [0.6, 0.7, 0.8, 0.9]
+# roe_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
 # weight_method = [
 #   "equal",
 #   "grad(1.2)",
@@ -70,11 +74,11 @@ name = "resize_by_spike"
 frequency = "1d"
 
 [rules.options]
-spike_days = 2
-spike_fall_threshold = 0.12
-spike_rise_threshold = 0.12
+spike_days = 1
+spike_fall_threshold = 0.03
+spike_rise_threshold = 0.08
 
 [rules.search.options]
 # spike_days = [1, 2, 3, 5]
 # spike_fall_threshold = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
-# spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
+# spike_rise_threshold = [0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2, 1]

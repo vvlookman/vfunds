@@ -11,8 +11,9 @@ use crate::{
     financial::{
         KlineField,
         helper::{
-            calc_stock_dividend_ratio_lt, calc_stock_dividend_ratio_ttm,
-            calc_stock_free_cash_ratio_lt, calc_stock_free_cash_ratio_ttm, calc_stock_roe_lt,
+            calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_dividend_ratio_lt,
+            calc_stock_dividend_ratio_ttm, calc_stock_free_cash_ratio_lt,
+            calc_stock_free_cash_ratio_ttm, calc_stock_roe_lt,
         },
         stock::{
             StockDividendAdjust, StockDividendField, fetch_stock_detail, fetch_stock_dividends,
@@ -69,9 +70,14 @@ impl RuleExecutor for Executor {
             .get("adjust_volatility_weight")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
-        let dividend_rank_lower = self
+        let cash_ratio_quantile_lower = self
             .options
-            .get("dividend_rank_lower")
+            .get("cash_ratio_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let current_ratio_quantile_lower = self
+            .options
+            .get("current_ratio_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let dividend_ratio_lt_lower = self
@@ -79,14 +85,19 @@ impl RuleExecutor for Executor {
             .get("dividend_ratio_lt_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
-        let free_cash_rank_lower = self
+        let dividend_ratio_quantile_lower = self
             .options
-            .get("free_cash_rank_lower")
+            .get("dividend_ratio_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let free_cash_ratio_lt_lower = self
             .options
             .get("free_cash_ratio_lt_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let free_cash_ratio_quantile_lower = self
+            .options
+            .get("free_cash_ratio_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let exclude_sectors: Vec<String> = self
@@ -246,7 +257,10 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    if let Ok(dividend_ratio) = calc_stock_dividend_ratio_ttm(ticker, date).await
+                    if let Ok(cash_ratio) = calc_stock_cash_ratio(ticker, date).await
+                        && let Ok(current_ratio) = calc_stock_current_ratio(ticker, date).await
+                        && let Ok(dividend_ratio) =
+                            calc_stock_dividend_ratio_ttm(ticker, date).await
                         && let Ok(free_cash_ratio) =
                             calc_stock_free_cash_ratio_ttm(ticker, date).await
                     {
@@ -269,7 +283,10 @@ impl RuleExecutor for Executor {
                             {
                                 rule_send_warning(
                                     rule_name,
-                                    &format!("[No Enough Data] {ticker}"),
+                                    &format!(
+                                        "[No Enough Data] {ticker} {lookback_trade_days}({})",
+                                        prices.len()
+                                    ),
                                     date,
                                     event_sender,
                                 )
@@ -280,6 +297,8 @@ impl RuleExecutor for Executor {
                             tickers_factors.push((
                                 ticker.clone(),
                                 Factors {
+                                    cash_ratio,
+                                    current_ratio,
                                     dividend_ratio,
                                     free_cash_ratio,
                                     momentum: calc_annualized_momentum(&prices, false),
@@ -308,8 +327,16 @@ impl RuleExecutor for Executor {
 
                 rule_notify_calc_progress(rule_name, 100.0, date, event_sender).await;
             }
-            tickers_factors
-                .sort_by(|(_, f1), (_, f2)| f2.dividend_ratio.total_cmp(&f1.dividend_ratio));
+
+            let factors_cash_ratio = tickers_factors
+                .iter()
+                .map(|(_, f)| f.cash_ratio)
+                .collect::<Vec<f64>>();
+
+            let factors_current_ratio = tickers_factors
+                .iter()
+                .map(|(_, f)| f.current_ratio)
+                .collect::<Vec<f64>>();
 
             let factors_dividend_ratio = tickers_factors
                 .iter()
@@ -342,24 +369,30 @@ impl RuleExecutor for Executor {
                     && let Some(roe) = factors.roe
                     && let Some(volatility) = factors.volatility
                 {
-                    if let Some(dividend_rank) =
-                        quantile_rank(&factors_dividend_ratio, factors.dividend_ratio)
-                        && let Some(free_cash_rank) =
+                    if let Some(cash_ratio_rank) =
+                        quantile_rank(&factors_cash_ratio, factors.cash_ratio)
+                        && let Some(current_ratio_rank) =
+                            quantile_rank(&factors_current_ratio, factors.current_ratio)
+                        && let Some(dividend_ratio_rank) =
+                            quantile_rank(&factors_dividend_ratio, factors.dividend_ratio)
+                        && let Some(free_cash_ratio_rank) =
                             quantile_rank(&factors_free_cash_ratio, factors.free_cash_ratio)
                         && let Some(momentum_rank) = quantile_rank(&factors_momentum, momentum)
                         && let Some(roe_rank) = quantile_rank(&factors_roe, roe)
                         && let Some(volatility_rank) =
                             quantile_rank(&factors_volatility, volatility)
                     {
-                        if dividend_rank > dividend_rank_lower
-                            && free_cash_rank > free_cash_rank_lower
+                        if cash_ratio_rank > cash_ratio_quantile_lower
+                            && current_ratio_rank > current_ratio_quantile_lower
+                            && dividend_ratio_rank > dividend_ratio_quantile_lower
+                            && free_cash_ratio_rank > free_cash_ratio_quantile_lower
                         {
                             let adjust: f64 = adjust_momentum_weight * (momentum_rank - 0.5)
                                 + adjust_roe_weight * (roe_rank - 0.5)
                                 + adjust_volatility_weight * (0.5 - volatility_rank);
 
-                            let indicator = ((1.0 - free_cash_weight) * dividend_rank
-                                + free_cash_weight * free_cash_rank)
+                            let indicator = ((1.0 - free_cash_weight) * dividend_ratio_rank
+                                + free_cash_weight * free_cash_ratio_rank)
                                 * (1.0 + adjust);
 
                             indicators.push((ticker, indicator));
@@ -405,6 +438,8 @@ impl RuleExecutor for Executor {
 
 #[derive(Debug)]
 struct Factors {
+    cash_ratio: f64,
+    current_ratio: f64,
     dividend_ratio: f64,
     free_cash_ratio: f64,
     momentum: Option<f64>,

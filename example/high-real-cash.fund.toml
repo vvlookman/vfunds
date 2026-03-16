@@ -30,32 +30,36 @@ name = "hold_by_real_cash"
 frequency = "2m"
 
 [rules.options]
-adjust_momentum_weight = 0.8
-adjust_roe_weight = 0.8
+adjust_momentum_weight = 0.6
+adjust_roe_weight = 0
 adjust_volatility_weight = 0
-dividend_rank_lower = 0.3
+cash_ratio_quantile_lower = 0.3
+current_ratio_quantile_lower = 0.3
 dividend_ratio_lt_lower = 0
-free_cash_rank_lower = 0.3
-free_cash_ratio_lt_lower = 0.02
+dividend_ratio_quantile_lower = 0.3
+free_cash_ratio_lt_lower = 0
+free_cash_ratio_quantile_lower = 0.3
 free_cash_weight = 0.9
 exclude_sectors = ["银行", "非银金融", "房地产", "综合", "公用事业"]
 limit = 2
 lookback_lt_years = 3
 lookback_trade_days = 250
 skip_same_sector = false
-weight_method = "filter_max(0.8)"
+weight_method = "grad(2)"
 
 [rules.search]
 # frequency = ["1m", "2m", "3m", "6m"]
 
 [rules.search.options]
-# adjust_momentum_weight = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
-# adjust_roe_weight = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
-# adjust_volatility_weight = [0, 0.2, 0.4, 0.6, 0.8, 1, 1.2, 1.4, 1.6, 1.8, 2]
-# dividend_rank_lower = [0, 0.1, 0.2, 0.3, 0.4]
+# adjust_momentum_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
+# adjust_roe_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
+# adjust_volatility_weight = [0, 0.2, 0.4, 0.6, 0.8, 1]
+# cash_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4]
+# current_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4]
 # dividend_ratio_lt_lower = [0, 0.01, 0.02]
-# free_cash_rank_lower = [0, 0.1, 0.2, 0.3, 0.4]
+# dividend_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4]
 # free_cash_ratio_lt_lower = [0, 0.01, 0.02]
+# free_cash_ratio_quantile_lower = [0, 0.1, 0.2, 0.3, 0.4]
 # free_cash_weight = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]
 # limit = [2, 3, 4, 5, 10]
 # lookback_lt_years = [1, 2, 3, 4, 5]
@@ -80,9 +84,9 @@ frequency = "1d"
 [rules.options]
 spike_days = 3
 spike_fall_threshold = 0.01
-spike_rise_threshold = 0.1
+spike_rise_threshold = 0.12
 
 [rules.search.options]
 # spike_days = [1, 2, 3, 5]
 # spike_fall_threshold = [0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
-# spike_rise_threshold = [0.03, 0.04, 0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2]
+# spike_rise_threshold = [0.05, 0.06, 0.08, 0.1, 0.12, 0.15, 0.2, 1]

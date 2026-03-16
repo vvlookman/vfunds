@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-use chrono::{Days, Local, NaiveDate};
+use chrono::{Days, NaiveDate};
 use dashmap::DashMap;
 use serde_json::{Value, json};
 
@@ -8,7 +8,6 @@ use crate::{
     data::series::*,
     ds::{qmt, tushare},
     error::*,
-    filter::filter_delisted::is_delisted,
     financial::{KlineField, sector::fetch_sector_tickers},
     ticker::Ticker,
     utils::datetime::{date_from_str, date_to_str},
@@ -36,7 +35,7 @@ pub struct StockDetail {
     pub total_volume: Option<u64>,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[allow(dead_code)]
 pub enum StockDividendAdjust {
     Backward,
@@ -44,7 +43,7 @@ pub enum StockDividendAdjust {
     No,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockDividendField {
     Interest,
@@ -55,7 +54,7 @@ pub enum StockDividendField {
     PriceAdjustmentFactor,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockIndicatorField {
     DividendRatio,
@@ -73,7 +72,18 @@ pub enum StockIndicatorField {
     VolumeRatio,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
+#[strum(ascii_case_insensitive)]
+pub enum StockReportBalanceField {
+    ReportDate,
+    CashEquivalents,
+    TotalAssets,
+    TotalCurrentAssets,
+    TotalLiability,
+    TotalCurrentLiability,
+}
+
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockReportCapitalField {
     ReportDate,
@@ -82,7 +92,7 @@ pub enum StockReportCapitalField {
     FreeFloat,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockReportCashFlowField {
     ReportDate,
@@ -90,7 +100,7 @@ pub enum StockReportCashFlowField {
     CapitalExpenditures,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockReportIncomeField {
     ReportDate,
@@ -99,22 +109,20 @@ pub enum StockReportIncomeField {
     TotalProfit,
 }
 
-#[derive(strum::Display, strum::EnumString)]
+#[derive(Clone, Debug, strum::Display, strum::EnumString)]
 #[strum(ascii_case_insensitive)]
 pub enum StockReportPershareField {
     ReportDate,
-    AdjustedNetProfitRate,
     Bps,
-    Cfps,
     Eps,
+    EquityRoe,
     GrossProfit,
-    IncRevenueRate,
     NetProfit,
-    Roe,
+    Ocfps,
 }
 
 pub async fn fetch_delisted_stocks() -> VfResult<HashMap<Ticker, NaiveDate>> {
-    let cache_key = "delisted_stocks".to_string();
+    let cache_key = "tushare:delisted_stocks".to_string();
     if let Some(result) = DELISTED_STOCKS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -161,7 +169,7 @@ pub async fn fetch_delisted_stocks() -> VfResult<HashMap<Ticker, NaiveDate>> {
 }
 
 pub async fn fetch_st_stocks(date: &NaiveDate, lookback_days: u64) -> VfResult<Vec<Ticker>> {
-    let cache_key = format!("{}/{lookback_days}", date_to_str(date));
+    let cache_key = format!("tushare:{}/{lookback_days}", date_to_str(date));
     if let Some(result) = ST_STOCKS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -204,7 +212,7 @@ pub async fn fetch_st_stocks(date: &NaiveDate, lookback_days: u64) -> VfResult<V
 }
 
 pub async fn fetch_stock_basic(ticker: &Ticker) -> VfResult<StockBasic> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("tushare:{ticker}");
     if let Some(result) = STOCK_BASIC_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -263,14 +271,14 @@ pub async fn fetch_stock_basic(ticker: &Ticker) -> VfResult<StockBasic> {
         }
     }
 
-    Err(VfError::Invalid {
+    Err(VfError::NoData {
         code: "NO_DATA",
         message: format!("No data from Tushare stock_basic of {ticker}"),
     })
 }
 
 pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("qmt:{ticker}");
     if let Some(result) = STOCK_DETAIL_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -307,7 +315,7 @@ pub async fn fetch_stock_detail(ticker: &Ticker) -> VfResult<StockDetail> {
 }
 
 pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("qmt:{ticker}");
     if let Some(result) = STOCK_DIVIDENDS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -353,7 +361,7 @@ pub async fn fetch_stock_dividends(ticker: &Ticker) -> VfResult<DailySeries> {
 }
 
 pub async fn fetch_stock_indicators(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("tushare:{ticker}");
     if let Some(result) = STOCK_INDICATORS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -445,11 +453,36 @@ pub async fn fetch_stock_kline(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
 ) -> VfResult<DailySeries> {
-    let today = Local::now().date_naive();
-    if is_delisted(ticker, &today).await? {
-        fetch_stock_kline_tushare(ticker, adjust, false).await
-    } else {
-        fetch_stock_kline_qmt(ticker, adjust, false).await
+    if let Ok(result) = fetch_stock_kline_tushare(ticker, adjust.clone(), false).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
+
+    if let Ok(result) = fetch_stock_kline_qmt(ticker, adjust.clone(), false).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
+
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock kline data of {ticker}"),
+    })
+}
+
+pub async fn fetch_stock_kline_with_ds(
+    ticker: &Ticker,
+    adjust: StockDividendAdjust,
+    ds_name: &str,
+) -> VfResult<DailySeries> {
+    match ds_name.to_lowercase().as_str() {
+        "qmt" => fetch_stock_kline_qmt(ticker, adjust.clone(), false).await,
+        "tushare" => fetch_stock_kline_tushare(ticker, adjust.clone(), false).await,
+        _ => Err(VfError::Invalid {
+            code: "INVALID_DATA_SOURCE",
+            message: format!("No data source '{ds_name}'"),
+        }),
     }
 }
 
@@ -457,16 +490,41 @@ pub async fn fetch_stock_kline_ignore_cache(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
 ) -> VfResult<DailySeries> {
-    let today = Local::now().date_naive();
-    if is_delisted(ticker, &today).await? {
-        fetch_stock_kline_tushare(ticker, adjust, true).await
-    } else {
-        fetch_stock_kline_qmt(ticker, adjust, true).await
+    if let Ok(result) = fetch_stock_kline_tushare(ticker, adjust.clone(), true).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
+
+    if let Ok(result) = fetch_stock_kline_qmt(ticker, adjust.clone(), true).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
+
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock kline data of {ticker}"),
+    })
+}
+
+pub async fn fetch_stock_kline_ignore_cache_with_ds(
+    ticker: &Ticker,
+    adjust: StockDividendAdjust,
+    ds_name: &str,
+) -> VfResult<DailySeries> {
+    match ds_name.to_lowercase().as_str() {
+        "qmt" => fetch_stock_kline_qmt(ticker, adjust.clone(), true).await,
+        "tushare" => fetch_stock_kline_tushare(ticker, adjust.clone(), true).await,
+        _ => Err(VfError::Invalid {
+            code: "INVALID_DATA_SOURCE",
+            message: format!("No data source '{ds_name}'"),
+        }),
     }
 }
 
 pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("qmt:{ticker}");
     if let Some(result) = STOCK_REPORT_CAPITAL_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -505,140 +563,80 @@ pub async fn fetch_stock_report_capital(ticker: &Ticker) -> VfResult<DailySeries
     Ok(result)
 }
 
-pub async fn fetch_stock_report_cash_flow(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
-    if let Some(result) = STOCK_REPORT_CASH_FLOW_CACHE.get(&cache_key) {
-        return Ok(result.clone());
+pub async fn fetch_stock_report_balance(ticker: &Ticker) -> VfResult<DailySeries> {
+    if let Ok(result) = fetch_stock_report_balance_tushare(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
     }
 
-    let json = qmt::call_api(
-        &format!("/stock_report/{}", ticker.to_qmt_code()),
-        &json!({
-            "table": "CashFlow",
-        }),
-        0,
-        false,
-    )
-    .await?;
+    if let Ok(result) = fetch_stock_report_balance_qmt(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
 
-    let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(
-        StockReportCashFlowField::ReportDate.to_string(),
-        "m_timetag".to_string(),
-    );
-    fields.insert(
-        StockReportCashFlowField::NetCashByOperatingActivities.to_string(),
-        "net_cash_flows_oper_act".to_string(),
-    );
-    fields.insert(
-        StockReportCashFlowField::CapitalExpenditures.to_string(),
-        "cash_pay_acq_const_fiolta".to_string(),
-    );
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock report balance data of {ticker}"),
+    })
+}
 
-    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
-    STOCK_REPORT_CASH_FLOW_CACHE.insert(cache_key, result.clone());
+pub async fn fetch_stock_report_cash_flow(ticker: &Ticker) -> VfResult<DailySeries> {
+    if let Ok(result) = fetch_stock_report_cash_flow_tushare(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
 
-    Ok(result)
+    if let Ok(result) = fetch_stock_report_cash_flow_qmt(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
+
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock report cash flow data of {ticker}"),
+    })
 }
 
 pub async fn fetch_stock_report_income(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
-    if let Some(result) = STOCK_REPORT_INCOME_CACHE.get(&cache_key) {
-        return Ok(result.clone());
+    if let Ok(result) = fetch_stock_report_income_tushare(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
     }
 
-    let json = qmt::call_api(
-        &format!("/stock_report/{}", ticker.to_qmt_code()),
-        &json!({
-            "table": "Income",
-        }),
-        0,
-        false,
-    )
-    .await?;
+    if let Ok(result) = fetch_stock_report_income_qmt(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
 
-    let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(
-        StockReportIncomeField::ReportDate.to_string(),
-        "m_timetag".to_string(),
-    );
-    fields.insert(
-        StockReportIncomeField::Revenue.to_string(),
-        "revenue".to_string(),
-    );
-    fields.insert(
-        StockReportIncomeField::OperatingProfit.to_string(),
-        "oper_profit".to_string(),
-    );
-    fields.insert(
-        StockReportIncomeField::TotalProfit.to_string(),
-        "tot_profit".to_string(),
-    );
-
-    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
-    STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
-
-    Ok(result)
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock report income data of {ticker}"),
+    })
 }
 
 pub async fn fetch_stock_report_pershare(ticker: &Ticker) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
-    if let Some(result) = STOCK_REPORT_PERSHARE_CACHE.get(&cache_key) {
-        return Ok(result.clone());
+    if let Ok(result) = fetch_stock_report_pershare_tushare(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
     }
 
-    let json = qmt::call_api(
-        &format!("/stock_report/{}", ticker.to_qmt_code()),
-        &json!({
-            "table": "PershareIndex",
-        }),
-        0,
-        false,
-    )
-    .await?;
+    if let Ok(result) = fetch_stock_report_pershare_qmt(ticker).await {
+        if result.len() > 0 {
+            return Ok(result);
+        }
+    }
 
-    let mut fields: HashMap<String, String> = HashMap::new();
-    fields.insert(
-        StockReportPershareField::ReportDate.to_string(),
-        "m_timetag".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::AdjustedNetProfitRate.to_string(),
-        "adjusted_net_profit_rate".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::Bps.to_string(),
-        "s_fa_bps".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::Cfps.to_string(),
-        "s_fa_ocfps".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::Eps.to_string(),
-        "s_fa_eps_basic".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::GrossProfit.to_string(),
-        "gross_profit".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::IncRevenueRate.to_string(),
-        "inc_revenue_rate".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::NetProfit.to_string(),
-        "net_profit".to_string(),
-    );
-    fields.insert(
-        StockReportPershareField::Roe.to_string(),
-        "equity_roe".to_string(),
-    );
-
-    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
-    STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
-
-    Ok(result)
+    Err(VfError::NoData {
+        code: "NO_DATA",
+        message: format!("No stock report pershare data of {ticker}"),
+    })
 }
 
 static DELISTED_STOCKS_CACHE: LazyLock<DashMap<String, HashMap<Ticker, NaiveDate>>> =
@@ -649,6 +647,8 @@ static STOCK_DETAIL_CACHE: LazyLock<DashMap<String, StockDetail>> = LazyLock::ne
 static STOCK_DIVIDENDS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_INDICATORS_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
 static STOCK_KLINE_CACHE: LazyLock<DashMap<String, DailySeries>> = LazyLock::new(DashMap::new);
+static STOCK_REPORT_BALANCE_CACHE: LazyLock<DashMap<String, DailySeries>> =
+    LazyLock::new(DashMap::new);
 static STOCK_REPORT_CAPITAL_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
 static STOCK_REPORT_CASH_FLOW_CACHE: LazyLock<DashMap<String, DailySeries>> =
@@ -658,7 +658,7 @@ static STOCK_REPORT_INCOME_CACHE: LazyLock<DashMap<String, DailySeries>> =
 static STOCK_REPORT_PERSHARE_CACHE: LazyLock<DashMap<String, DailySeries>> =
     LazyLock::new(DashMap::new);
 
-/// QMT does not support delisted stocks
+/// QMT does not support delisted stocks, consider use tushare first
 async fn fetch_stock_kline_qmt(
     ticker: &Ticker,
     adjust: StockDividendAdjust,
@@ -787,41 +787,43 @@ async fn fetch_stock_kline_tushare(
                         adjust_factors.insert(date, factor);
                     }
                 }
-                let latest_adjust_factor = adjust_factors
-                    .iter()
-                    .max_by_key(|(date, _)| *date)
-                    .map(|(_, factor)| *factor);
 
                 match adjust {
                     StockDividendAdjust::Backward => {
-                        for (item_idx, item) in items.clone().iter().enumerate() {
-                            if let Some(trade_date) = item[trade_date_idx]
+                        for item_idx in (0..items.len()).rev() {
+                            if let Some(trade_date) = items[item_idx][trade_date_idx]
                                 .as_str()
                                 .and_then(|s| date_from_str(s).ok())
-                                && let Some(open) = item[open_idx].as_f64()
-                                && let Some(close) = item[close_idx].as_f64()
-                                && let Some(high) = item[high_idx].as_f64()
-                                && let Some(low) = item[low_idx].as_f64()
+                                && let Some(open) = items[item_idx][open_idx].as_f64()
+                                && let Some(close) = items[item_idx][close_idx].as_f64()
+                                && let Some(high) = items[item_idx][high_idx].as_f64()
+                                && let Some(low) = items[item_idx][low_idx].as_f64()
                             {
                                 if let Some(adjust_factor) = adjust_factors.get(&trade_date) {
                                     items[item_idx][open_idx] = json!(open * adjust_factor);
                                     items[item_idx][close_idx] = json!(close * adjust_factor);
                                     items[item_idx][high_idx] = json!(high * adjust_factor);
                                     items[item_idx][low_idx] = json!(low * adjust_factor);
+                                } else {
+                                    items.remove(item_idx);
                                 }
                             }
                         }
                     }
                     StockDividendAdjust::Forward => {
-                        if let Some(latest_adjust_factor) = latest_adjust_factor {
-                            for (item_idx, item) in items.clone().iter().enumerate() {
-                                if let Some(trade_date) = item[trade_date_idx]
+                        if let Some(latest_adjust_factor) = adjust_factors
+                            .iter()
+                            .max_by_key(|(date, _)| *date)
+                            .map(|(_, factor)| *factor)
+                        {
+                            for item_idx in (0..items.len()).rev() {
+                                if let Some(trade_date) = items[item_idx][trade_date_idx]
                                     .as_str()
                                     .and_then(|s| date_from_str(s).ok())
-                                    && let Some(open) = item[open_idx].as_f64()
-                                    && let Some(close) = item[close_idx].as_f64()
-                                    && let Some(high) = item[high_idx].as_f64()
-                                    && let Some(low) = item[low_idx].as_f64()
+                                    && let Some(open) = items[item_idx][open_idx].as_f64()
+                                    && let Some(close) = items[item_idx][close_idx].as_f64()
+                                    && let Some(high) = items[item_idx][high_idx].as_f64()
+                                    && let Some(low) = items[item_idx][low_idx].as_f64()
                                 {
                                     if let Some(adjust_factor) = adjust_factors.get(&trade_date) {
                                         let factor = latest_adjust_factor / adjust_factor;
@@ -829,6 +831,8 @@ async fn fetch_stock_kline_tushare(
                                         items[item_idx][close_idx] = json!(close * factor);
                                         items[item_idx][high_idx] = json!(high * factor);
                                         items[item_idx][low_idx] = json!(low * factor);
+                                    } else {
+                                        items.remove(item_idx);
                                     }
                                 }
                             }
@@ -856,6 +860,383 @@ async fn fetch_stock_kline_tushare(
 
     let result = DailySeries::from_tushare_json(&json, "trade_date", &fields)?;
     STOCK_KLINE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_balance_qmt(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("qmt:{ticker}");
+    if let Some(result) = STOCK_REPORT_BALANCE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "Balance",
+        }),
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportBalanceField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::CashEquivalents.to_string(),
+        "cash_equivalents".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalAssets.to_string(),
+        "tot_assets".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalCurrentAssets.to_string(),
+        "total_current_assets".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalLiability.to_string(),
+        "tot_liab".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalCurrentLiability.to_string(),
+        "total_current_liability".to_string(),
+    );
+
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
+    STOCK_REPORT_BALANCE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_balance_tushare(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("tushare:{ticker}");
+    if let Some(result) = STOCK_REPORT_BALANCE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = tushare::call_api(
+        "balancesheet",
+        &json!({
+            "ts_code": ticker.to_tushare_code(),
+        }),
+        None,
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportBalanceField::ReportDate.to_string(),
+        "end_date".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::CashEquivalents.to_string(),
+        "money_cap".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalAssets.to_string(),
+        "total_assets".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalCurrentAssets.to_string(),
+        "total_cur_assets".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalLiability.to_string(),
+        "total_liab".to_string(),
+    );
+    fields.insert(
+        StockReportBalanceField::TotalCurrentLiability.to_string(),
+        "total_cur_liab".to_string(),
+    );
+
+    let result = DailySeries::from_tushare_json(&json, "f_ann_date", &fields)?;
+    STOCK_REPORT_BALANCE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_cash_flow_qmt(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("qmt:{ticker}");
+    if let Some(result) = STOCK_REPORT_CASH_FLOW_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "CashFlow",
+        }),
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportCashFlowField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::NetCashByOperatingActivities.to_string(),
+        "net_cash_flows_oper_act".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::CapitalExpenditures.to_string(),
+        "cash_pay_acq_const_fiolta".to_string(),
+    );
+
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
+    STOCK_REPORT_CASH_FLOW_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_cash_flow_tushare(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("tushare:{ticker}");
+    if let Some(result) = STOCK_REPORT_CASH_FLOW_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = tushare::call_api(
+        "cashflow",
+        &json!({
+            "ts_code": ticker.to_tushare_code(),
+        }),
+        None,
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportCashFlowField::ReportDate.to_string(),
+        "end_date".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::NetCashByOperatingActivities.to_string(),
+        "n_cashflow_act".to_string(),
+    );
+    fields.insert(
+        StockReportCashFlowField::CapitalExpenditures.to_string(),
+        "c_pay_acq_const_fiolta".to_string(),
+    );
+
+    let result = DailySeries::from_tushare_json(&json, "f_ann_date", &fields)?;
+    STOCK_REPORT_CASH_FLOW_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_income_qmt(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("qmt:{ticker}");
+    if let Some(result) = STOCK_REPORT_INCOME_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "Income",
+        }),
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportIncomeField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::Revenue.to_string(),
+        "revenue".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::OperatingProfit.to_string(),
+        "oper_profit".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::TotalProfit.to_string(),
+        "tot_profit".to_string(),
+    );
+
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
+    STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_income_tushare(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("tushare:{ticker}");
+    if let Some(result) = STOCK_REPORT_INCOME_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = tushare::call_api(
+        "income",
+        &json!({
+            "ts_code": ticker.to_tushare_code(),
+        }),
+        None,
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportCapitalField::ReportDate.to_string(),
+        "end_date".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::Revenue.to_string(),
+        "total_revenue".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::OperatingProfit.to_string(),
+        "operate_profit".to_string(),
+    );
+    fields.insert(
+        StockReportIncomeField::TotalProfit.to_string(),
+        "total_profit".to_string(),
+    );
+
+    let result = DailySeries::from_tushare_json(&json, "f_ann_date", &fields)?;
+    STOCK_REPORT_INCOME_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_pershare_qmt(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("qmt:{ticker}");
+    if let Some(result) = STOCK_REPORT_PERSHARE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    let json = qmt::call_api(
+        &format!("/stock_report/{}", ticker.to_qmt_code()),
+        &json!({
+            "table": "PershareIndex",
+        }),
+        0,
+        false,
+    )
+    .await?;
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportPershareField::ReportDate.to_string(),
+        "m_timetag".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::Bps.to_string(),
+        "s_fa_bps".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::Eps.to_string(),
+        "s_fa_eps_basic".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::EquityRoe.to_string(),
+        "equity_roe".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::GrossProfit.to_string(),
+        "gross_profit".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::NetProfit.to_string(),
+        "net_profit".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::Ocfps.to_string(),
+        "s_fa_ocfps".to_string(),
+    );
+
+    let result = DailySeries::from_qmt_json(&json, "date", &fields)?;
+    STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
+
+    Ok(result)
+}
+
+async fn fetch_stock_report_pershare_tushare(ticker: &Ticker) -> VfResult<DailySeries> {
+    let cache_key = format!("tushare:{ticker}");
+    if let Some(result) = STOCK_REPORT_PERSHARE_CACHE.get(&cache_key) {
+        return Ok(result.clone());
+    }
+
+    static PAGE_SIZE: usize = 100;
+
+    let mut fields: Vec<Value> = vec![];
+    let mut items: Vec<Value> = vec![];
+
+    let mut offset: usize = 0;
+    while items.len() == offset {
+        let json = tushare::call_api(
+            "fina_indicator",
+            &json!({
+                "ts_code": ticker.to_tushare_code(),
+                "limit": PAGE_SIZE,
+                "offset": offset,
+            }),
+            None,
+            0,
+            false,
+        )
+        .await?;
+
+        if let Some(page_fields) = json["data"]["fields"].as_array() {
+            fields = page_fields.clone();
+        }
+
+        if let Some(page_items) = json["data"]["items"].as_array() {
+            items.extend_from_slice(page_items);
+        }
+
+        offset += PAGE_SIZE;
+    }
+
+    let json = json!({
+        "data": {
+            "fields": fields,
+            "items": items,
+        }
+    });
+
+    let mut fields: HashMap<String, String> = HashMap::new();
+    fields.insert(
+        StockReportPershareField::ReportDate.to_string(),
+        "end_date".to_string(),
+    );
+    fields.insert(StockReportPershareField::Bps.to_string(), "bps".to_string());
+    fields.insert(StockReportPershareField::Eps.to_string(), "eps".to_string());
+    fields.insert(
+        StockReportPershareField::EquityRoe.to_string(),
+        "roe_waa".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::GrossProfit.to_string(),
+        "gross_margin".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::NetProfit.to_string(),
+        "netprofit_margin".to_string(),
+    );
+    fields.insert(
+        StockReportPershareField::Ocfps.to_string(),
+        "ocfps".to_string(),
+    );
+
+    let result = DailySeries::from_tushare_json(&json, "ann_date", &fields)?;
+    STOCK_REPORT_PERSHARE_CACHE.insert(cache_key, result.clone());
 
     Ok(result)
 }
@@ -952,29 +1333,39 @@ mod tests {
         let date = date_from_str("2019-08-15").unwrap();
 
         {
+            let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::No, false)
+                .await
+                .unwrap();
+            let dataset_tushare =
+                fetch_stock_kline_tushare(&ticker, StockDividendAdjust::No, false)
+                    .await
+                    .unwrap();
+
+            let (_, data_qmt) = dataset_qmt
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
+                .unwrap();
+            let (_, data_tushare) = dataset_tushare
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
+                .unwrap();
+
+            assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
+        }
+
+        // Can not pass for now
+        {
             let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
                 .await
                 .unwrap();
-            let (_, data_qmt) = dataset_qmt
-                .get_latest_value::<f64>(
-                    &date,
-                    STALE_DAYS_SHORT,
-                    false,
-                    &KlineField::Close.to_string(),
-                )
-                .unwrap();
-
             let dataset_tushare =
-                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Backward, false)
+                fetch_stock_kline_tushare(&ticker, StockDividendAdjust::Backward, false)
                     .await
                     .unwrap();
+
+            let (_, data_qmt) = dataset_qmt
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
+                .unwrap();
             let (_, data_tushare) = dataset_tushare
-                .get_latest_value::<f64>(
-                    &date,
-                    STALE_DAYS_SHORT,
-                    false,
-                    &KlineField::Close.to_string(),
-                )
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
                 .unwrap();
 
             assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
@@ -984,25 +1375,46 @@ mod tests {
             let dataset_qmt = fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
                 .await
                 .unwrap();
+            let dataset_tushare =
+                fetch_stock_kline_tushare(&ticker, StockDividendAdjust::Forward, false)
+                    .await
+                    .unwrap();
+
+            let (_, data_qmt) = dataset_qmt
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
+                .unwrap();
+            let (_, data_tushare) = dataset_tushare
+                .get_value::<f64>(&date, &KlineField::Close.to_string())
+                .unwrap();
+
+            assert!(((data_qmt - data_tushare) / data_tushare).abs() < 0.001);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_stock_report_pershare_from_qmt_and_tushare() {
+        let ticker = Ticker::from_str("600595").unwrap();
+        let date = date_from_str("2019-08-15").unwrap();
+
+        let dataset_qmt = fetch_stock_report_pershare_qmt(&ticker).await.unwrap();
+        let dataset_tushare = fetch_stock_report_pershare_tushare(&ticker).await.unwrap();
+
+        {
             let (_, data_qmt) = dataset_qmt
                 .get_latest_value::<f64>(
                     &date,
                     STALE_DAYS_SHORT,
                     false,
-                    &KlineField::Close.to_string(),
+                    &StockReportPershareField::EquityRoe.to_string(),
                 )
                 .unwrap();
 
-            let dataset_tushare =
-                fetch_stock_kline_qmt(&ticker, StockDividendAdjust::Forward, false)
-                    .await
-                    .unwrap();
             let (_, data_tushare) = dataset_tushare
                 .get_latest_value::<f64>(
                     &date,
                     STALE_DAYS_SHORT,
                     false,
-                    &KlineField::Close.to_string(),
+                    &StockReportPershareField::EquityRoe.to_string(),
                 )
                 .unwrap();
 

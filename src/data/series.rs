@@ -398,6 +398,10 @@ impl DailySeries {
         vec![]
     }
 
+    pub fn len(&self) -> usize {
+        self.df.height()
+    }
+
     pub fn slice_by_date_range(
         &self,
         date_from: &NaiveDate,

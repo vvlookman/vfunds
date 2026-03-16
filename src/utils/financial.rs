@@ -257,8 +257,9 @@ pub fn calc_sharpe_ratio(daily_values: &[f64], risk_free_rate: f64) -> Option<f6
             if annualized_volatility > 0.0 {
                 let annualized_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
                 let sharpe_ratio = (annualized_return - risk_free_rate) / annualized_volatility;
-
-                return Some(sharpe_ratio);
+                if sharpe_ratio.is_finite() {
+                    return Some(sharpe_ratio);
+                }
             }
         }
     }
@@ -283,8 +284,9 @@ pub fn calc_sortino_ratio(daily_values: &[f64], min_acceptable_return: f64) -> O
                         let annualized_return = (1.0 + return_mean).powf(TRADE_DAYS_PER_YEAR) - 1.0;
                         let sortino_ratio =
                             (annualized_return - min_acceptable_return) / annualized_volatility;
-
-                        return Some(sortino_ratio);
+                        if sortino_ratio.is_finite() {
+                            return Some(sortino_ratio);
+                        }
                     }
                 }
             }

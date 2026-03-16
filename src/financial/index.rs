@@ -29,7 +29,7 @@ pub enum IndexIndicatorField {
 /// - 399005.SZ 中小板指
 /// - 399006.SZ 创业板指
 pub async fn fetch_index_indicators(index: &TickersIndex) -> VfResult<DailySeries> {
-    let cache_key = format!("{index}");
+    let cache_key = format!("tushare:{index}");
     if let Some(result) = INDEX_INDICATORS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -90,7 +90,7 @@ pub async fn fetch_index_indicators(index: &TickersIndex) -> VfResult<DailySerie
 pub async fn fetch_index_tickers(index: &TickersIndex, date: &NaiveDate) -> VfResult<Vec<Ticker>> {
     let prev_date = *date - Duration::days(1);
 
-    let cache_key = format!("{index}/{}", date_to_str(&prev_date));
+    let cache_key = format!("tushare:{index}/{}", date_to_str(&prev_date));
     if let Some(result) = INDEX_TICKERS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }

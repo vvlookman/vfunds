@@ -5,7 +5,7 @@ frequency = "6m"
 [funds]
 high-momentum = 5
 high-real-cash = 1
-low-pb = 2
+low-pb = 3
 permanent = 1
 small-cap = 5
 

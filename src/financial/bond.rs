@@ -47,7 +47,7 @@ pub struct ConvBondIssue {
 }
 
 pub async fn fetch_conv_bond_basic(ticker: &Ticker) -> VfResult<ConvBondBasic> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("tushare:{ticker}");
     if let Some(result) = CONV_BOND_BASIC_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -145,7 +145,7 @@ pub async fn fetch_conv_bonds(
     date: &NaiveDate,
     lookback_months: u32,
 ) -> VfResult<Vec<ConvBondIssue>> {
-    let cache_key = format!("{}/{lookback_months}", date_to_str(date));
+    let cache_key = format!("tushare:{}/{lookback_months}", date_to_str(date));
     if let Some(result) = CONV_BONDS_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }
@@ -214,7 +214,7 @@ async fn fetch_conv_bond_daily_with_ignore_cache(
     ticker: &Ticker,
     ignore_cache: bool,
 ) -> VfResult<DailySeries> {
-    let cache_key = format!("{ticker}");
+    let cache_key = format!("tushare:{ticker}");
     if !ignore_cache && let Some(result) = CONV_BOND_DAILY_CACHE.get(&cache_key) {
         return Ok(result.clone());
     }

@@ -24,7 +24,7 @@ weight_method = "equal"
 
 [rules.search.options]
 # circulating_ratio_lower = [0, 0.1, 0.2, 0.3, 0.4, 0.5]
-# limit = [2, 3, 4, 5, 10]
+# limit = [2, 3, 4, 5]
 # pb_quantile_upper = [0.7, 0.8, 0.9, 1]
 # pre_select_ratio = [10, 20, 30, 40, 50, 100, 200, 500]
 # ps_quantile_upper = [0.7, 0.8, 0.9, 1]
@@ -42,4 +42,4 @@ spike_rise_threshold = 0.2
 [rules.search.options]
 # spike_days = [1, 2, 3, 5]
 # spike_fall_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
-# spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
+# spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5, 1]
