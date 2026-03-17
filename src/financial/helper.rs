@@ -68,7 +68,30 @@ pub async fn calc_stock_current_ratio(ticker: &Ticker, date: &NaiveDate) -> VfRe
     })
 }
 
-pub async fn calc_stock_dividend_ratio_lt(
+pub async fn calc_stock_debt_ratio(ticker: &Ticker, date: &NaiveDate) -> VfResult<f64> {
+    let report_balance = fetch_stock_report_balance(ticker).await?;
+
+    if let Some((_, liability)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::TotalLiability.to_string(),
+    ) && let Some((_, assets)) = report_balance.get_latest_value::<f64>(
+        date,
+        STALE_DAYS_LONG,
+        false,
+        &StockReportBalanceField::TotalAssets.to_string(),
+    ) {
+        return Ok(liability / assets);
+    }
+
+    Err(VfError::NoData {
+        code: "NO_DEBT_RATIO_DATA",
+        message: format!("Debt ratio of '{ticker}' @{} not exists", date_to_str(date)),
+    })
+}
+
+pub async fn calc_stock_dividend_ratio_of_years(
     ticker: &Ticker,
     date: &NaiveDate,
     lookback_years: u32,
@@ -98,60 +121,7 @@ pub async fn calc_stock_dividend_ratio_lt(
     }
 }
 
-pub async fn calc_stock_dividend_ratio_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<f64> {
-    // Try read from stock indicators
-    {
-        let stock_indicators = fetch_stock_indicators(ticker).await?;
-        if let Some((_, dv_ttm_pct)) = stock_indicators.get_latest_value::<f64>(
-            date,
-            STALE_DAYS_SHORT,
-            false,
-            &StockIndicatorField::DividendRatioTtm.to_string(),
-        ) {
-            return Ok(dv_ttm_pct / 100.0);
-        }
-    }
-
-    // Try calculate from stock dividends data
-    {
-        let stock_dividends = fetch_stock_dividends(ticker).await?;
-
-        let year_date_from = date.with_year(date.year() - 1).unwrap();
-        let year_date_to = *date - Duration::days(1);
-        if let Ok(year_dividends) =
-            stock_dividends.slice_by_date_range(&year_date_from, &year_date_to)
-        {
-            let mut total_dividend = 0.0;
-
-            for div_date in year_dividends.all_dates() {
-                if let Some((_, interest)) = year_dividends
-                    .get_value::<f64>(&div_date, &StockDividendField::Interest.to_string())
-                {
-                    let shares = calc_stock_shares(ticker, &div_date, false).await?;
-                    total_dividend += interest * shares;
-                }
-            }
-
-            let market_cap = calc_stock_market_cap(ticker, date, false).await?;
-
-            return Ok(total_dividend / market_cap);
-        }
-    }
-
-    Err(VfError::NoData {
-        code: "NO_DV_RATIO_TTM_DATA",
-        message: format!(
-            "DV Ratio TTM of '{ticker}' @{} not exists",
-            date_to_str(date)
-        ),
-    })
-}
-
-pub async fn calc_stock_free_cash_ratio_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<f64> {
-    calc_stock_free_cash_ratio_lt(ticker, date, 1).await
-}
-
-pub async fn calc_stock_free_cash_ratio_lt(
+pub async fn calc_stock_free_cash_ratio_of_years(
     ticker: &Ticker,
     date: &NaiveDate,
     lookback_years: u32,
@@ -440,7 +410,7 @@ pub async fn calc_stock_ps_ttm(ticker: &Ticker, date: &NaiveDate) -> VfResult<f6
     })
 }
 
-pub async fn calc_stock_roe_lt(
+pub async fn calc_stock_roe_of_years(
     ticker: &Ticker,
     date: &NaiveDate,
     lookback_years: u32,
@@ -520,8 +490,8 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_calc_stock_free_cash_ratio_lt() {
-        let free_cash_ratio = calc_stock_free_cash_ratio_lt(
+    async fn test_calc_stock_free_cash_ratio_of_years() {
+        let free_cash_ratio = calc_stock_free_cash_ratio_of_years(
             &Ticker::from_str("600383").unwrap(),
             &date_from_str("2021-01-01").unwrap(),
             3,
@@ -533,8 +503,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_calc_stock_roe_lt() {
-        let roe_mean = calc_stock_roe_lt(
+    async fn test_calc_stock_roe_of_years() {
+        let roe_mean = calc_stock_roe_of_years(
             &Ticker::from_str("600383").unwrap(),
             &date_from_str("2021-01-01").unwrap(),
             3,

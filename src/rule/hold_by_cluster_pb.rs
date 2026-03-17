@@ -11,12 +11,12 @@ use crate::{
     error::VfResult,
     filter::{filter_invalid::has_invalid_price, filter_st::is_st},
     financial::{
-        helper::{calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_roe_lt},
+        helper::{calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_roe_of_years},
         stock::{StockIndicatorField, fetch_stock_indicators},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
-        rule_notify_calc_progress, rule_notify_indicators, rule_send_warning,
+        rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
     ticker::Ticker,
     utils::stats,
@@ -93,6 +93,11 @@ impl RuleExecutor for Executor {
             .get("roe_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
+        let roe_years = self
+            .options
+            .get("roe_years")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3);
         let weight_method = self
             .options
             .get("weight_method")
@@ -109,6 +114,10 @@ impl RuleExecutor for Executor {
 
             if pb_mean_count == 0 {
                 panic!("pb_mean_count must > 0");
+            }
+
+            if roe_years == 0 {
+                panic!("roe_years must > 0");
             }
         }
 
@@ -238,7 +247,8 @@ impl RuleExecutor for Executor {
 
                     if let Ok(cash_ratio) = calc_stock_cash_ratio(ticker, date).await
                         && let Ok(current_ratio) = calc_stock_current_ratio(ticker, date).await
-                        && let Ok(Some(roe)) = calc_stock_roe_lt(ticker, date, 1).await
+                        && let Ok(Some(roe)) =
+                            calc_stock_roe_of_years(ticker, date, roe_years as u32).await
                     {
                         tickers_factors_map.insert(
                             ticker.clone(),
@@ -319,20 +329,48 @@ impl RuleExecutor for Executor {
                         // Check overvalued
                         clusters_targets.insert(cluster_name.to_string(), holding.clone());
 
-                        if let Some(cluster_pb_upper) =
+                        if let Some(cluster_pb_sell) =
                             stats::quantile_value(&cluster_pbs, pb_quantile_upper)
+                            && let Some(cluster_pb_overvalued) =
+                                stats::quantile_value(&cluster_pbs, pb_quantile_upper - 0.1)
                         {
-                            if cluster_pb > cluster_pb_upper {
+                            if cluster_pb > cluster_pb_sell {
+                                rule_send_info(
+                                    rule_name,
+                                    &format!("[Cluster Sell Signal] {cluster_name} PB:{cluster_pb:.2}>{cluster_pb_sell:.2}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
+
                                 clusters_targets.remove(cluster_name);
+                            } else if cluster_pb > cluster_pb_overvalued {
+                                rule_send_info(
+                                    rule_name,
+                                    &format!("[Cluster Overvalued] {cluster_name} PB:{cluster_pb_overvalued:.2}<{cluster_pb:.2}<{cluster_pb_sell:.2}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
                             }
                         }
                     } else {
                         // Check undervalued
-                        if let Some(cluster_pb_lower) =
+                        if let Some(cluster_pb_buy) =
                             stats::quantile_value(&cluster_pbs, pb_quantile_lower)
+                            && let Some(cluster_pb_undervalued) =
+                                stats::quantile_value(&cluster_pbs, pb_quantile_lower + 0.1)
                             && let Some(cluster_pb_std) = stats::std(&cluster_pbs)
                         {
-                            if cluster_pb < cluster_pb_lower {
+                            if cluster_pb < cluster_pb_buy {
+                                rule_send_info(
+                                    rule_name,
+                                    &format!("[Cluster Buy Signal] {cluster_name} PB:{cluster_pb:.2}<{cluster_pb_buy:.2}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
+
                                 let mut tickers_indicator: Vec<(Ticker, f64)> = tickers_pb_map
                                     .iter()
                                     .filter(|(ticker, _)| {
@@ -365,6 +403,15 @@ impl RuleExecutor for Executor {
 
                                 clusters_targets.insert(cluster_name.to_string(), targets);
                                 clusters_candidates.insert(cluster_name.to_string(), candidates);
+                            } else if cluster_pb < cluster_pb_undervalued {
+                                rule_send_info(
+                                    rule_name,
+                                    &format!("[Cluster Undervalued] {cluster_name} PB:{cluster_pb_buy:.2}<{cluster_pb:.2}<{cluster_pb_undervalued:.2}"),
+                                    date,
+                                    event_sender,
+                                )
+                                .await;
+                                continue;
                             }
                         }
                     }

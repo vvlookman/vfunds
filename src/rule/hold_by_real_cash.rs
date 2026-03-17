@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f64};
 
 use async_trait::async_trait;
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
 
 use crate::{
@@ -11,14 +11,10 @@ use crate::{
     financial::{
         KlineField,
         helper::{
-            calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_dividend_ratio_lt,
-            calc_stock_dividend_ratio_ttm, calc_stock_free_cash_ratio_lt,
-            calc_stock_free_cash_ratio_ttm, calc_stock_roe_lt,
+            calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_dividend_ratio_of_years,
+            calc_stock_free_cash_ratio_of_years, calc_stock_roe_of_years,
         },
-        stock::{
-            StockDividendAdjust, StockDividendField, fetch_stock_detail, fetch_stock_dividends,
-            fetch_stock_kline,
-        },
+        stock::{StockDividendAdjust, fetch_stock_detail, fetch_stock_kline},
     },
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
@@ -28,7 +24,8 @@ use crate::{
     ticker::Ticker,
     utils::{
         financial::{calc_annualized_momentum, calc_annualized_volatility_mad},
-        stats::quantile_rank,
+        math::normalize_zscore,
+        stats::quantile_value,
     },
 };
 
@@ -55,14 +52,14 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
+        let adjust_dividend_ratio_weight = self
+            .options
+            .get("adjust_dividend_ratio_weight")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0);
         let adjust_momentum_weight = self
             .options
             .get("adjust_momentum_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let adjust_roe_weight = self
-            .options
-            .get("adjust_roe_weight")
             .and_then(|v| v.as_f64())
             .unwrap_or(1.0);
         let adjust_volatility_weight = self
@@ -80,24 +77,9 @@ impl RuleExecutor for Executor {
             .get("current_ratio_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
-        let dividend_ratio_lt_lower = self
-            .options
-            .get("dividend_ratio_lt_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         let dividend_ratio_quantile_lower = self
             .options
             .get("dividend_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let free_cash_ratio_lt_lower = self
-            .options
-            .get("free_cash_ratio_lt_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let free_cash_ratio_quantile_lower = self
-            .options
-            .get("free_cash_ratio_quantile_lower")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0);
         let exclude_sectors: Vec<String> = self
@@ -111,26 +93,26 @@ impl RuleExecutor for Executor {
                     .collect::<Vec<String>>()
             })
             .unwrap_or_default();
-        let free_cash_weight = self
-            .options
-            .get("free_cash_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.5);
         let limit = self
             .options
             .get("limit")
             .and_then(|v| v.as_u64())
             .unwrap_or(10);
-        let lookback_lt_years = self
-            .options
-            .get("lookback_lt_years")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
         let lookback_trade_days = self
             .options
             .get("lookback_trade_days")
             .and_then(|v| v.as_u64())
             .unwrap_or(250);
+        let roe_quantile_lower = self
+            .options
+            .get("roe_quantile_lower")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let roe_years = self
+            .options
+            .get("roe_years")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(3);
         let skip_same_sector = self
             .options
             .get("skip_same_sector")
@@ -146,12 +128,12 @@ impl RuleExecutor for Executor {
                 panic!("limit must > 0");
             }
 
-            if lookback_lt_years == 0 {
-                panic!("lookback_lt_years must > 0");
-            }
-
             if lookback_trade_days == 0 {
                 panic!("lookback_trade_days must > 0");
+            }
+
+            if roe_years == 0 {
+                panic!("roe_years must > 0");
             }
         }
 
@@ -198,102 +180,49 @@ impl RuleExecutor for Executor {
                         }
                     }
 
-                    if let Ok(dividend_ratio_lt) =
-                        calc_stock_dividend_ratio_lt(ticker, date, lookback_lt_years as u32).await
-                    {
-                        if dividend_ratio_lt < dividend_ratio_lt_lower {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-
-                    if let Ok(free_cash_ratio_lt) =
-                        calc_stock_free_cash_ratio_lt(ticker, date, lookback_lt_years as u32).await
-                    {
-                        if free_cash_ratio_lt < free_cash_ratio_lt_lower {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-
-                    {
-                        let lt_date_from = date
-                            .with_year(date.year() - lookback_lt_years as i32)
-                            .unwrap();
-                        let lt_date_to = *date - Duration::days(1);
-
-                        match fetch_stock_dividends(ticker).await {
-                            Ok(stock_dividends) => {
-                                if let Ok(year_dividends) =
-                                    stock_dividends.slice_by_date_range(&lt_date_from, &lt_date_to)
-                                {
-                                    let mut interest_count: usize = 0;
-
-                                    for div_date in year_dividends.all_dates() {
-                                        if let Some((_, interest)) = year_dividends
-                                            .get_value::<f64>(
-                                                &div_date,
-                                                &StockDividendField::Interest.to_string(),
-                                            )
-                                        {
-                                            if interest > 0.0 {
-                                                interest_count += 1;
-                                            }
-                                        }
-                                    }
-
-                                    if interest_count < lookback_lt_years as usize {
-                                        continue;
-                                    }
-                                } else {
-                                    continue;
-                                }
-                            }
-                            Err(_) => {
-                                continue;
-                            }
-                        }
-                    }
-
                     if let Ok(cash_ratio) = calc_stock_cash_ratio(ticker, date).await
                         && let Ok(current_ratio) = calc_stock_current_ratio(ticker, date).await
                         && let Ok(dividend_ratio) =
-                            calc_stock_dividend_ratio_ttm(ticker, date).await
+                            calc_stock_dividend_ratio_of_years(ticker, date, 1).await
                         && let Ok(free_cash_ratio) =
-                            calc_stock_free_cash_ratio_ttm(ticker, date).await
+                            calc_stock_free_cash_ratio_of_years(ticker, date, 1).await
+                        && let Some(roe) = calc_stock_roe_of_years(ticker, date, roe_years as u32)
+                            .await
+                            .ok()
+                            .flatten()
                     {
-                        if dividend_ratio > 0.0 && free_cash_ratio > 0.0 {
-                            let kline =
-                                fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
-                            let prices: Vec<f64> = kline
-                                .get_latest_values::<f64>(
-                                    date,
-                                    false,
-                                    &KlineField::Close.to_string(),
-                                    lookback_trade_days as u32,
-                                )
-                                .iter()
-                                .map(|&(_, v)| v)
-                                .collect();
-                            if prices.len()
-                                < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round()
-                                    as usize
-                            {
-                                rule_send_warning(
-                                    rule_name,
-                                    &format!(
-                                        "[No Enough Data] {ticker} {lookback_trade_days}({})",
-                                        prices.len()
-                                    ),
-                                    date,
-                                    event_sender,
-                                )
-                                .await;
-                                continue;
-                            }
+                        let kline =
+                            fetch_stock_kline(ticker, StockDividendAdjust::Backward).await?;
+                        let prices: Vec<f64> = kline
+                            .get_latest_values::<f64>(
+                                date,
+                                false,
+                                &KlineField::Close.to_string(),
+                                lookback_trade_days as u32,
+                            )
+                            .iter()
+                            .map(|&(_, v)| v)
+                            .collect();
+                        if prices.len()
+                            < (lookback_trade_days as f64 * REQUIRED_DATA_COMPLETENESS).round()
+                                as usize
+                        {
+                            rule_send_warning(
+                                rule_name,
+                                &format!(
+                                    "[No Enough Data] {ticker} {lookback_trade_days}({})",
+                                    prices.len()
+                                ),
+                                date,
+                                event_sender,
+                            )
+                            .await;
+                            continue;
+                        }
 
+                        if let Some(momentum) = calc_annualized_momentum(&prices, false)
+                            && let Some(volatility) = calc_annualized_volatility_mad(&prices)
+                        {
                             tickers_factors.push((
                                 ticker.clone(),
                                 Factors {
@@ -301,12 +230,9 @@ impl RuleExecutor for Executor {
                                     current_ratio,
                                     dividend_ratio,
                                     free_cash_ratio,
-                                    momentum: calc_annualized_momentum(&prices, false),
-                                    roe: calc_stock_roe_lt(ticker, date, lookback_lt_years as u32)
-                                        .await
-                                        .ok()
-                                        .flatten(),
-                                    volatility: calc_annualized_volatility_mad(&prices),
+                                    momentum,
+                                    roe,
+                                    volatility,
                                 },
                             ));
                         }
@@ -332,71 +258,71 @@ impl RuleExecutor for Executor {
                 .iter()
                 .map(|(_, f)| f.cash_ratio)
                 .collect::<Vec<f64>>();
+            let cash_ratio_lower = quantile_value(&factors_cash_ratio, cash_ratio_quantile_lower);
 
             let factors_current_ratio = tickers_factors
                 .iter()
                 .map(|(_, f)| f.current_ratio)
                 .collect::<Vec<f64>>();
+            let current_ratio_lower =
+                quantile_value(&factors_current_ratio, current_ratio_quantile_lower);
 
             let factors_dividend_ratio = tickers_factors
                 .iter()
                 .map(|(_, f)| f.dividend_ratio)
                 .collect::<Vec<f64>>();
+            let dividend_ratio_lower =
+                quantile_value(&factors_dividend_ratio, dividend_ratio_quantile_lower);
+            let normalized_factors_dividend_ratio = normalize_zscore(&factors_dividend_ratio);
 
             let factors_free_cash_ratio = tickers_factors
                 .iter()
                 .map(|(_, f)| f.free_cash_ratio)
                 .collect::<Vec<f64>>();
+            let normalized_factors_free_cash_ratio = normalize_zscore(&factors_free_cash_ratio);
 
             let factors_momentum = tickers_factors
                 .iter()
-                .filter_map(|(_, f)| f.momentum)
+                .map(|(_, f)| f.momentum)
                 .collect::<Vec<f64>>();
+            let normalized_factors_momentum = normalize_zscore(&factors_momentum);
 
             let factors_roe = tickers_factors
                 .iter()
-                .filter_map(|(_, f)| f.roe)
+                .map(|(_, f)| f.roe)
                 .collect::<Vec<f64>>();
+            let roe_lower = quantile_value(&factors_roe, roe_quantile_lower);
 
             let factors_volatility = tickers_factors
                 .iter()
-                .filter_map(|(_, f)| f.volatility)
+                .map(|(_, f)| f.volatility)
                 .collect::<Vec<f64>>();
+            let normalized_factors_volatility = normalize_zscore(&factors_volatility);
 
             let mut indicators: Vec<(Ticker, f64)> = vec![];
-            for (ticker, factors) in tickers_factors {
-                if let Some(momentum) = factors.momentum
-                    && let Some(roe) = factors.roe
-                    && let Some(volatility) = factors.volatility
+            for (i, (ticker, factors)) in tickers_factors.iter().enumerate() {
+                if let Some(cash_ratio_lower) = cash_ratio_lower
+                    && let Some(current_ratio_lower) = current_ratio_lower
+                    && let Some(dividend_ratio_lower) = dividend_ratio_lower
+                    && let Some(roe_lower) = roe_lower
                 {
-                    if let Some(cash_ratio_rank) =
-                        quantile_rank(&factors_cash_ratio, factors.cash_ratio)
-                        && let Some(current_ratio_rank) =
-                            quantile_rank(&factors_current_ratio, factors.current_ratio)
-                        && let Some(dividend_ratio_rank) =
-                            quantile_rank(&factors_dividend_ratio, factors.dividend_ratio)
-                        && let Some(free_cash_ratio_rank) =
-                            quantile_rank(&factors_free_cash_ratio, factors.free_cash_ratio)
-                        && let Some(momentum_rank) = quantile_rank(&factors_momentum, momentum)
-                        && let Some(roe_rank) = quantile_rank(&factors_roe, roe)
-                        && let Some(volatility_rank) =
-                            quantile_rank(&factors_volatility, volatility)
+                    if factors.cash_ratio > cash_ratio_lower
+                        && factors.current_ratio > current_ratio_lower
+                        && factors.dividend_ratio > dividend_ratio_lower
+                        && factors.roe > roe_lower
                     {
-                        if cash_ratio_rank > cash_ratio_quantile_lower
-                            && current_ratio_rank > current_ratio_quantile_lower
-                            && dividend_ratio_rank > dividend_ratio_quantile_lower
-                            && free_cash_ratio_rank > free_cash_ratio_quantile_lower
-                        {
-                            let adjust: f64 = adjust_momentum_weight * (momentum_rank - 0.5)
-                                + adjust_roe_weight * (roe_rank - 0.5)
-                                + adjust_volatility_weight * (0.5 - volatility_rank);
+                        let normalized_dividend_ratio = normalized_factors_dividend_ratio[i];
+                        let normalized_free_cash_ratio = normalized_factors_free_cash_ratio[i];
+                        let normalized_momentum = normalized_factors_momentum[i];
+                        let normalized_volatility = normalized_factors_volatility[i];
 
-                            let indicator = ((1.0 - free_cash_weight) * dividend_ratio_rank
-                                + free_cash_weight * free_cash_ratio_rank)
-                                * (1.0 + adjust);
+                        let indicator = normalized_free_cash_ratio
+                            * (1.0
+                                + adjust_dividend_ratio_weight * normalized_dividend_ratio
+                                + adjust_momentum_weight * normalized_momentum
+                                - adjust_volatility_weight * normalized_volatility);
 
-                            indicators.push((ticker, indicator));
-                        }
+                        indicators.push((ticker.clone(), indicator));
                     }
                 }
             }
@@ -442,7 +368,7 @@ struct Factors {
     current_ratio: f64,
     dividend_ratio: f64,
     free_cash_ratio: f64,
-    momentum: Option<f64>,
-    roe: Option<f64>,
-    volatility: Option<f64>,
+    momentum: f64,
+    roe: f64,
+    volatility: f64,
 }

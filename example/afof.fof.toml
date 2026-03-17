@@ -1,11 +1,13 @@
 title = "A FOF"
 description = "按权重组合虚拟基金"
-frequency = "6m"
+frequency = "1y"
+
+# 回测使用选项 -A 0.3
 
 [funds]
 high-momentum = 5
 high-real-cash = 1
-low-pb = 3
+low-pb = 5
 permanent = 1
 small-cap = 5
 

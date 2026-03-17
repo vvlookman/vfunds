@@ -40,6 +40,6 @@ spike_fall_threshold = 0.1
 spike_rise_threshold = 0.2
 
 [rules.search.options]
-# spike_days = [1, 2, 3, 5]
+# spike_days = [1, 2, 3]
 # spike_fall_threshold = [0.1, 0.2, 0.3, 0.4, 0.5]
 # spike_rise_threshold = [0.1, 0.2, 0.3, 0.4, 0.5, 1]

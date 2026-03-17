@@ -156,8 +156,8 @@ pub struct BacktestCommand {
     #[arg(
         short = 'A',
         long = "cv-score-arr-weight",
-        default_value_t = 0.6,
-        help = "score = arr_weight · arr_score + (1 - arr_weight) · sortino_score, the default value is 0.6"
+        default_value_t = 0.5,
+        help = "score = arr_weight · arr_score + (1 - arr_weight) · sortino_score, the default value is 0.5"
     )]
     cv_score_arr_weight: f64,
 }

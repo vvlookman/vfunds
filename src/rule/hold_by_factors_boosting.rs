@@ -14,7 +14,7 @@ use crate::{
     error::VfResult,
     financial::{
         KlineField,
-        helper::{calc_stock_cash_ratio, calc_stock_current_ratio},
+        helper::{calc_stock_cash_ratio, calc_stock_current_ratio, calc_stock_debt_ratio},
         stock::{
             StockDividendAdjust, StockIndicatorField, StockReportPershareField,
             fetch_stock_indicators, fetch_stock_kline, fetch_stock_report_pershare,
@@ -397,6 +397,13 @@ async fn calc_factors(ticker: &Ticker, end_date: &NaiveDate) -> VfResult<Vec<(St
         factors.push((
             "CurrentRatio".to_string(),
             calc_stock_current_ratio(ticker, end_date)
+                .await
+                .unwrap_or(f64::NAN),
+        ));
+
+        factors.push((
+            "DebtRatio".to_string(),
+            calc_stock_debt_ratio(ticker, end_date)
                 .await
                 .unwrap_or(f64::NAN),
         ));

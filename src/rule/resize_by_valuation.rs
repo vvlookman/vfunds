@@ -247,7 +247,7 @@ impl RuleExecutor for Executor {
                                 } else {
                                     rule_send_info(
                                         rule_name,
-                                        &format!("[Overvalued Warn] {ticker_title} PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"),
+                                        &format!("[Overvalued] {ticker_title} PE:{pe:.2}>{pe_overvalued:.2}~{pe_sell:.2} || PS:{ps:.2}>{ps_overvalued:.2}~{ps_sell:.2}"),
                                         date,
                                         event_sender,
                                         )
@@ -292,7 +292,7 @@ impl RuleExecutor for Executor {
                                 } else {
                                     rule_send_info(
                                         rule_name,
-                                        &format!("[Undervalued Warn] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"),
+                                        &format!("[Undervalued] {ticker}({ticker_title}) PE:{pe:.2}<{pe_undervalued:.2}~{pe_buy:.2} && PS:{ps:.2}<{ps_undervalued:.2}~{ps_buy:.2}"),
                                         date,
                                         event_sender,
                                     )
