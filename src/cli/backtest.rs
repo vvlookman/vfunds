@@ -461,7 +461,7 @@ impl BacktestCommand {
             if !today_updates.is_empty() {
                 let mut content = String::new();
                 for (vfund_tranche, logs) in today_updates {
-                    let logs_str = logs.join("\n");
+                    let logs_str = logs.into_iter().rev().collect::<Vec<_>>().join("\n");
                     content.push_str(&format!("[{vfund_tranche}]\n{logs_str}\n\n\n"));
                 }
 
