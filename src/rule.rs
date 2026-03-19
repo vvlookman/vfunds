@@ -46,6 +46,7 @@ impl Rule {
             "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
             "hold_by_trend" => Box::new(hold_by_trend::Executor::new(definition)),
+            "resize_by_drift" => Box::new(resize_by_drift::Executor::new(definition)),
             "resize_by_index_valuation" => {
                 Box::new(resize_by_index_valuation::Executor::new(definition))
             }
@@ -99,6 +100,7 @@ mod hold_by_risk_parity;
 mod hold_by_small_cap;
 mod hold_by_stablity;
 mod hold_by_trend;
+mod resize_by_drift;
 mod resize_by_index_valuation;
 mod resize_by_macd_crossover;
 mod resize_by_spike;
