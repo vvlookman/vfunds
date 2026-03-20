@@ -1,5 +1,6 @@
 title = "A FOF"
 description = "按权重组合虚拟基金"
+
 frequency = "1y"
 
 # 回测使用选项 -A 0.3

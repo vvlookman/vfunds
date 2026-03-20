@@ -1,5 +1,6 @@
 title = "趋势增强"
 description = "持有趋势增强得分最高的ETF"
+
 tickers = [
   "510300",  # 沪深300ETF
   "159338",  # 中证A500ETF

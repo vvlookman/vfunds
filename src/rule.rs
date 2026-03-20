@@ -53,6 +53,9 @@ impl Rule {
             "resize_by_macd_crossover" => {
                 Box::new(resize_by_macd_crossover::Executor::new(definition))
             }
+            "resize_by_return_deviation" => {
+                Box::new(resize_by_return_deviation::Executor::new(definition))
+            }
             "resize_by_spike" => Box::new(resize_by_spike::Executor::new(definition)),
             "resize_by_valuation" => Box::new(resize_by_valuation::Executor::new(definition)),
             _ => panic!("Unsupported rule: {}", definition.name),
@@ -103,6 +106,7 @@ mod hold_by_trend;
 mod resize_by_drift;
 mod resize_by_index_valuation;
 mod resize_by_macd_crossover;
+mod resize_by_return_deviation;
 mod resize_by_spike;
 mod resize_by_valuation;
 

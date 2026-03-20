@@ -11,7 +11,6 @@ description = "按固定比例持有股票、债券、黄金"
 
 [[rules]]
 name = "hold"
-frequency = "100y"
 
 [[rules]]
 name = "resize_by_drift"

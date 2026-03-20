@@ -194,9 +194,11 @@ impl FundBacktestContext<'_> {
             }
         }
 
+        // Use mid price for rebalancing
+        let price_type = PriceType::Mid;
+
         // Only keep tickers with price data
         let mut tickers_weight_price: Vec<(Ticker, f64, f64)> = vec![];
-        let price_type = PriceType::Mid;
         for (ticker, weight) in targets_weight {
             if let Some(price) = get_ticker_price(ticker, date, true, &price_type).await? {
                 tickers_weight_price.push((ticker.clone(), *weight, price));
@@ -218,7 +220,7 @@ impl FundBacktestContext<'_> {
                 .map(|(_, weight, _)| *weight)
                 .sum::<f64>();
             if targets_weight_sum > 0.0 {
-                let total_value = self.calc_total_value(date, &PriceType::Mid).await?;
+                let total_value = self.calc_total_value(date, &price_type).await?;
                 let positions_value = total_value * (1.0 - self.options.buffer_ratio);
 
                 for (ticker, weight, price) in &tickers_weight_price {
@@ -239,8 +241,8 @@ impl FundBacktestContext<'_> {
                         self.position_scale_with_price_type(
                             ticker,
                             target_units,
-                            &PriceType::Mid,
-                            &PriceType::Mid,
+                            &price_type,
+                            &price_type,
                             date,
                             event_sender,
                         )

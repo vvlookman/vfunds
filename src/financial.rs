@@ -60,6 +60,8 @@ pub enum PriceType {
     High,
     Low,
     Mid, // (High + Low) / 2
+    #[allow(dead_code)]
+    Open,
 }
 
 pub async fn get_ticker_kline(ticker: &Ticker, ignore_cache: bool) -> VfResult<DailySeries> {
@@ -140,6 +142,7 @@ pub async fn get_ticker_price(
                     PriceType::High => ConvBondDailyField::High,
                     PriceType::Low => ConvBondDailyField::Low,
                     PriceType::Mid => unreachable!(),
+                    PriceType::Open => ConvBondDailyField::Open,
                 };
 
                 Ok(daily
@@ -180,6 +183,7 @@ pub async fn get_ticker_price(
                     PriceType::High => KlineField::High,
                     PriceType::Low => KlineField::Low,
                     PriceType::Mid => unreachable!(),
+                    PriceType::Open => KlineField::Open,
                 };
 
                 Ok(kline
