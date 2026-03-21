@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
 use smartcore::{
@@ -24,6 +22,7 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
         select_by_indicators,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::{
         financial::*,
@@ -33,7 +32,7 @@ use crate::{
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 
     frequency_days: u64,
 }
@@ -58,37 +57,14 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let k = self.options.get("k").and_then(|v| v.as_u64()).unwrap_or(3);
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
-        let metric_r2_threshold = self
-            .options
-            .get("metric_r2_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.8);
-        let score_lower = self
-            .options
-            .get("score_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let train_trade_days = self
-            .options
-            .get("train_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(60);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-        }
+        let k = self.options.read_u64_no_zero("k", 3);
+        let limit = self.options.read_u64_no_zero("limit", 5);
+        let metric_r2_threshold =
+            self.options
+                .read_f64_in_range("metric_r2_threshold", 0.8, 0.0..=1.0);
+        let score_lower = self.options.read_f64_gte("score_lower", 0.0, 0.0);
+        let train_trade_days = self.options.read_u64_no_zero("train_trade_days", 60);
+        let weight_method = self.options.read_str("weight_method", "equal");
 
         let predict_trade_days = (self.frequency_days as f64 * TRADE_DAYS_FRACTION).round() as u32;
 

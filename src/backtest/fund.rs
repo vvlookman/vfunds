@@ -1044,8 +1044,8 @@ pub async fn backtest_fund_cv(
                                 .iter_mut()
                                 .find(|r| r.name == rule_option.rule_name)
                             {
-                                rule_definition.options.insert(
-                                    rule_option.option_name.to_string(),
+                                rule_definition.options.set(
+                                    &rule_option.option_name,
                                     rule_option.option_value.clone(),
                                 );
                             }

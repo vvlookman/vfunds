@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
 use tokio::{sync::mpsc::Sender, time::Instant};
@@ -14,7 +12,7 @@ use crate::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, select_by_indicators,
     },
-    spec::Frequency,
+    spec::{Frequency, RuleOptions},
     ticker::Ticker,
     utils::stats::quantile_value,
 };
@@ -23,7 +21,7 @@ pub struct Executor {
     frequency: Frequency,
 
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -45,50 +43,17 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let issue_size_quantile_lower = self
-            .options
-            .get("issue_size_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.2);
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5);
-        let max_tenor_months = self
-            .options
-            .get("max_tenor_months")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(72);
-        let min_remaining_days = self
-            .options
-            .get("min_remaining_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(60);
-        let remain_lower = self
-            .options
-            .get("remain_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.2);
-        let straight_premium_quantile_upper = self
-            .options
-            .get("straight_premium_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-
-            if max_tenor_months == 0 {
-                panic!("max_tenor_months must > 0");
-            }
-        }
+        let issue_size_quantile_lower =
+            self.options
+                .read_f64_in_range("issue_size_quantile_lower", 0.0, 0.0..=1.0);
+        let limit = self.options.read_u64_no_zero("limit", 5);
+        let max_tenor_months = self.options.read_u64_no_zero("max_tenor_months", 72);
+        let min_remaining_days = self.options.read_u64_no_zero("min_remaining_days", 60);
+        let remain_lower = self.options.read_f64_gte("remain_lower", 0.2, 0.0);
+        let straight_premium_quantile_upper =
+            self.options
+                .read_f64_in_range("straight_premium_quantile_upper", 1.0, 0.0..=1.0);
+        let weight_method = self.options.read_str("weight_method", "equal");
 
         let conv_bond_issues = fetch_conv_bonds(date, max_tenor_months as u32).await?;
         if !conv_bond_issues.is_empty() {

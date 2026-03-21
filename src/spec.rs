@@ -1,7 +1,10 @@
-use std::{collections::HashMap, num::ParseIntError, path::Path, str::FromStr};
+use std::{
+    collections::HashMap, num::ParseIntError, ops::RangeInclusive, panic, path::Path, str::FromStr,
+};
 
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::{
     DAYS_PER_YEAR,
@@ -164,10 +167,120 @@ pub struct RuleDefinition {
     pub frequency: Frequency,
 
     #[serde(default)]
-    pub options: HashMap<String, serde_json::Value>,
+    pub options: RuleOptions,
 
     #[serde(default)]
     pub search: RuleSearch,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RuleOptions(HashMap<String, serde_json::Value>);
+
+impl RuleOptions {
+    pub fn read_array(&self, key: &str) -> Option<&Vec<Value>> {
+        self.0.get(key).and_then(|v| v.as_array())
+    }
+
+    pub fn read_bool(&self, key: &str, default_value: bool) -> bool {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_bool())
+            .unwrap_or(default_value)
+    }
+
+    pub fn read_f64(&self, key: &str, default_value: f64) -> f64 {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(default_value)
+    }
+
+    pub fn read_f64_gt(&self, key: &str, default_value: f64, min_value: f64) -> f64 {
+        let val = self
+            .0
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(default_value);
+
+        if val <= min_value {
+            panic!("Option '{key}' must > {min_value}");
+        }
+
+        val
+    }
+
+    pub fn read_f64_gte(&self, key: &str, default_value: f64, min_value: f64) -> f64 {
+        let val = self
+            .0
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(default_value);
+
+        if val < min_value {
+            panic!("Option '{key}' must >= {min_value}");
+        }
+
+        val
+    }
+
+    pub fn read_f64_in_range(
+        &self,
+        key: &str,
+        default_value: f64,
+        range: RangeInclusive<f64>,
+    ) -> f64 {
+        let val = self
+            .0
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .unwrap_or(default_value);
+
+        if !range.contains(&val) {
+            panic!(
+                "Option '{key}' must >= {} and <= {}",
+                range.start(),
+                range.end()
+            );
+        }
+
+        val
+    }
+
+    pub fn read_object(&self, key: &str) -> Option<&Map<String, Value>> {
+        self.0.get(key).and_then(|v| v.as_object())
+    }
+
+    pub fn read_str(&self, key: &str, default_value: &'static str) -> &str {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or(default_value)
+    }
+
+    pub fn read_u64(&self, key: &str, default_value: u64) -> u64 {
+        self.0
+            .get(key)
+            .and_then(|v| v.as_u64())
+            .unwrap_or(default_value)
+    }
+
+    pub fn read_u64_no_zero(&self, key: &str, default_value: u64) -> u64 {
+        let val = self
+            .0
+            .get(key)
+            .and_then(|v| v.as_u64())
+            .unwrap_or(default_value);
+
+        if val == 0 {
+            panic!("Option '{key}' must > 0");
+        }
+
+        val
+    }
+
+    pub fn set(&mut self, key: &str, value: Value) {
+        self.0.insert(key.to_string(), value);
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

@@ -12,7 +12,7 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
-    spec::Frequency,
+    spec::{Frequency, RuleOptions},
     ticker::Ticker,
     utils::financial::calc_annualized_return_rate,
 };
@@ -20,7 +20,7 @@ use crate::{
 pub struct Executor {
     frequency: Frequency,
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -42,26 +42,12 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let deviation_threshold = self
-            .options
-            .get("deviation_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
-        let lookback_periods = self
-            .options
-            .get("lookback_periods")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1);
-        let rotation_deviation_ratio = self
-            .options
-            .get("rotation_deviation_ratio")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
-        let rotation_ratio = self
-            .options
-            .get("rotation_ratio")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
+        let deviation_threshold = self.options.read_f64_gt("deviation_threshold", 0.1, 0.0);
+        let lookback_periods = self.options.read_u64_no_zero("lookback_periods", 1);
+        let rotation_deviation_ratio =
+            self.options
+                .read_f64_gte("rotation_deviation_ratio", 0.1, 0.0);
+        let rotation_ratio = self.options.read_f64_gte("rotation_ratio", 0.1, 0.0);
 
         let lookback_trade_days =
             ((lookback_periods * self.frequency.to_days()) as f64 * TRADE_DAYS_FRACTION) as u32;

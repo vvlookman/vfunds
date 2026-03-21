@@ -1,7 +1,5 @@
 //! Close and re-enter position after price spike peak
 
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
@@ -14,11 +12,12 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
+    spec::RuleOptions,
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -39,21 +38,9 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let spike_days = self
-            .options
-            .get("spike_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1) as usize;
-        let spike_fall_threshold = self
-            .options
-            .get("spike_fall_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.01);
-        let spike_rise_threshold = self
-            .options
-            .get("spike_rise_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.03);
+        let spike_days = self.options.read_u64_no_zero("spike_days", 1);
+        let spike_fall_threshold = self.options.read_f64_gt("spike_fall_threshold", 0.01, 0.0);
+        let spike_rise_threshold = self.options.read_f64_gt("spike_rise_threshold", 0.03, 0.0);
 
         for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::Backward).await?;

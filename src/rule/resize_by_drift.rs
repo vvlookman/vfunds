@@ -8,13 +8,14 @@ use crate::{
     error::VfResult,
     financial::{PriceType, get_ticker_price},
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
+    spec::RuleOptions,
     ticker::Ticker,
     utils::stats,
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 
     targets_weight: Option<Vec<(Ticker, f64)>>,
 }
@@ -39,11 +40,7 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let drift_threshold = self
-            .options
-            .get("drift_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.01);
+        let drift_threshold = self.options.read_f64_gt("drift_threshold", 0.01, 0.0);
 
         if let Some(targets_weight) = self.targets_weight.clone() {
             let mut current_values: HashMap<Ticker, f64> = HashMap::new();

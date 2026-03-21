@@ -9,7 +9,6 @@ frequency = "1y"
 high-momentum = 5
 high-real-cash = 1
 low-pb = 5
-permanent = 1
 small-cap = 5
 
 [search]
@@ -19,5 +18,4 @@ frequency = ["3m", "6m", "1y"]
 high-momentum = [1, 2, 3, 5]
 high-real-cash = [1, 2, 3, 5]
 low-pb = [1, 2, 3, 5]
-permanent = [1, 2, 3, 5]
 small-cap = [1, 2, 3, 5]

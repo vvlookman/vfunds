@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::{Days, NaiveDate};
 use smartcore::{
@@ -25,6 +23,7 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
         select_by_indicators,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::{
         financial::*,
@@ -34,7 +33,7 @@ use crate::{
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 
     frequency_days: u64,
 }
@@ -59,61 +58,18 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
-        let metric_r2_threshold = self
-            .options
-            .get("metric_r2_threshold")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.8);
-        let train_trade_days = self
-            .options
-            .get("train_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(60);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        let xgboost_gamma = self
-            .options
-            .get("xgboost_gamma")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let xgboost_lambda = self
-            .options
-            .get("xgboost_lambda")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let xgboost_learning_rate = self
-            .options
-            .get("xgboost_learning_rate")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
-        let xgboost_max_depth = self
-            .options
-            .get("xgboost_max_depth")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let xgboost_min_child_weight = self
-            .options
-            .get("xgboost_min_child_weight")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let xgboost_n_estimators = self
-            .options
-            .get("xgboost_n_estimators")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50);
-        {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-        }
+        let limit = self.options.read_u64_no_zero("limit", 5);
+        let metric_r2_threshold =
+            self.options
+                .read_f64_in_range("metric_r2_threshold", 0.8, 0.0..=1.0);
+        let train_trade_days = self.options.read_u64_no_zero("train_trade_days", 60);
+        let weight_method = self.options.read_str("weight_method", "equal");
+        let xgboost_gamma = self.options.read_f64_gte("xgboost_gamma", 0.0, 0.0);
+        let xgboost_lambda = self.options.read_f64_gte("xgboost_lambda", 1.0, 0.0);
+        let xgboost_learning_rate = self.options.read_f64_gt("xgboost_learning_rate", 0.1, 0.0);
+        let xgboost_max_depth = self.options.read_u64_no_zero("xgboost_max_depth", 3);
+        let xgboost_min_child_weight = self.options.read_u64_no_zero("xgboost_min_child_weight", 3);
+        let xgboost_n_estimators = self.options.read_u64_no_zero("xgboost_n_estimators", 50);
 
         let predict_trade_days = (self.frequency_days as f64 * TRADE_DAYS_FRACTION).round() as u32;
 

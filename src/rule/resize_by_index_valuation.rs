@@ -16,14 +16,14 @@ use crate::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor,
         rule_notify_calc_progress, rule_send_info,
     },
-    spec::TickerSourceType,
+    spec::{RuleOptions, TickerSourceType},
     ticker::{Ticker, TickersIndex},
     utils::{datetime::date_to_str, stats::quantile_value},
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -44,73 +44,22 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let allow_short = self
-            .options
-            .get("allow_short")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let lookback_years = self
-            .options
-            .get("lookback_years")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5);
+        let allow_short = self.options.read_bool("allow_short", false);
+        let lookback_years = self.options.read_u64_no_zero("lookback_years", 5);
         let pb_quantile_lower = self
             .options
-            .get("pb_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.4);
+            .read_f64_in_range("pb_quantile_lower", 0.0, 0.0..=1.0);
         let pb_quantile_upper = self
             .options
-            .get("pb_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.8);
+            .read_f64_in_range("pb_quantile_upper", 1.0, 0.0..=1.0);
         let pe_quantile_lower = self
             .options
-            .get("pe_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.4);
+            .read_f64_in_range("pe_quantile_lower", 0.0, 0.0..=1.0);
         let pe_quantile_upper = self
             .options
-            .get("pe_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.8);
-        let ticker_watch_index = self
-            .options
-            .get("ticker_watch_index")
-            .and_then(|v| v.as_object());
-        let ticker_source_watch_index = self
-            .options
-            .get("ticker_source_watch_index")
-            .and_then(|v| v.as_object());
-        {
-            if lookback_years == 0 {
-                panic!("lookback_years must > 0");
-            }
-
-            if !(0.0..=1.0).contains(&pb_quantile_upper) {
-                panic!("pb_quantile_upper must >= 0 and <= 1");
-            }
-
-            if !(0.0..=1.0).contains(&pb_quantile_lower) {
-                panic!("pb_quantile_lower must >= 0 and <= 1");
-            }
-
-            if pb_quantile_upper < pb_quantile_lower {
-                panic!("pb_quantile_upper must >= pb_quantile_lower");
-            }
-
-            if !(0.0..=1.0).contains(&pe_quantile_upper) {
-                panic!("pe_quantile_upper must >= 0 and <= 1");
-            }
-
-            if !(0.0..=1.0).contains(&pe_quantile_lower) {
-                panic!("pe_quantile_lower must >= 0 and <= 1");
-            }
-
-            if pe_quantile_upper < pe_quantile_lower {
-                panic!("pe_quantile_upper must >= pe_quantile_lower");
-            }
-        }
+            .read_f64_in_range("pe_quantile_upper", 1.0, 0.0..=1.0);
+        let ticker_watch_index = self.options.read_object("ticker_watch_index");
+        let ticker_source_watch_index = self.options.read_object("ticker_source_watch_index");
 
         let mut ticker_watch_index_map: HashMap<Ticker, TickersIndex> = HashMap::new();
         if let Some(ticker_watch_index) = ticker_watch_index {

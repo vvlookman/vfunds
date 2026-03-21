@@ -18,13 +18,13 @@ use crate::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, calc_weights,
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::stats,
 };
 
 pub struct Executor {
-    #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 
     clusters_holding: HashMap<String, Vec<(Ticker, f64)>>,
 }
@@ -49,77 +49,29 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let cash_ratio_quantile_lower = self
-            .options
-            .get("cash_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.1);
-        let clusters_lookback_trade_days = self
-            .options
-            .get("clusters_lookback_trade_days")
-            .and_then(|v| v.as_object());
-        let current_ratio_quantile_lower = self
-            .options
-            .get("current_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
+        let cash_ratio_quantile_lower =
+            self.options
+                .read_f64_in_range("cash_ratio_quantile_lower", 0.0, 0.0..=1.0);
+        let clusters_lookback_trade_days = self.options.read_object("clusters_lookback_trade_days");
+        let current_ratio_quantile_lower =
+            self.options
+                .read_f64_in_range("current_ratio_quantile_lower", 0.0, 0.0..=1.0);
         let default_lookback_trade_days = self
             .options
-            .get("default_lookback_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(1000);
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
-        let pb_mean_count = self
-            .options
-            .get("pb_mean_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(21);
+            .read_u64_no_zero("default_lookback_trade_days", 1000);
+        let limit = self.options.read_u64_no_zero("limit", 5);
+        let pb_mean_count = self.options.read_u64_no_zero("pb_mean_count", 21);
         let pb_quantile_lower = self
             .options
-            .get("pb_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.3);
+            .read_f64_in_range("pb_quantile_lower", 0.0, 0.0..=1.0);
         let pb_quantile_upper = self
             .options
-            .get("pb_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.7);
-        let roe_quantile_lower = self
-            .options
-            .get("roe_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let roe_years = self
-            .options
-            .get("roe_years")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        {
-            if default_lookback_trade_days == 0 {
-                panic!("default_lookback_trade_days must > 0");
-            }
-
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-
-            if pb_mean_count == 0 {
-                panic!("pb_mean_count must > 0");
-            }
-
-            if roe_years == 0 {
-                panic!("roe_years must > 0");
-            }
-        }
+            .read_f64_in_range("pb_quantile_upper", 1.0, 0.0..=1.0);
+        let roe_quantile_lower =
+            self.options
+                .read_f64_in_range("roe_quantile_lower", 0.0, 0.0..=1.0);
+        let roe_years = self.options.read_u64_no_zero("roe_years", 3);
+        let weight_method = self.options.read_str("weight_method", "equal");
 
         let mut clusters_lookback_trade_days_map: HashMap<String, u64> = HashMap::new();
         if let Some(clusters_lookback_trade_days) = clusters_lookback_trade_days {

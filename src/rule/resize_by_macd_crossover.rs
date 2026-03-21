@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
@@ -11,6 +9,7 @@ use crate::{
         stock::{StockDividendAdjust, fetch_stock_kline},
     },
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_send_info},
+    spec::RuleOptions,
     utils::{
         financial::{calc_macd, calc_rsi},
         math::linear_regression,
@@ -19,7 +18,7 @@ use crate::{
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -40,46 +39,16 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let allow_short = self
-            .options
-            .get("allow_short")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let macd_period_fast = self
-            .options
-            .get("macd_period_fast")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(12) as usize;
-        let macd_period_slow = self
-            .options
-            .get("macd_period_slow")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(26) as usize;
-        let macd_period_signal = self
-            .options
-            .get("macd_period_signal")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(9) as usize;
-        let macd_slope_window = self
-            .options
-            .get("macd_slope_window")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as usize;
-        let rsi_period = self
-            .options
-            .get("rsi_period")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(14) as usize;
-        let rsi_low = self
-            .options
-            .get("rsi_low")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(30.0);
+        let allow_short = self.options.read_bool("allow_short", false);
+        let macd_period_fast = self.options.read_u64_no_zero("macd_period_fast", 12);
+        let macd_period_slow = self.options.read_u64_no_zero("macd_period_slow", 26);
+        let macd_period_signal = self.options.read_u64_no_zero("macd_period_signal", 9);
+        let macd_slope_window = self.options.read_u64_no_zero("macd_slope_window", 5);
+        let rsi_period = self.options.read_u64_no_zero("rsi_period", 14);
+        let rsi_low = self.options.read_f64_in_range("rsi_low", 30.0, 0.0..=100.0);
         let rsi_high = self
             .options
-            .get("rsi_high")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(70.0);
+            .read_f64_in_range("rsi_high", 70.0, 0.0..=100.0);
 
         for (ticker, _units) in context.portfolio.positions.clone() {
             let kline = fetch_stock_kline(&ticker, StockDividendAdjust::Backward).await?;
@@ -95,9 +64,13 @@ impl RuleExecutor for Executor {
                 .collect();
             let macds = calc_macd(
                 &latest_prices,
-                (macd_period_fast, macd_period_slow, macd_period_signal),
+                (
+                    macd_period_fast as usize,
+                    macd_period_slow as usize,
+                    macd_period_signal as usize,
+                ),
             );
-            let rsis = calc_rsi(&latest_prices, rsi_period);
+            let rsis = calc_rsi(&latest_prices, rsi_period as usize);
 
             if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
                 (macds.last(), macds.iter().rev().nth(1), rsis.last())
@@ -105,7 +78,7 @@ impl RuleExecutor for Executor {
                 let macd_hists: Vec<f64> = macds
                     .iter()
                     .rev()
-                    .take(macd_slope_window)
+                    .take(macd_slope_window as usize)
                     .rev()
                     .map(|v| v.2)
                     .collect();
@@ -152,9 +125,13 @@ impl RuleExecutor for Executor {
                 .collect();
             let macds = calc_macd(
                 &latest_prices,
-                (macd_period_fast, macd_period_slow, macd_period_signal),
+                (
+                    macd_period_fast as usize,
+                    macd_period_slow as usize,
+                    macd_period_signal as usize,
+                ),
             );
-            let rsis = calc_rsi(&latest_prices, rsi_period);
+            let rsis = calc_rsi(&latest_prices, rsi_period as usize);
 
             if let (Some(macd_today), Some(macd_prev), Some(rsi)) =
                 (macds.last(), macds.iter().rev().nth(1), rsis.last())
@@ -162,7 +139,7 @@ impl RuleExecutor for Executor {
                 let macd_hists: Vec<f64> = macds
                     .iter()
                     .rev()
-                    .take(macd_slope_window)
+                    .take(macd_slope_window as usize)
                     .rev()
                     .map(|v| v.2)
                     .collect();

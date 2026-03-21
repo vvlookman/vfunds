@@ -1,5 +1,3 @@
-use std::{collections::HashMap, f64};
-
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
@@ -21,6 +19,7 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
         select_by_indicators,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::{
         financial::{calc_annualized_momentum, calc_annualized_volatility_mad},
@@ -31,7 +30,7 @@ use crate::{
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -52,40 +51,27 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let adjust_dividend_ratio_weight = self
-            .options
-            .get("adjust_dividend_ratio_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
+        let adjust_dividend_ratio_weight =
+            self.options
+                .read_f64_gte("adjust_dividend_ratio_weight", 0.0, 0.0);
         let adjust_momentum_weight = self
             .options
-            .get("adjust_momentum_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let adjust_volatility_weight = self
-            .options
-            .get("adjust_volatility_weight")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let cash_ratio_quantile_lower = self
-            .options
-            .get("cash_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let current_ratio_quantile_lower = self
-            .options
-            .get("current_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let dividend_ratio_quantile_lower = self
-            .options
-            .get("dividend_ratio_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
+            .read_f64_gte("adjust_momentum_weight", 0.0, 0.0);
+        let adjust_volatility_weight =
+            self.options
+                .read_f64_gte("adjust_volatility_weight", 0.0, 0.0);
+        let cash_ratio_quantile_lower =
+            self.options
+                .read_f64_in_range("cash_ratio_quantile_lower", 0.0, 0.0..=1.0);
+        let current_ratio_quantile_lower =
+            self.options
+                .read_f64_in_range("current_ratio_quantile_lower", 0.0, 0.0..=1.0);
+        let dividend_ratio_quantile_lower =
+            self.options
+                .read_f64_in_range("dividend_ratio_quantile_lower", 0.0, 0.0..=1.0);
         let exclude_sectors: Vec<String> = self
             .options
-            .get("exclude_sectors")
-            .and_then(|v| v.as_array())
+            .read_array("exclude_sectors")
             .map(|arr| {
                 arr.iter()
                     .filter_map(|v| v.as_str())
@@ -93,49 +79,14 @@ impl RuleExecutor for Executor {
                     .collect::<Vec<String>>()
             })
             .unwrap_or_default();
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
-        let lookback_trade_days = self
-            .options
-            .get("lookback_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(250);
-        let roe_quantile_lower = self
-            .options
-            .get("roe_quantile_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let roe_years = self
-            .options
-            .get("roe_years")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(3);
-        let skip_same_sector = self
-            .options
-            .get("skip_same_sector")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-
-            if lookback_trade_days == 0 {
-                panic!("lookback_trade_days must > 0");
-            }
-
-            if roe_years == 0 {
-                panic!("roe_years must > 0");
-            }
-        }
+        let limit = self.options.read_u64_no_zero("limit", 5);
+        let lookback_trade_days = self.options.read_u64_no_zero("lookback_trade_days", 250);
+        let roe_quantile_lower =
+            self.options
+                .read_f64_in_range("roe_quantile_lower", 0.0, 0.0..=1.0);
+        let roe_years = self.options.read_u64_no_zero("roe_years", 3);
+        let skip_same_sector = self.options.read_bool("skip_same_sector", false);
+        let weight_method = self.options.read_str("weight_method", "equal");
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {

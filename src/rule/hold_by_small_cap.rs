@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::{sync::mpsc::Sender, time::Instant};
@@ -17,13 +15,14 @@ use crate::{
         rule_notify_calc_progress, rule_notify_indicators, rule_send_info, rule_send_warning,
         select_by_indicators,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::stats::quantile_value,
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -44,46 +43,19 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let circulating_ratio_lower = self
-            .options
-            .get("circulating_ratio_lower")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        let limit = self
-            .options
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10);
+        let circulating_ratio_lower =
+            self.options
+                .read_f64_in_range("circulating_ratio_lower", 0.0, 0.0..=1.0);
+        let limit = self.options.read_u64_no_zero("limit", 5);
         let pb_quantile_upper = self
             .options
-            .get("pb_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let pre_select_ratio = self
-            .options
-            .get("pre_select_ratio")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20);
+            .read_f64_in_range("pb_quantile_upper", 1.0, 0.0..=1.0);
+        let pre_select_ratio = self.options.read_u64_no_zero("pre_select_ratio", 20);
         let ps_quantile_upper = self
             .options
-            .get("ps_quantile_upper")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1.0);
-        let skip_same_sector = self
-            .options
-            .get("skip_same_sector")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let weight_method = self
-            .options
-            .get("weight_method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("equal");
-        {
-            if limit == 0 {
-                panic!("limit must > 0");
-            }
-        }
+            .read_f64_in_range("ps_quantile_upper", 1.0, 0.0..=1.0);
+        let skip_same_sector = self.options.read_bool("skip_same_sector", false);
+        let weight_method = self.options.read_str("weight_method", "equal");
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {

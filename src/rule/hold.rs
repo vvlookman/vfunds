@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use async_trait::async_trait;
 use chrono::NaiveDate;
 use tokio::sync::mpsc::Sender;
@@ -7,12 +5,13 @@ use tokio::sync::mpsc::Sender;
 use crate::{
     error::VfResult,
     rule::{BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor},
+    spec::RuleOptions,
     ticker::Ticker,
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {

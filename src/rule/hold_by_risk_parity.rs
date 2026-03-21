@@ -13,13 +13,14 @@ use crate::{
     rule::{
         BacktestEvent, FundBacktestContext, RuleDefinition, RuleExecutor, rule_notify_indicators,
     },
+    spec::RuleOptions,
     ticker::Ticker,
     utils::{financial::calc_annualized_volatility_std, math::constraint_array},
 };
 
 pub struct Executor {
     #[allow(dead_code)]
-    options: HashMap<String, serde_json::Value>,
+    options: RuleOptions,
 }
 
 impl Executor {
@@ -40,34 +41,13 @@ impl RuleExecutor for Executor {
     ) -> VfResult<()> {
         let rule_name = mod_name!();
 
-        let lookback_trade_days = self
-            .options
-            .get("lookback_trade_days")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(126);
+        let lookback_trade_days = self.options.read_u64_no_zero("lookback_trade_days", 125);
         let max_weight_scale = self
             .options
-            .get("max_weight_scale")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(4.0);
+            .read_f64_in_range("max_weight_scale", 4.0, 1.0..=16.0);
         let min_weight_scale = self
             .options
-            .get("min_weight_scale")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.25);
-        {
-            if lookback_trade_days == 0 {
-                panic!("lookback_trade_days must > 0");
-            }
-
-            if max_weight_scale < 1.0 {
-                panic!("max_weight_scale must >= 1.0");
-            }
-
-            if min_weight_scale > 1.0 {
-                panic!("min_weight_scale must <= 1.0");
-            }
-        }
+            .read_f64_in_range("min_weight_scale", 0.25, 0.0..=1.0);
 
         let tickers_map = context.fund_definition.all_tickers_map(date).await?;
         if !tickers_map.is_empty() {
