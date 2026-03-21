@@ -42,6 +42,9 @@ impl Rule {
                 Box::new(hold_by_price_deviation::Executor::new(definition))
             }
             "hold_by_real_cash" => Box::new(hold_by_real_cash::Executor::new(definition)),
+            "hold_by_return_deviation" => {
+                Box::new(hold_by_return_deviation::Executor::new(definition))
+            }
             "hold_by_risk_parity" => Box::new(hold_by_risk_parity::Executor::new(definition)),
             "hold_by_small_cap" => Box::new(hold_by_small_cap::Executor::new(definition)),
             "hold_by_stablity" => Box::new(hold_by_stablity::Executor::new(definition)),
@@ -52,9 +55,6 @@ impl Rule {
             }
             "resize_by_macd_crossover" => {
                 Box::new(resize_by_macd_crossover::Executor::new(definition))
-            }
-            "resize_by_return_deviation" => {
-                Box::new(resize_by_return_deviation::Executor::new(definition))
             }
             "resize_by_spike" => Box::new(resize_by_spike::Executor::new(definition)),
             "resize_by_valuation" => Box::new(resize_by_valuation::Executor::new(definition)),
@@ -99,6 +99,7 @@ mod hold_by_factors_knn;
 mod hold_by_momentum;
 mod hold_by_price_deviation;
 mod hold_by_real_cash;
+mod hold_by_return_deviation;
 mod hold_by_risk_parity;
 mod hold_by_small_cap;
 mod hold_by_stablity;
@@ -106,7 +107,6 @@ mod hold_by_trend;
 mod resize_by_drift;
 mod resize_by_index_valuation;
 mod resize_by_macd_crossover;
-mod resize_by_return_deviation;
 mod resize_by_spike;
 mod resize_by_valuation;
 

@@ -1,32 +1,31 @@
 title = "红利轮动"
-description = "基于若干红利ETF根据趋势偏离轮动部分仓位"
+description = "基于若干红利ETF根据效益偏离轮动部分仓位"
 
 tickers = [
-  "159207",  # 高股息ETF
+  # "159207",  # 高股息ETF
   "159222",  # 自由现金流ETF
   "159263",  # 价值ETF
   "159545",  # 恒生红利低波ETF
   "159758",  # 红利质量ETF
-  "515180",  # 红利ETF
-  "563020",  # 红利低波ETF
+  # "515180",  # 红利ETF
+  "515450",  # 红利低波50ETF
+  # "563020",  # 红利低波ETF
 ]
 
 [[rules]]
-name = "hold"
-frequency = "6m"
-
-[rules.search]
-frequency = ["1w", "1m", "3m", "6m", "1y"]
-
-[[rules]]
-name = "resize_by_macd_crossover"
-frequency = "1d"
+name = "hold_by_return_deviation"
+frequency = "2m"
 
 [rules.options]
-deviation_threshold = 0.04
-lookback_trade_days = 5
+deviation_threshold = 0.1
+lookback_periods = 1
+rotation_deviation_ratio = 0.3
 rotation_ratio = 0.5
 
+[rules.search]
+# frequency = ["1m", "2m", "3m", "6m"]
+
 [rules.search.options]
-# deviation_threshold = [0.02, 0.03, 0.04, 0.05]
-# lookback_trade_days = [3, 5, 10, 21, 63, 125]
+# deviation_threshold = [0.05, 0.1, 0.15, 0.2]
+# lookback_periods = [1, 2, 3, 5]
+# rotation_deviation_ratio = [0.1, 0.2, 0.3, 0.4]

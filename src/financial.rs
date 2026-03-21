@@ -60,7 +60,6 @@ pub enum PriceType {
     High,
     Low,
     Mid, // (High + Low) / 2
-    #[allow(dead_code)]
     Open,
 }
 

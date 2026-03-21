@@ -32,6 +32,17 @@ pub struct FundBacktestContext<'a> {
 }
 
 impl FundBacktestContext<'_> {
+    pub async fn calc_total_value(
+        &self,
+        date: &NaiveDate,
+        price_type: &PriceType,
+    ) -> VfResult<f64> {
+        let positions_value = self.calc_positions_value(date, price_type).await?;
+        let total_value = self.calc_cash() + positions_value.values().sum::<f64>();
+
+        Ok(total_value)
+    }
+
     pub async fn cash_deploy_free(
         &mut self,
         date: &NaiveDate,
@@ -769,13 +780,6 @@ impl FundBacktestContext<'_> {
         }
 
         Ok(positions_value)
-    }
-
-    async fn calc_total_value(&self, date: &NaiveDate, price_type: &PriceType) -> VfResult<f64> {
-        let positions_value = self.calc_positions_value(date, price_type).await?;
-        let total_value = self.calc_cash() + positions_value.values().sum::<f64>();
-
-        Ok(total_value)
     }
 
     async fn position_tickers_map(
